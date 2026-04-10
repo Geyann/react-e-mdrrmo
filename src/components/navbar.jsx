@@ -24,7 +24,7 @@ export default function Navbar() {
         </button>
 
         <div className="notif">
-          <Link id='navbar-a' to="/logout" className="logout-btn">Log out</Link>
+          <Link id='navbar-a' to="/" className="logout-btn">Log out</Link>
           <Link id='navbar-a' to="/profile" className="profile">👤</Link>
           <Link id='navbar-a' to="/notification" className="notification">🔔</Link>
         </div>
@@ -32,7 +32,7 @@ export default function Navbar() {
 
       {/* 4. Conditional class based on isOpen state */}
       <nav className={`links-row ${isOpen ? 'active' : ''}`}>
-        <Link id='navbar-a' to="/" onClick={() => setIsOpen(false)}>Home</Link>
+        <Link id='navbar-a' to="/home" onClick={() => setIsOpen(false)}>Home</Link>
         <Link id='navbar-a' to="/report" onClick={() => setIsOpen(false)}>Report Incident</Link>
         <Link id='navbar-a' to="/borrow" onClick={() => setIsOpen(false)}>Borrow Vehicle</Link>
         <Link id='navbar-a' to="/appointment" onClick={() => setIsOpen(false)}>Book an Appointment</Link>

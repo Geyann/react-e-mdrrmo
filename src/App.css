@@ -70,6 +70,7 @@ img#logo {
     color: #555; /* Default icon color */
     cursor: pointer;
     line-height: 1; /* For alignment */
+    text-decoration: none; /* Remove underline if using font icons */
 }
 
 .profile {
@@ -99,7 +100,7 @@ img#logo {
     text-decoration: none;
     color: #333;
     font-size: 15px;
-    font-weight: normal; /* Normal weight, not 500 */
+    font-weight: bold; /* Normal weight, not 500 */
     transition: color 0.3s ease;
     padding: 5px 0; /* Keep the links clickable on mouseover */
 }
