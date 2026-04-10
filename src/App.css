@@ -1,0 +1,806 @@
+
+
+.content {
+  position: relative;
+  top: 10px;
+  background: #efefef;
+  min-height: 100vh;
+  display: flex;
+  justify-content: center;
+  padding: 50px 20px;
+}
+
+body {
+    background-color: #efefef;
+    padding-top: 140px; 
+
+}
+
+/* --- Container and General Layout --- */
+.navbar-container {
+    position: fixed;
+    top: 0;
+    left: 0;
+    width: 100%;
+    background-color: white;
+    box-shadow: 0 4px 6px gray; 
+    z-index: 1000;
+}
+
+/* --- Top Row: Logo and User Actions --- */
+.top-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 20px 50px; /* Increased padding */
+    border-bottom: 1px solid #f0f0f0; /* Lighter border */
+}
+
+.logo {
+    display: flex;
+    align-items: center;
+    font-size: 32px; /* Large font size for text */
+    font-weight: bold;
+    color: #8a4ba1;
+}
+
+img#logo {
+    height: 50px; /* Adjusted to fit the top row */
+    width: auto;
+    margin-right: 20px;
+}
+
+.notif {
+    display: flex;
+    align-items: center;
+    gap: 15px; /* Spacing between the user items */
+}
+
+.logout-btn {
+    color: #ff0000;
+    text-decoration: none;
+    font-size: 16px;
+    font-weight: normal;
+    padding: 0 10px;
+}
+
+.profile,
+.notification {
+    font-size: 26px; /* Icon font size */
+    color: #555; /* Default icon color */
+    cursor: pointer;
+    line-height: 1; /* For alignment */
+}
+
+.profile {
+    order: -1; /* Flips the order of the profile and notif icons to match design */
+}
+
+/* Specific styling for the profile circle icon if using a font library */
+/* e.g., if using Font Awesome class like fa-user-circle */
+.profile::before {
+    background-color: #ccc;
+    color: white;
+    border-radius: 50%;
+    padding: 8px;
+    font-size: 24px;
+}
+
+/* --- Bottom Row: Navigation Links --- */
+.links-row {
+    display: flex;
+    justify-content: space-around; /* Space the items evenly across the width */
+    align-items: center;
+    padding: 15px 50px; /* Spacing below the line */
+    background-color: white;
+}
+
+.links-row a {
+    text-decoration: none;
+    color: #333;
+    font-size: 15px;
+    font-weight: normal; /* Normal weight, not 500 */
+    transition: color 0.3s ease;
+    padding: 5px 0; /* Keep the links clickable on mouseover */
+}
+
+.links-row a:hover {
+    color: #8a4ba1;
+}
+
+/* --- Active State styling --- */
+.links-row a.active {
+    font-weight: bold; /* Thicker active text */
+    color: #000;
+    position: relative;
+}
+.links-row a.active::after {
+    content: '';
+    position: absolute;
+    bottom: -10px; 
+    left: 0;
+    width: 100%;
+    height: 3px;
+    background-color: #333;
+    border-radius: 2px;
+}
+/* Hero Section */
+.hero-section {
+    display: flex;
+    justify-content: center;
+    padding: 40px 20px;
+}
+
+.hero-card {
+    background: rgb(255, 255, 255);
+    width: 90%;
+    max-width: 1000px;
+    padding: 60px 20px;
+    border-radius: 40px;
+    text-align: center;
+    box-shadow: 0 4px 20px gray;
+}
+
+.hero-card h1 {
+    font-size: 80px;
+    line-height: 1.1;
+    margin-bottom: 40px;
+}
+
+.purple-text {
+    color: #8B3DFF;
+}
+
+.button-group {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+}
+
+.btn-map {
+    text-decoration: none;
+    background: #A0A0A0;
+    color: black;
+    border: none;
+    padding: 15px 85px;
+    border-radius: 40px;
+    font-weight: bold;
+    font-size: 25px;
+    cursor: pointer;
+    border: 1px solid black;
+}
+
+.btn-map img {
+    width: 38px;
+    height: 38px;
+    vertical-align: middle;
+    margin-right: 10px;
+}
+
+.btn-map:hover {
+    background: #888888;
+}
+
+.btn-trends {
+    background: #4B0082;
+    /* Deep purple */
+    color: white;
+    text-decoration: none;
+    border: none;
+    padding: 15px 70px;
+    border: 1px solid black;
+    border-radius: 40px;
+    font-weight: bold;
+    font-size: 25px;
+    cursor: pointer;
+}
+
+/* Hazards Section */
+.hazards-section {
+    margin: 0 auto;
+    padding: 50px;
+}
+
+.hazards-section h2#report-hazard-history {
+    font-size: 60px;
+    margin-bottom: 30px;
+    text-align: left;
+    font-weight: normal;
+}
+
+.chart-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 40px;
+}
+
+.chart-box {
+    border-radius: 20px;
+    box-shadow: 0 4px 10px gray;
+}
+
+.chart-box img#earthquake {
+    width: 100%;
+    border-radius: 10px;
+    height: 330px;
+}
+
+.chart-box img#flooding {
+    width: 100%;
+    border-radius: 10px;
+    height: 330px;
+}
+
+.chart-label {
+    text-align: center;
+    font-size: 20px;
+    margin-top: 15px;
+}
+
+/* Emergency Contact Footer */
+.phone-icon img {
+    width: 50px;
+    height: 50px;
+}
+
+.emergency-footer {
+    background: #8B3DFF;
+    color: white;
+    max-width: 1000px;
+    margin: 60px auto;
+    padding: 40px;
+    border-radius: 25px;
+    text-align: left;
+}
+
+.emergency-header {
+    display: flex;
+    align-items: center;
+    gap: 15px;
+    border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+    padding-bottom: 10px;
+    margin-bottom: 20px;
+}
+/* MAIN */
+.report-page {
+  background: #efefef;
+  min-height: 100vh;
+  padding: 50px 20px;
+  display: flex;
+  justify-content: center;
+}
+
+.form-wrapper {
+  width: 700px;
+}
+
+.icon {
+  width: 70px;
+  height: 70px;
+  border-radius: 50%;
+  border: 4px solid #000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 36px;
+  margin: 0 auto 20px;
+}
+
+h1 {
+  text-align: center;
+  font-size: 36px;
+}
+
+.subtitle {
+  text-align: center;
+  color: #666;
+  margin: 15px 0 40px;
+}
+
+.subtitle span {
+  color: red;
+}
+
+label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: bold;
+}
+
+label span#required {
+  color: red;
+}
+
+label small {
+  font-weight: normal;
+  color: gray;
+}
+
+input#report-input,
+select#report-select,
+textarea {
+  width: 100%;
+  padding: 12px;
+  border-radius: 8px;
+  border: 1px solid #bbb;
+  margin-bottom: 25px;
+}
+
+.row {
+  display: flex;
+  gap: 30px;
+  width: 103.5%;
+  height: 35px;
+  padding-top: 10px;
+  padding-bottom: 30px;
+  border-radius: 8px;
+  margin-bottom: 25px;
+
+}
+
+
+.row div {
+  flex: 1;
+}
+
+textarea {
+  height: 140px;
+  resize: none;
+}
+
+.upload-box {
+  border: 2px dashed #bbb;
+  background-color: white;
+  border-radius: 10px;
+  padding: 40px;
+  text-align: center;
+  margin-bottom: 30px;
+  position: relative;
+  width: 91.5%;
+}
+
+.upload-box img {
+  width: 40px;
+  height: 40px;
+  vertical-align: middle;
+  margin-right: 10px;
+}
+
+.upload-box input#report-input {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  cursor: pointer;
+}
+
+.terms {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 40px;
+  padding: 2px 5px;
+  flex-direction: row;
+}
+
+input#report-input[type="checkbox" i] {
+  width: 20px;
+  height: 38px;
+}
+
+.terms p {
+  font-size: 14px;
+
+}
+
+button#report-submit {
+  display: block;
+  margin: auto;
+  padding: 15px 60px;
+  background: #6a1b9a;
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+button#report-submit:hover {
+  background: #5a1485;
+}
+.date-time-grid{
+   display: flex;
+  gap: 30px;
+  width: 103.5%;
+  height: 35px;
+  padding-top: 10px;
+  padding-bottom: 30px;
+  border-radius: 8px;
+  margin-bottom: 25px;
+}
+.admin-table{
+    padding-left: 10px;
+    border-collapse: collapse;
+    max-width: 900px;
+    height: 20px;
+    width: 100%;
+    margin: 2rem auto;
+}
+.admin-table th, .admin-table td{
+border: 1px solid black;
+padding: 1vmin;
+}
+/* Form Layout */
+.borrow-container {
+    max-width: 700px;
+    margin: 0px auto;
+    padding: 0 20px;
+
+}
+
+.borrow-form-header {
+    text-align: center;
+    margin-bottom: 90px;
+}
+
+.borrow-vehicle-icon {
+    font-size: 50px;
+    margin-bottom: 40px;
+}
+
+.required {
+    color: red;
+}
+
+.borrow-section-title {
+    margin-bottom: 10px;
+    font-size: 20px;
+    font-weight: bold;
+}
+
+select#borrow-select {
+    width: 104%;
+    height: 35px;
+    padding: 8px;
+    border-radius: 8px;
+    border: 1px solid #bbb;
+    margin-bottom: 25px;
+}
+
+.borrow-form-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 1px 40px;
+}
+
+.borrow-form-group {
+    display: block;
+    flex-direction: column;
+    gap: 1px;
+}
+
+label#borrow-label {
+    width: 100%;
+    margin-bottom: 10px;
+}
+
+input#borrow-input {
+    width: 100%;
+    height: 12px;
+    padding: 12px;
+    border-radius: 8px;
+    border: 1px solid #bbb;
+    margin-bottom: 25px;
+}
+
+
+/* Footer & Submit */
+.borrow-form-footer {
+    display: flex;
+    justify-content: center;
+    margin-top: 30px;
+}
+
+.submit-btn button#borrow-submit {
+    background-color: #4a0072;
+    color: white;
+    padding: 15px 60px;
+    border: none;
+    border-radius: 8px;
+    font-size: 18px;
+    font-weight: normal;
+    cursor: pointer;
+}
+
+.submit-btn button#borrow-submit:hover {
+    background-color: #32004d;
+}
+
+.checkup-container {
+    max-width: 700px;
+    margin: 40px auto;
+    padding: 0 40px;
+    background: #efefef;
+
+}
+
+.form-header {
+    text-align: center;
+    margin-bottom: 30px;
+}
+
+.plus-icon {
+    font-size: 50px;
+    border: 3px solid #333;
+    border-radius: 50%;
+    width: 60px;
+    height: 60px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    margin: 0 auto;
+}
+
+.form-header h1#checkup {
+    font-size: 38px;
+    margin: 10px 0;
+}
+
+.form-header p#checkup {
+    color: #666;
+    font-weight: 500;
+}
+
+/* Input Styling */
+.assessment-form {
+    text-align: left;
+}
+
+.input-group label {
+    display: block;
+    font-weight: 500;
+    margin: 10px;
+    margin-left: 0;
+    font-size: 18px;
+}
+
+
+
+.assessment-form input[type="text"],
+.assessment-form textarea {
+    width: 100%;
+    padding: 9px;
+    border-radius: 10px;
+    font-size: 14px;
+    border: 1px solid #999;
+    background: #fdfdfd;
+    box-sizing: border-box;
+}
+
+/* Date/Time Row */
+.checkup-row {
+    display: flex;
+    gap: 40px;
+    align-items: justify;
+    margin: 10px;
+    margin-left: 0;
+}
+
+input#date {
+    width: 150px !important;
+    padding: 6px 10px !important;
+    border-radius: 5px !important;
+    border: 1px solid #999;
+    font-size: 16px;
+}
+
+input#time {
+    width: 150px !important;
+    padding: 5px 10px !important;
+    border-radius: 5px !important;
+    border: 1px solid #999;
+    font-size: 16px;
+}
+
+/* Checkbox Sections */
+.checkbox-row {
+    margin-bottom: 1px;
+    display: flex;
+    flex-direction: column;
+    /* Stack label above options like the Figma */
+    align-items: flex-start;
+}
+
+.checkbox-row>label {
+    font-weight: bold;
+    font-size: 18px;
+}
+
+.options {
+    font-size: 16px;
+    display: inline-flex;
+    align-items: center;
+    padding: 5px 15px;
+    text-wrap: nowrap;
+}
+
+.options label {
+    font-size: 16px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 5px;
+}
+
+/* Customizing the appearance of the radio circle if needed */
+input[type="radio"] {
+    width: 18px;
+    height: 30px;
+    accent-color: #4a0088;
+    /* Matches your submit button color */
+}
+
+.inline-input {
+    width: 120px !important;
+    height: 25px;
+    padding: 2px 8px !important;
+    border-radius: 5px !important;
+    border: 1px solid #999;
+}
+
+/* Submit Button */
+.submit-btn {
+    display: block;
+    width: 50%;
+    margin: 40px auto;
+    background-color: #4a0088;
+    color: white;
+    padding: 15px;
+    border-radius: 10px;
+    border: none;
+    font-size: 16px;
+    font-weight: lighter;
+    cursor: pointer;
+    box-shadow: 0 4px 6px rgba(0, 0, 0, 0.2);
+}
+
+.submit-btn:hover {
+    background-color: #38006b;
+}/* MAIN FORM */
+.appointment-page {
+  display: flex;
+  justify-content: center;
+}
+
+.form-card {
+  background: #efefef;
+  width: 700px;
+  text-align: center;
+}
+
+.icon-circle {
+  font-size: 50px;
+  margin-bottom: 30px;
+}
+
+h2 {
+  font-size: 36px;
+  margin-bottom: 10px;
+}
+
+.subtitle {
+  color: #666;
+  margin-bottom: 40px;
+}
+
+.subtitle span {
+  color: red;
+}
+
+form#appointment-form {
+  text-align: left;
+}
+
+label {
+  display: block;
+  margin-bottom: 5px;
+  font-weight: normal;
+}
+
+
+textarea {
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 20px;
+  border-radius: 8px;
+  border: 1px solid #bbb;
+  font-size: 14px;
+}
+
+input#appointment-input {
+  width: 100%;
+  padding: 12px;
+  margin-bottom: 20px;
+  border-radius: 8px;
+  border: 1px solid #bbb;
+  font-size: 14px;
+  position: relative;
+  top: 5px;
+}
+
+.appointment-row {
+  display: flex;
+  gap: 40px;
+}
+
+.appointment-row div {
+  flex: 1;
+}
+
+textarea {
+  height: 150px;
+  resize: none;
+}
+
+button#appointment-submit {
+  display: block;
+  margin: 30px auto;
+  padding: 15px 50px;
+  background: #6a1b9a;
+  color: #fff;
+  border: none;
+  border-radius: 10px;
+  font-size: 16px;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #5a1485;
+}
+#action{
+    text-wrap: nowrap;
+}
+#approve{
+    background-color: #008000;
+    padding: 6px 10px;
+    border-radius: 12px;
+    border: 1px solid gray;
+}
+#decline{
+    background-color: #FF0000;
+    padding: 6px 10px;
+    border-radius: 12px;
+    border: 1px solid gray;
+}
+/* Default Desktop Styles */
+.hamburger {
+  display: none; /* Hide on desktop */
+  background: none;
+  border: none;
+  font-size: 2rem;
+  cursor: pointer;
+}
+
+/* Mobile View Styles */
+@media (max-width: 768px) {
+  .hamburger {
+    display: block; /* Show toggle button */
+  }
+
+  .links-row {
+    display: none; /* Hide links by default */
+    flex-direction: column;
+    position: absolute;
+    top: 100px; /* Adjust based on header height */
+    left: 0;
+    width: 100%;
+    background-color: #fff;
+    box-shadow: 0 4px 6px rgba(0,0,0,0.1);
+  }
+
+  .links-row.active {
+    display: flex; /* Show links when hamburger is clicked */
+  }
+  
+  #navbar-a {
+    padding: 15px;
+    border-bottom: 1px solid #eee;
+  }
+}
