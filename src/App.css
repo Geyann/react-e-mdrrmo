@@ -339,7 +339,7 @@ textarea {
 }
 
 
-.row div {
+.row  {
   flex: 1;
 }
 
@@ -731,7 +731,7 @@ input#appointment-input {
   gap: 40px;
 }
 
-.appointment-row div {
+.appointment-row  {
   flex: 1;
 }
 
@@ -804,4 +804,89 @@ button:hover {
     padding: 15px;
     border-bottom: 1px solid #eee;
   }
+}
+/* Container to center the form on the screen */
+.login-page {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 100vh;
+  background-color: #e0e0e0; /* Matches the light grey background */
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+}
+
+/* The white card containing the form */
+.access-portal-container {
+  background-color: #ffffff;
+  padding: 40px;
+  border-radius: 25px;
+  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+  width: 100%;
+  max-width: 400px;
+  text-align: center;
+}
+
+/* Header styling */
+.access-portal-container h2 {
+  color: #333;
+  margin-bottom: 25px;
+  font-weight: 600;
+}
+
+/* Input field styling */
+.portal-input-field {
+  width: 100%;
+  padding: 12px 15px;
+  margin: 10px 0;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  box-sizing: border-box; /* Ensures padding doesn't affect width */
+  font-size: 16px;
+  color: #666;
+}
+
+.portal-input-field::placeholder {
+  color: #aaa;
+}
+
+/* Primary Execute Login button */
+.btn-execute-login {
+  width: 100%;
+  padding: 12px;
+  margin-top: 20px;
+  background-color: #4b0082; /* Matches the dark purple in the prototype */
+  color: white;
+  border: none;
+  border-radius: 25px;
+  font-size: 18px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+.btn-execute-login:hover {
+  background-color: #3a0066;
+}
+
+/* Optional: Styling for the Google button and links seen in prototype */
+.google-continue-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 10px;
+  margin-top: 15px;
+  border: 1px solid #ddd;
+  border-radius: 25px;
+  background: white;
+  cursor: pointer;
+}
+
+.portal-link {
+  display: block;
+  margin-top: 15px;
+  font-size: 14px;
+  color: #000;
+  text-decoration: none;
+  font-weight: bold;
 }

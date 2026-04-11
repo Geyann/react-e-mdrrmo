@@ -1,57 +1,71 @@
 import { useState } from "react";
-import { useNavigate } from "react-router-dom";
-import { supabase } from "../createClient"; // Siguraduhing tama ang path
+import { redirect, useNavigate } from "react-router-dom";
+import { supabase } from "../createClient"; 
+import imlogo from '../Images/icon.png';
 
 const LoginPage = () => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
-  const navigate = useNavigate(); // Hook para sa pag-redirect
+  const navigate = useNavigate(); 
 
   const handleLogin = async (e) => {
     e.preventDefault();
 
-    try {
+   
       const { data, error } = await supabase.auth.signInWithPassword({
-        email: email,
-        password: password,
-      });
+      email : email,
+      password : password,
+    });
 
       if (error) {
-        alert("Maling email o password: " + error.message);
+        alert(error.message);
+        
       } else {
-        // SUCCESS: Dito na natin siya papapuntahin sa Home Page
         console.log("Login successful:", data);
         navigate("/home"); 
       }
-    } catch (err) {
-      console.error("Unexpected error:", err);
-    }
+    
   };
 
   return (
-    <div >
-      <form  onSubmit={handleLogin}>
-        <h2>Login</h2>
-        <label htmlFor="email">Username: </label>
-        <input 
-          type="email" 
-          placeholder="your@email.com" 
-          onChange={(e) => setEmail(e.target.value)} 
-          required 
-        /> <br />
-        <br />
-        <label htmlFor="password">Password: </label>
-        <input 
-          type="password" 
-          placeholder="********" 
-          onChange={(e) => setPassword(e.target.value)} 
-          required 
-        />
-        <br />
-        <br />
-        <button type="submit">Sign In</button>
-      </form>
-    </div>
+    
+  <div className="access-portal-container"> 
+    <img src={imlogo} alt="logo" />
+    <form onSubmit={handleLogin}>
+       
+      <h2>User Login</h2>
+      <br />
+      <label htmlFor="email" style={{textAlign:"left", fontWeight:"bold"}}>Email Address: </label>
+      <input 
+        className="portal-input-field"
+        type="email" 
+        onChange={(e) => setEmail(e.target.value)}
+        placeholder="Your@email.com" 
+      />
+      <label htmlFor="password" style={{textAlign:"left" , fontWeight:"bold"}}>Password: </label>
+      <input 
+        className="portal-input-field"
+        type="password" 
+        onChange={(e) => setPassword(e.target.value)}
+        placeholder="***********" 
+      />
+     
+      <button className="btn-execute-login" type="submit">
+        Execute Login
+      </button>
+       
+    </form>
+    <br />
+    <a href="" className="btn-execute-login" 
+    style={{
+      textDecoration:"none",
+      padding:"10px 121px",
+      background:"#ffff",
+      color:"black",
+      fontWeight:"bold",
+      }}>Create New Account</a>
+    <a href="" className="portal-link">Forgot password?</a>
+  </div>
   );
 };
 

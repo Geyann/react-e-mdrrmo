@@ -33,13 +33,13 @@ export default function Home() {
                 </div>
             </section>
               <section className="emergency-footer">
-                <div Name="emergency-header">
+                <div name="emergency-header">
                     <span className="phone-icon"><img src={hotImg} alt="hazard image" /></span>
                     <h2>Emergency Contact Information</h2>
                 </div>
                 <div className="emergency-body">
                     <h3>MDRRMO Command Center (24/7)</h3>
-                    <div Name="contact-info">
+                    <div name="contact-info">
                         <p>Emergency Hotline (Mobile):</p>
                         <p className="detail">0917-123-4567</p>
 
