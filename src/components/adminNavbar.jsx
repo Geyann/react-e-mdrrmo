@@ -3,7 +3,6 @@
 const adminNavbar = () => {
   return (
     <div>
-        
         <nav>
             <ul>
                 <li><a href="/admin/dashboard">Dashboard</a></li>

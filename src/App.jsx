@@ -14,33 +14,25 @@ import RegisterAdmin from './pages/register-admin'
 import AdminNavbar from './components/adminNavbar'
 
 function App() {
-  // Kunin ang kasalukuyang path/URL
-  const location = useLocation();
-  const ProtectedAdminRoute = ({ children }) => {
-  const [isAdmin, setIsAdmin] = useState(null);
+ const location = useLocation();
+  const path = location.pathname;
 
-  // Run a check when the component loads
-  useEffect(() => {
-    async function checkRole() {
-      const { data: { user } } = await supabase.auth.getUser();
-      const { data } = await supabase.from('profiles').select('role').eq('id', user?.id).single();
-      setIsAdmin(data?.role === 'admin');
-    }
-    checkRole();
-  }, []);
+  // --- EASY NAVBAR LOGIC ---
+  let currentNavbar;
 
-  if (isAdmin === null) return <p>Checking permissions...</p>;
-  return isAdmin ? children : <Navigate to="/login" />;
-};
-  
+  if (path === '/' || path === '/admin' || path === '/register-admin') {
+    // 1. If we are on login or register pages, show NO navbar
+    currentNavbar = null;
+  } else if (path.includes('/admin/')) {
+    // 2. If the URL contains "/admin/", show the Admin Navbar
+    currentNavbar = <AdminNavbar />;
+  } else {
+    // 3. For everything else (Home, About, etc.), show the User Navbar
+    currentNavbar = <Navbar />;
+  }
   return (
     <div className="app">
-
-  {location.pathname !== '/'  && <Navbar /> 
-  && location.pathname !== '/admin'  && <Navbar />
-  && location.pathname !== '/register-admin'  && <Navbar />
-  && location.pathname !== '/admin/dashboard'  &&  <Navbar /> }
-  
+{currentNavbar}
   
       
 
@@ -58,6 +50,7 @@ function App() {
           <Route path="/checkup" element={<CheckUp />} />
           
           <Route path="*" element={<Navigate to="/home" />} />
+          <Route path="/admin/*" element={<Navigate to="/admin/dashboard" />} />
         </Routes>
       </div>
     </div>

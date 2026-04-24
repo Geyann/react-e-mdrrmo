@@ -12,23 +12,16 @@ export default function Navbar() {
 
   return (
     <header className="navbar-container">
-      <div className="top-row">
-        <div className="logo">
-          <img id="logo" src={imgLogo} alt="logo" />
-          <span>E-MDRRMO</span>
-        </div>
-        
+      <div className="top-row">        
         {/* 3. Hamburger Toggle Button (Visible only on mobile) */}
         <button className="hamburger" onClick={toggleMenu}>
           {isOpen ? '✖' : '☰'}
         </button>
-
-        <div className="notif">
-          <Link id='navbar-a' to="/" className="logout-btn">Log out</Link>
-          <Link id='navbar-a' to="/profile" className="profile">👤</Link>
-          <Link id='navbar-a' to="/notification" className="notification">🔔</Link>
+        <div className="logo">
+          <img id="logo" src={imgLogo} alt="logo" />
+          <span>E-MDRRMO</span>
         </div>
-      </div>
+
 
       {/* 4. Conditional class based on isOpen state */}
       <nav className={`links-row ${isOpen ? 'active' : ''}`}>
@@ -40,7 +33,15 @@ export default function Navbar() {
         <Link id='navbar-a' to="/checkup" onClick={() => setIsOpen(false)}>Out Patient Check-up</Link>
         <Link id='navbar-a' to="/about" onClick={() => setIsOpen(false)}>About</Link>
         <Link id='navbar-a' to="/settings" onClick={() => setIsOpen(false)}>Settings</Link>
-      </nav>
+      </nav>  
+        <div className="notif">
+          <Link id='navbar-a' to="/" className="logout-btn">Log out</Link>
+          <Link id='navbar-a' to="/profile" className="profile">👤</Link>
+          <Link id='navbar-a' to="/notification" className="notification">🔔</Link>
+      
+
+      </div>
+      </div>
     </header>
   );
 }

@@ -51,7 +51,7 @@ const LoginPage = () => {
       />
      
       <button className="btn-execute-login" type="submit">
-        Execute Login
+      Login
       </button>
        
     </form>
