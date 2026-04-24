@@ -19,7 +19,6 @@ export default function Navbar() {
         </button>
         <div className="logo">
           <img id="logo" src={imgLogo} alt="logo" />
-          <span>E-MDRRMO</span>
         </div>
 
 

@@ -1,5 +1,3 @@
-
-
 .content {
   position: relative;
   top: 10px;
@@ -100,9 +98,10 @@ img#logo {
     text-decoration: none;
     color: #333;
     font-size: 15px;
-    font-weight: bold; /* Normal weight, not 500 */
+    font-weight: bold;
     transition: color 0.3s ease;
-    padding: 5px 0; /* Keep the links clickable on mouseover */
+    padding: 5px 10px; /* Keep the links clickable on mouseover */
+    text-wrap: nowrap; /* Prevent links from breaking into multiple lines */
 }
 
 .links-row a:hover {
@@ -137,7 +136,7 @@ img#logo {
     width: 90%;
     max-width: 1000px;
     padding: 60px 20px;
-    border-radius: 40px;
+    border-radius: 10px;
     text-align: center;
     box-shadow: 0 4px 20px gray;
 }
@@ -889,4 +888,126 @@ button:hover {
   color: #000;
   text-decoration: none;
   font-weight: bold;
+}
+
+
+
+@media (max-width: 600px) {
+    /* --- General Layout Fixes --- */
+    body {
+        padding-top: 100px; /* Reduced for smaller header */
+    }
+
+    .top-row {
+        padding: 10px 20px;
+    }
+
+    .logo {
+        font-size: 24px;
+    }
+
+    img#logo {
+        height: 35px;
+    }
+
+    /* --- Hero Section --- */
+    .hero-card {
+        width: 95%;
+        padding: 40px 15px;
+        border-radius: 20px;
+    }
+
+    .hero-card h1 {
+        font-size: 36px; /* Scaled down from 80px */
+        margin-bottom: 20px;
+    }
+
+    .button-group {
+        grid-template-columns: 1fr; /* Stack buttons vertically */
+        gap: 15px;
+    }
+
+    .btn-map, .btn-trends {
+        padding: 15px 20px;
+        font-size: 18px;
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    /* --- Hazards & Charts --- */
+    .hazards-section {
+        padding: 20px;
+    }
+
+    .hazards-section h2#report-hazard-history {
+        font-size: 28px;
+        text-align: center;
+    }
+
+    .chart-grid {
+        grid-template-columns: 1fr; /* Stack charts */
+        gap: 20px;
+    }
+
+    .chart-box img#earthquake, 
+    .chart-box img#flooding {
+        height: auto; /* Allow natural aspect ratio */
+    }
+
+    /* --- Forms & Inputs --- */
+    .form-wrapper, .borrow-container, .checkup-container, .form-card {
+        width: 100%;
+        max-width: 100%;
+        padding: 10px;
+    }
+
+    .row, .date-time-grid, .borrow-form-grid, .appointment-row, .checkup-row {
+        flex-direction: column; /* Stack side-by-side inputs */
+        gap: 10px;
+        width: 100%;
+        height: auto;
+    }
+
+    input#report-input, 
+    select#report-select, 
+    textarea, 
+    select#borrow-select, 
+    input#borrow-input,
+    .assessment-form input[type="text"] {
+        width: 100% !important;
+        margin-bottom: 15px;
+    }
+
+    .upload-box {
+        width: 100%;
+        padding: 20px;
+        box-sizing: border-box;
+    }
+
+    /* --- Tables --- */
+    .admin-table {
+        display: block;
+        overflow-x: auto; /* Allow horizontal scroll for tables */
+        white-space: nowrap;
+    }
+
+    /* --- Emergency Footer --- */
+    .emergency-footer {
+        margin: 20px;
+        padding: 20px;
+        border-radius: 15px;
+    }
+
+    .emergency-header {
+        flex-direction: column;
+        text-align: center;
+    }
+
+    /* --- Submit Buttons --- */
+    button#report-submit, 
+    .submit-btn, 
+    button#appointment-submit {
+        width: 100%;
+        padding: 15px;
+    }
 }
