@@ -10,8 +10,8 @@ export default function Home() {
                 <div className="hero-card">
                     <h1>Report Hazards. Keep <br /> Your <span className="purple-text">Community Safe.</span></h1>
                     <div className="button-group">
-                        <Link href="/hazardmap" className="btn-map" ><img src={hazardImg} alt="" />View Hazard Map</Link>
-                        <Link href="/incident-trends" className="btn-trends">Weekly Incident Trends</Link>
+                        <Link to="/hazardmap" className="btn-map" ><img src={hazardImg} alt="" />View Hazard Map</Link>
+                        <Link to="/weekly-incident" className="btn-trends">Weekly Incident Trends</Link>
                     </div>
                     </div>
                     </section>

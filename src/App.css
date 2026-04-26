@@ -1,6 +1,5 @@
 .content {
   position: relative;
-  top: 10px;
   background: #efefef;
   min-height: 100vh;
   display: flex;
@@ -809,20 +808,24 @@ button:hover {
   display: flex;
   justify-content: center;
   align-items: center;
-  min-height: 100vh;
   background-color: #e0e0e0; /* Matches the light grey background */
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
 }
 
 /* The white card containing the form */
 .access-portal-container {
   background-color: #ffffff;
-  padding: 40px;
-  border-radius: 25px;
-  box-shadow: 0 4px 15px rgba(0, 0, 0, 0.1);
+  padding: 30px 50px ;
+  border-radius: 30px;
+  box-shadow: 0 10px 20px gray;
   width: 100%;
+  max-height: 600px;
   max-width: 400px;
   text-align: center;
+}
+#loginimg {
+  width: 400px;
+  height: 150px;
+  margin-bottom: 20px;
 }
 
 /* Header styling */
@@ -892,7 +895,7 @@ button:hover {
 
 
 
-@media (max-width: 600px) {
+@media (max-width: 700px) {
     /* --- General Layout Fixes --- */
     body {
         padding-top: 100px; /* Reduced for smaller header */

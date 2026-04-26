@@ -12,7 +12,7 @@ import LoginPage from './pages/login'
 import Adminlogin from './pages/adminlogin'
 import RegisterAdmin from './pages/register-admin'
 import AdminNavbar from './components/adminNavbar'
-
+import Hazardmap from './pages/Hazardmap'
 function App() {
  const location = useLocation();
   const path = location.pathname;
@@ -48,6 +48,8 @@ function App() {
           <Route path="/borrow" element={<Borrow />} />
           <Route path="/appointment" element={<Appointment />} />
           <Route path="/checkup" element={<CheckUp />} />
+           <Route path="/hazardmap" element={<Hazardmap />} />
+          
           
           <Route path="*" element={<Navigate to="/home" />} />
           <Route path="/admin/*" element={<Navigate to="/admin/dashboard" />} />

@@ -39,7 +39,7 @@ export default function AdminLogin() {
 
   return (
     <div className='access-portal-container' style={{marginTop:"-170px"}}>
-        <img src={imlogo} alt="logo" />
+        <img id='loginimg' src={imlogo} alt="logo" />
       <h2>Admin Login</h2>
       <form  onSubmit={handleAdminSignIn}>
         <label htmlFor="email" style={{textAlign:"left", fontWeight:"bold"}}>Email Address: </label>
@@ -56,9 +56,7 @@ export default function AdminLogin() {
           type="password" 
           placeholder="***********" 
           onChange={(e) => setPassword(e.target.value)} 
-        />
-        <a href='/register-admin' className='portal-link' style={{textDecoration:"underline", fontSize:"18px"}}>Register as admin</a>
-        <button type="submit" className='btn-execute-login'>Authorized Entry Only</button>
+        /><button type="submit" className='btn-execute-login'>Login as Admin</button>
       </form>
     </div>
   );

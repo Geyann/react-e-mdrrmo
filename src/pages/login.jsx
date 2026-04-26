@@ -30,7 +30,7 @@ const LoginPage = () => {
   return (
     
   <div className="access-portal-container"> 
-    <img src={imlogo} alt="logo" />
+    <img id="loginimg" src={imlogo} alt="logo" />
     <form onSubmit={handleLogin}>
        
       <h2>User Login</h2>
