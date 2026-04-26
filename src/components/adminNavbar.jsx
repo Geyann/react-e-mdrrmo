@@ -1,8 +1,8 @@
-import React, { useState } from 'react'; // 1. Import useState
+import React, { useState } from 'react';
 import { Link } from 'react-router-dom';
 import imgLogo from '../Images/icon.png';
 
-export default function Navbar() {
+const adminNavbar = () => {
   // 2. State to handle menu visibility
   const [isOpen, setIsOpen] = useState(false);
 
@@ -24,14 +24,12 @@ export default function Navbar() {
 
       {/* 4. Conditional class based on isOpen state */}
       <nav className={`links-row ${isOpen ? 'active' : ''}`}>
-        <Link id='navbar-a' to="/home" onClick={() => setIsOpen(false)}>Home</Link>
-        <Link id='navbar-a' to="/report" onClick={() => setIsOpen(false)}>Report Incident</Link>
-        <Link id='navbar-a' to="/borrow" onClick={() => setIsOpen(false)}>Borrow Vehicle</Link>
-        <Link id='navbar-a' to="/appointment" onClick={() => setIsOpen(false)}>Book an Appointment</Link>
-        <Link id='navbar-a' to="/track" onClick={() => setIsOpen(false)}>Track Appointment/s</Link>
-        <Link id='navbar-a' to="/checkup" onClick={() => setIsOpen(false)}>Out Patient Check-up</Link>
-        <Link id='navbar-a' to="/about" onClick={() => setIsOpen(false)}>About</Link>
-        <Link id='navbar-a' to="/settings" onClick={() => setIsOpen(false)}>Settings</Link>
+        <Link id='navbar-a' to="/admin/dashboard" onClick={() => setIsOpen(false)}>Dashboard </Link>
+        <Link id='navbar-a' to="/admin/report" onClick={() => setIsOpen(false)}>Incident Reported</Link>
+        <Link id='navbar-a' to="/admin/borrow" onClick={() => setIsOpen(false)}>Borrowed Vehicles</Link>
+        <Link id='navbar-a' to="/admin/appointment" onClick={() => setIsOpen(false)}>Appointments</Link>
+        <Link id='navbar-a' to="/admin/checkup" onClick={() => setIsOpen(false)}>Out Patient Check-ups</Link>
+        <Link id='navbar-a' to="/admin/settings" onClick={() => setIsOpen(false)}>Settings</Link>
       </nav>  
         <div className="notif">
           <Link id='navbar-a' to="/" className="logout-btn">Log out</Link>
@@ -42,5 +40,7 @@ export default function Navbar() {
       </div>
       </div>
     </header>
-  );
+  )
 }
+
+export default adminNavbar

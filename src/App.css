@@ -1,8 +1,5 @@
-
-
 .content {
   position: relative;
-  top: 10px;
   background: #efefef;
   min-height: 100vh;
   display: flex;
@@ -70,6 +67,7 @@ img#logo {
     color: #555; /* Default icon color */
     cursor: pointer;
     line-height: 1; /* For alignment */
+    text-decoration: none; /* Remove underline if using font icons */
 }
 
 .profile {
@@ -99,9 +97,10 @@ img#logo {
     text-decoration: none;
     color: #333;
     font-size: 15px;
-    font-weight: normal; /* Normal weight, not 500 */
+    font-weight: bold;
     transition: color 0.3s ease;
-    padding: 5px 0; /* Keep the links clickable on mouseover */
+    padding: 5px 10px; /* Keep the links clickable on mouseover */
+    text-wrap: nowrap; /* Prevent links from breaking into multiple lines */
 }
 
 .links-row a:hover {
@@ -136,7 +135,7 @@ img#logo {
     width: 90%;
     max-width: 1000px;
     padding: 60px 20px;
-    border-radius: 40px;
+    border-radius: 10px;
     text-align: center;
     box-shadow: 0 4px 20px gray;
 }
@@ -338,7 +337,7 @@ textarea {
 }
 
 
-.row div {
+.row  {
   flex: 1;
 }
 
@@ -730,7 +729,7 @@ input#appointment-input {
   gap: 40px;
 }
 
-.appointment-row div {
+.appointment-row  {
   flex: 1;
 }
 
@@ -803,4 +802,215 @@ button:hover {
     padding: 15px;
     border-bottom: 1px solid #eee;
   }
+}
+/* Container to center the form on the screen */
+.login-page {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  background-color: #e0e0e0; /* Matches the light grey background */
+}
+
+/* The white card containing the form */
+.access-portal-container {
+  background-color: #ffffff;
+  padding: 30px 50px ;
+  border-radius: 30px;
+  box-shadow: 0 10px 20px gray;
+  width: 100%;
+  max-height: 600px;
+  max-width: 400px;
+  text-align: center;
+}
+#loginimg {
+  width: 400px;
+  height: 150px;
+  margin-bottom: 20px;
+}
+
+/* Header styling */
+.access-portal-container h2 {
+  color: #333;
+  margin-bottom: 25px;
+  font-weight: 600;
+}
+
+/* Input field styling */
+.portal-input-field {
+  width: 100%;
+  padding: 12px 15px;
+  margin: 10px 0;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  box-sizing: border-box; /* Ensures padding doesn't affect width */
+  font-size: 16px;
+  color: #666;
+}
+
+.portal-input-field::placeholder {
+  color: #aaa;
+}
+
+/* Primary Execute Login button */
+.btn-execute-login {
+  width: 100%;
+  padding: 12px;
+  margin-top: 20px;
+  background-color: #4b0082; /* Matches the dark purple in the prototype */
+  color: white;
+  border: none;
+  border-radius: 25px;
+  font-size: 18px;
+  font-weight: bold;
+  cursor: pointer;
+  transition: background-color 0.3s ease;
+}
+
+.btn-execute-login:hover {
+  background-color: #3a0066;
+}
+
+/* Optional: Styling for the Google button and links seen in prototype */
+.google-continue-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  padding: 10px;
+  margin-top: 15px;
+  border: 1px solid #ddd;
+  border-radius: 25px;
+  background: white;
+  cursor: pointer;
+}
+
+.portal-link {
+  display: block;
+  margin-top: 15px;
+  font-size: 14px;
+  color: #000;
+  text-decoration: none;
+  font-weight: bold;
+}
+
+
+
+@media (max-width: 700px) {
+    /* --- General Layout Fixes --- */
+    body {
+        padding-top: 100px; /* Reduced for smaller header */
+    }
+
+    .top-row {
+        padding: 10px 20px;
+    }
+
+    .logo {
+        font-size: 24px;
+    }
+
+    img#logo {
+        height: 35px;
+    }
+
+    /* --- Hero Section --- */
+    .hero-card {
+        width: 95%;
+        padding: 40px 15px;
+        border-radius: 20px;
+    }
+
+    .hero-card h1 {
+        font-size: 36px; /* Scaled down from 80px */
+        margin-bottom: 20px;
+    }
+
+    .button-group {
+        grid-template-columns: 1fr; /* Stack buttons vertically */
+        gap: 15px;
+    }
+
+    .btn-map, .btn-trends {
+        padding: 15px 20px;
+        font-size: 18px;
+        width: 100%;
+        box-sizing: border-box;
+    }
+
+    /* --- Hazards & Charts --- */
+    .hazards-section {
+        padding: 20px;
+    }
+
+    .hazards-section h2#report-hazard-history {
+        font-size: 28px;
+        text-align: center;
+    }
+
+    .chart-grid {
+        grid-template-columns: 1fr; /* Stack charts */
+        gap: 20px;
+    }
+
+    .chart-box img#earthquake, 
+    .chart-box img#flooding {
+        height: auto; /* Allow natural aspect ratio */
+    }
+
+    /* --- Forms & Inputs --- */
+    .form-wrapper, .borrow-container, .checkup-container, .form-card {
+        width: 100%;
+        max-width: 100%;
+        padding: 10px;
+    }
+
+    .row, .date-time-grid, .borrow-form-grid, .appointment-row, .checkup-row {
+        flex-direction: column; /* Stack side-by-side inputs */
+        gap: 10px;
+        width: 100%;
+        height: auto;
+    }
+
+    input#report-input, 
+    select#report-select, 
+    textarea, 
+    select#borrow-select, 
+    input#borrow-input,
+    .assessment-form input[type="text"] {
+        width: 100% !important;
+        margin-bottom: 15px;
+    }
+
+    .upload-box {
+        width: 100%;
+        padding: 20px;
+        box-sizing: border-box;
+    }
+
+    /* --- Tables --- */
+    .admin-table {
+        display: block;
+        overflow-x: auto; /* Allow horizontal scroll for tables */
+        white-space: nowrap;
+    }
+
+    /* --- Emergency Footer --- */
+    .emergency-footer {
+        margin: 20px;
+        padding: 20px;
+        border-radius: 15px;
+    }
+
+    .emergency-header {
+        flex-direction: column;
+        text-align: center;
+    }
+
+    /* --- Submit Buttons --- */
+    button#report-submit, 
+    .submit-btn, 
+    button#appointment-submit {
+        width: 100%;
+        padding: 15px;
+    }
 }
