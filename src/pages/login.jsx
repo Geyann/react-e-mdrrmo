@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { redirect, useNavigate } from "react-router-dom";
+import { redirect, useNavigate, Link } from "react-router-dom";
 import { supabase } from "../createClient"; 
 import imlogo from '../Images/icon.png';
 
@@ -56,14 +56,14 @@ const LoginPage = () => {
        
     </form>
     <br />
-    <a href="" className="btn-execute-login" 
+    <Link to="/register" className="btn-execute-login" 
     style={{
       textDecoration:"none",
       padding:"10px 121px",
       background:"#ffff",
       color:"black",
       fontWeight:"bold",
-      }}>Create New Account</a>
+      }}>Create New Account</Link>
     <a href="" className="portal-link">Forgot password?</a>
   </div>
   );
