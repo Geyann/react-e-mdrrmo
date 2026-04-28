@@ -14,11 +14,11 @@ import RegisterAdmin from './pages/register-admin'
 import AdminNavbar from './components/adminNavbar'
 import Hazardmap from './pages/Hazardmap'
 import Settings from './pages/Settings'
-import CreateAccount from './pages/CreateUser'
 import ReportedIncident from './pages/incidentReported'
 import BorrowedVehicles from './pages/borrowedVehicles'
 import TrackAppointment from './pages/trackAppointment'
 import CheckUpTable from './pages/checkUpTable'
+import CreateUser from './pages/CreateUser'
 function App() {
  const location = useLocation();
   const path = location.pathname;
@@ -49,10 +49,9 @@ function App() {
           <Route path="/admin" element={<Adminlogin />} />
           <Route path="/admin/dashboard" element={<Admin />} />
           <Route path="/admin/report" element={<ReportedIncident />} />
-           <Route path="/admin/borrow" element={<BorrowedVehicles />} />
-            <Route path="/admin/appointment" element={<TrackAppointment />} />
-             <Route path="/admin/checkup" element={<CheckUpTable />} />
-
+          <Route path="/admin/borrow" element={<BorrowedVehicles />} />
+          <Route path="/admin/appointment" element={<TrackAppointment />} />
+          <Route path="/admin/checkup" element={<CheckUpTable />} />
           <Route path="/admin/*" element={<Navigate to="/admin/dashboard" />} />
 
           <Route path="/" element={<LoginPage />} />
@@ -64,7 +63,7 @@ function App() {
           <Route path="/checkup" element={<CheckUp />} />
           <Route path="/hazardmap" element={<Hazardmap />} />
           <Route path="/settings" element={<Settings />} />
-          <Route path="/register" element={<CreateAccount />} />
+          <Route path="/register" element={<CreateUser />} />
           <Route path="*" element={<Navigate to="/home" />} />
         </Routes>
       </div>
