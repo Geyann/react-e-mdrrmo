@@ -31,13 +31,13 @@ const adminNavbar = () => {
         <Link id='navbar-a' to="/admin/checkup" onClick={() => setIsOpen(false)}>Out Patient Check-ups</Link>
         <Link id='navbar-a' to="/admin/settings" onClick={() => setIsOpen(false)}>Settings</Link>
       </nav>  
-        <div className="notif">
-          <Link id='navbar-a' to="/" className="logout-btn">Log out</Link>
-          <Link id='navbar-a' to="/profile" className="profile">👤</Link>
-          <Link id='navbar-a' to="/notification" className="notification">🔔</Link>
-      
-
-      </div>
+         <div className="notif">
+                  <Link id='navbar-a' to="/" className="logout-btn">Log out</Link>
+                  <Link id='navbar-a' to="/profile" className="profile"><img src="https://cdn-icons-png.flaticon.com/128/3033/3033143.png" loading="lazy" alt="Account " title="Account " width="35" height="35" /></Link>
+                  <Link id='navbar-a' to="/notification" className="notification"><img src="   https://cdn-icons-png.flaticon.com/512/3602/3602123.png " width="35" height="35" alt="" title=""  /></Link>
+              
+        
+              </div>
       </div>
     </header>
   )

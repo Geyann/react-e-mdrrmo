@@ -82,7 +82,7 @@ const Report = () => {
     <form onSubmit={createUser}>
       <main className="report-page">
         <div className="form-wrapper">
-          <div className="icon">+</div>
+          <div className="icon"><img src="https://cdn-icons-png.flaticon.com/128/2668/2668417.png" loading="lazy" alt="Emergency " title="Emergency " width="64" height="64" /></div>
           <h1>Report an Incident</h1>
 
           <p className="subtitle">

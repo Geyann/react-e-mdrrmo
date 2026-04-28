@@ -50,7 +50,7 @@ const appointment = () => {
     <main className="appointment-page">
       <div className="form-card">
 
-        <div className="icon-circle">📅</div>
+        <div className="icon-circle"><img src="https://cdn-icons-png.flaticon.com/128/7322/7322293.png" loading="lazy" alt="Appointment " title="Appointment " width="64" height="64" /></div>
         <h2>Book An Appointment</h2>
         <p className="subtitle">
           Please provide details below. All fields marked <span id='required'>*</span> are required for immediate assessment.

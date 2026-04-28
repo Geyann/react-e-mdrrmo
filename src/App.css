@@ -1,17 +1,13 @@
 .content {
   position: relative;
-  background: #efefef;
   min-height: 100vh;
+  margin-top: 120px; /* Space for fixed header */
   display: flex;
   justify-content: center;
   padding: 50px 20px;
 }
 
-body {
-    background-color: #efefef;
-    padding-top: 140px; 
 
-}
 
 /* --- Container and General Layout --- */
 .navbar-container {
@@ -21,7 +17,7 @@ body {
     width: 100%;
     background-color: white;
     box-shadow: 0 4px 6px gray; 
-    z-index: 1000;
+    z-index: 1001;
 }
 
 /* --- Top Row: Logo and User Actions --- */
@@ -106,23 +102,22 @@ img#logo {
 .links-row a:hover {
     color: #8a4ba1;
 }
-
+/* 
 /* --- Active State styling --- */
 .links-row a.active {
     font-weight: bold; /* Thicker active text */
-    color: #000;
-    position: relative;
-}
-.links-row a.active::after {
-    content: '';
+    color:#8a4ba1;
+} */
+ .links-row a.active::after { 
     position: absolute;
+    
     bottom: -10px; 
     left: 0;
     width: 100%;
     height: 3px;
     background-color: #333;
     border-radius: 2px;
-}
+} 
 /* Hero Section */
 .hero-section {
     display: flex;
@@ -135,7 +130,7 @@ img#logo {
     width: 90%;
     max-width: 1000px;
     padding: 60px 20px;
-    border-radius: 10px;
+    border-radius: 40px;
     text-align: center;
     box-shadow: 0 4px 20px gray;
 }
@@ -244,7 +239,7 @@ img#logo {
 .emergency-footer {
     background: #8B3DFF;
     color: white;
-    max-width: 1000px;
+    max-width: 90%;
     margin: 60px auto;
     padding: 40px;
     border-radius: 25px;
@@ -261,7 +256,6 @@ img#logo {
 }
 /* MAIN */
 .report-page {
-  background: #efefef;
   min-height: 100vh;
   padding: 50px 20px;
   display: flex;
@@ -275,8 +269,6 @@ img#logo {
 .icon {
   width: 70px;
   height: 70px;
-  border-radius: 50%;
-  border: 4px solid #000;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -516,7 +508,6 @@ input#borrow-input {
     max-width: 700px;
     margin: 40px auto;
     padding: 0 40px;
-    background: #efefef;
 
 }
 
@@ -669,7 +660,6 @@ input[type="radio"] {
 }
 
 .form-card {
-  background: #efefef;
   width: 700px;
   text-align: center;
 }
@@ -808,7 +798,6 @@ button:hover {
   display: flex;
   justify-content: center;
   align-items: center;
-  background-color: #e0e0e0; /* Matches the light grey background */
 }
 
 /* The white card containing the form */
@@ -1013,4 +1002,268 @@ button:hover {
         width: 100%;
         padding: 15px;
     }
+}
+/* Main Page Wrapper */
+.about-wrapper {
+  min-height: 100vh;
+  font-family: 'Arial', sans-serif;
+  display: flex;
+  justify-content: center;
+}
+
+/* The Main Gray Container */
+.about-container {
+  background-color: #e5e7eb; /* Light gray background from image */
+  width: 100%;
+  max-width: 800px;
+  border-radius: 40px;
+  border: 1px solid #d1d5db;
+  overflow: hidden;
+  box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+}
+
+/* Header & Logo */
+.about-header {
+  text-align: center;
+  padding: 40px 20px 20px;
+}
+
+
+.about-title {
+  font-size: 24px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin-bottom: 20px;
+}
+
+.mission-statement {
+  font-size: 13px;
+  line-height: 1.5;
+  max-width: 600px;
+  margin: 0 auto;
+  color: #374151;
+}
+
+/* Purple Legal Banner */
+.legal-basis {
+  background-color: #d8b4fe; /* Light purple */
+  margin: 20px 40px;
+  padding: 20px 15px;
+  border-radius:0 10px 10px 0;
+  text-align: center;
+  border-left: 7px solid #8b5cf6; /* Darker purple accent */
+}
+
+.legal-basis h4 {
+  color: #6b21a8;
+  margin: 0 0 5px;
+}
+
+.legal-basis p {
+  color: #6b21a8;
+  font-size: 12px;
+  margin: 0;
+}
+
+/* Thematic Section */
+.thematic-section-title {
+  text-align: center;
+  font-size: 20px;
+  font-weight: bold;
+  margin: 30px 0;
+}
+
+.thematic-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+  padding: 0 40px 40px;
+}
+
+/* White Cards */
+.theme-card {
+  background: white;
+  padding: 30px;
+  border-radius: 12px;
+  box-shadow: 0 2px 5px rgba(0,0,0,0.05);
+}
+
+.card-headers {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.card-title {
+  font-size: 16px;
+  font-weight: bold;
+  margin: 0;
+}
+
+.card-goal {
+  font-size: 11px;
+  font-style: italic;
+  margin-bottom: 10px;
+}
+
+.card-list {
+  padding-left: 10px;
+  list-style: none;
+  margin: 0;
+}
+
+.card-list li {
+  font-size: 11px;
+  margin-bottom: 6px;
+  line-height: 1.3;
+  font-style: italic;
+}
+
+/* Purple Emergency Footer */
+.emergency-footer {
+  background-color: #8b5cf6; /* Vibrant purple */
+  color: white;
+  padding: 30px 40px;
+  margin: 10px 40px 40px;
+}
+
+.emergency-footer h2 {
+  font-size: 22px;
+  margin: 0 0 15px;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.contact-details {
+  font-size: 13px;
+  line-height: 1.8;
+}
+
+.contact-details strong {
+  display: block;
+  font-size: 15px;
+  margin-bottom: 5px;
+}
+/* Apply transitions so the color change is smooth */
+body {
+  transition: background-color 0.3s ease, color 0.3s ease;
+  margin: 0;
+  padding: 0;
+}
+
+/* Theme Definitions */
+body.light-mode {
+  background-color: #f3f4f6;
+  color: #1a1a1a;
+}
+
+body.dark-mode {
+  background-color:#000; /* Dark background from your image */
+  color: #ffffff;
+    
+}
+
+
+.settings-container {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 40px 20px;
+}
+
+.settings-main-title {
+  text-align: center;
+  margin-bottom: 30px;
+}
+
+/* Card Styles */
+.purple-card {
+  background-color: #8b5cf6; /* Same purple from your screenshots */
+  border-radius: 12px;
+  padding: 20px;
+  color: white;
+  margin-bottom: 20px;
+}
+
+.settings-grid-top {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 20px;
+}
+
+.card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border-bottom: 1px solid rgba(255,255,255,0.2);
+  padding-bottom: 10px;
+  margin-bottom: 15px;
+}
+
+.setting-item {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 15px;
+}
+
+/* Switch UI */
+.switch {
+  position: relative;
+  display: inline-block;
+  width: 44px;
+  height: 22px;
+}
+
+.switch input { opacity: 0; width: 0; height: 0; }
+
+.slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-color: #ccc;
+  transition: .4s;
+  border-radius: 34px;
+}
+
+.slider:before {
+  position: absolute;
+  content: "";
+  height: 16px; width: 16px;
+  left: 3px; bottom: 3px;
+  background-color: white;
+  transition: .4s;
+  border-radius: 50%;
+}
+
+input:checked + .slider { background-color: #4ade80; }
+input:checked + .slider:before { transform: translateX(22px); }
+
+.switch-label {
+  position: absolute;
+  right: -40px;
+  font-size: 0.75rem;
+  top: 2px;
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  color: white;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+@media (max-width: 600px) {
+  .settings-grid-top { grid-template-columns: 1fr; }
+}
+input[type="file"].portal-input-field {
+  padding: 15px 15px;
+  cursor: pointer;
+  background: #f9f9f9;
+  
 }

@@ -70,7 +70,8 @@ const Borrow = () => {
     <main className="borrow-container">
         <div className="borrow-form-card">
             <div className="borrow-form-header">
-                <div className="borrow-vehicle-icon">🚗</div>
+                <center>
+               <img src="https://cdn-icons-png.flaticon.com/128/4084/4084244.png" loading="lazy" alt="Fire truck " title="Fire truck " width="64" height="64" /></center>
                 <h1 id='borrow-h1'> Emergency Response Vehicle Dispatch</h1>
                 <p id='borrow-p'>Please provide details below. All fields marked <span className="required">*</span> are required for immediate assessment.</p>
             </div>

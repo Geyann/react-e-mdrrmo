@@ -57,7 +57,7 @@ const CheckUp = () => {
         <div> 
             <main className="checkup-container">
                 <section className="form-header">
-                    <div className="plus-icon">+</div>
+                    <div className="icon"><img src="https://cdn-icons-png.flaticon.com/128/1429/1429246.png" loading="lazy" alt="Medical " title="Medical " width="64" height="64" /></div>
                     <h1 id='checkup'>Out Patient Check Up</h1>
                     <p id='checkup'>Please provide details below. All fields marked <span className="required">*</span> are required for immediate assessment.</p>
                 </section>

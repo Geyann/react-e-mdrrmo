@@ -13,6 +13,12 @@ import Adminlogin from './pages/adminlogin'
 import RegisterAdmin from './pages/register-admin'
 import AdminNavbar from './components/adminNavbar'
 import Hazardmap from './pages/Hazardmap'
+import Settings from './pages/Settings'
+import CreateAccount from './pages/CreateUser'
+import ReportedIncident from './pages/incidentReported'
+import BorrowedVehicles from './pages/borrowedVehicles'
+import TrackAppointment from './pages/trackAppointment'
+import CheckUpTable from './pages/checkUpTable'
 function App() {
  const location = useLocation();
   const path = location.pathname;
@@ -20,7 +26,7 @@ function App() {
   // --- EASY NAVBAR LOGIC ---
   let currentNavbar;
 
-  if (path === '/' || path === '/admin' || path === '/register-admin') {
+  if (path === '/' || path === '/admin' || path === '/register-admin' || path === '/register') {
     // 1. If we are on login or register pages, show NO navbar
     currentNavbar = null;
   } else if (path.includes('/admin/')) {
@@ -38,21 +44,28 @@ function App() {
 
       <div className="content">
         <Routes>
+
           <Route path="/register-admin" element={<RegisterAdmin />} />
-          <Route path="/" element={<LoginPage />} />
           <Route path="/admin" element={<Adminlogin />} />
           <Route path="/admin/dashboard" element={<Admin />} />
+          <Route path="/admin/report" element={<ReportedIncident />} />
+           <Route path="/admin/borrow" element={<BorrowedVehicles />} />
+            <Route path="/admin/appointment" element={<TrackAppointment />} />
+             <Route path="/admin/checkup" element={<CheckUpTable />} />
+
+          <Route path="/admin/*" element={<Navigate to="/admin/dashboard" />} />
+
+          <Route path="/" element={<LoginPage />} />
           <Route path="/home" element={<Home />} />
           <Route path="/about" element={<About />} />
           <Route path="/report" element={<Report />} />
           <Route path="/borrow" element={<Borrow />} />
           <Route path="/appointment" element={<Appointment />} />
           <Route path="/checkup" element={<CheckUp />} />
-           <Route path="/hazardmap" element={<Hazardmap />} />
-          
-          
+          <Route path="/hazardmap" element={<Hazardmap />} />
+          <Route path="/settings" element={<Settings />} />
+          <Route path="/register" element={<CreateAccount />} />
           <Route path="*" element={<Navigate to="/home" />} />
-          <Route path="/admin/*" element={<Navigate to="/admin/dashboard" />} />
         </Routes>
       </div>
     </div>

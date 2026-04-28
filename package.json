@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.97.0",
+    "datatables.net-dt": "^2.3.8",
+    "datatables.net-react": "^1.0.1",
     "gh-pages": "^6.3.0",
     "git": "^0.1.5",
     "leaflet": "^1.9.4",

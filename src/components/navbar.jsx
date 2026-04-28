@@ -1,6 +1,7 @@
 import React, { useState } from 'react'; // 1. Import useState
 import { Link } from 'react-router-dom';
 import imgLogo from '../Images/icon.png';
+import profile from '../Images/profile.png';
 
 export default function Navbar() {
   // 2. State to handle menu visibility
@@ -22,7 +23,6 @@ export default function Navbar() {
         </div>
 
 
-      {/* 4. Conditional class based on isOpen state */}
       <nav className={`links-row ${isOpen ? 'active' : ''}`}>
         <Link id='navbar-a' to="/home" onClick={() => setIsOpen(false)}>Home</Link>
         <Link id='navbar-a' to="/report" onClick={() => setIsOpen(false)}>Report Incident</Link>
@@ -35,8 +35,8 @@ export default function Navbar() {
       </nav>  
         <div className="notif">
           <Link id='navbar-a' to="/" className="logout-btn">Log out</Link>
-          <Link id='navbar-a' to="/profile" className="profile">👤</Link>
-          <Link id='navbar-a' to="/notification" className="notification">🔔</Link>
+          <Link id='navbar-a' to="/profile" className="profile"><img src="https://cdn-icons-png.flaticon.com/128/3033/3033143.png" loading="lazy" alt="Account " title="Account " width="35" height="35" /></Link>
+          <Link id='navbar-a' to="/notification" className="notification"><img src="   https://cdn-icons-png.flaticon.com/512/3602/3602123.png " width="35" height="35" alt="" title=""  /></Link>
       
 
       </div>
