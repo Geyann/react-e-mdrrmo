@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import imglogo from '../images/icon.png';
+import imglogo from './images/icon.png';
 
 const Settings = () => {
   const [isDarkMode, setIsDarkMode] = useState(false);
