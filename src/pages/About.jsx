@@ -1,5 +1,5 @@
 import React from 'react';
-import imglogo from './Images/icon.png';
+import imglogo from '../Images/icon.png';
 
 const About = () => {
   const thematicAreas = [
