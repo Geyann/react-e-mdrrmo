@@ -102,12 +102,12 @@ img#logo {
 .links-row a:hover {
     color: #8a4ba1;
 }
-/* 
+
 /* --- Active State styling --- */
 .links-row a.active {
     font-weight: bold; /* Thicker active text */
     color:#8a4ba1;
-} */
+} 
  .links-row a.active::after { 
     position: absolute;
     
