@@ -56,6 +56,7 @@ const CheckUp = () => {
     return (
         <div> 
             <main className="checkup-container">
+<<<<<<< HEAD
                
 
                 <form className="assessment-form" onSubmit={handleSubmit} style={{backgroundColor:'#e5e7eb', borderRadius:'40px', padding:'60px', boxShadow:'0 5px 10px gray', maxWidth:'600px', margin:'40px auto'}}>
@@ -65,6 +66,16 @@ const CheckUp = () => {
                     <p>Please provide details below. All fields marked <span className="required">*</span> are required for immediate assessment.</p>
                 </section>
                 <div className="input-group">
+=======
+                <section className="form-header">
+                    <div className="icon"><img src="https://cdn-icons-png.flaticon.com/128/1429/1429246.png" loading="lazy" alt="Medical " title="Medical " width="64" height="64" /></div>
+                    <h1 id='checkup'>Out Patient Check Up</h1>
+                    <p id='checkup'>Please provide details below. All fields marked <span className="required">*</span> are required for immediate assessment.</p>
+                </section>
+
+                <form className="assessment-form" onSubmit={handleSubmit}>
+                    <div className="input-group">
+>>>>>>> 069ec22db9121d0fa171a5c361c57358f0b5703d
                         <label>Patient Name:<span className="required">*</span></label>
                         <input type="text" name='patientName' value={checkUp.patientName} onChange={submitCheckUp} required />
                     </div>
@@ -88,11 +99,19 @@ const CheckUp = () => {
                         <div className="checkup-row">
                             <div>
                                 <label>Preferred Date:<span>*</span></label>
+<<<<<<< HEAD
                                 <input id='date' name='preferredDate' value={checkUp.preferredDate} type="date" onChange={submitCheckUp} required />
                             </div>
                             <div>
                                 <label>Preferred Time:<span>*</span></label>
                                 <input id='time' name='preferredTime' value={checkUp.preferredTime} type="time" onChange={submitCheckUp} required />
+=======
+                                <input id='date' name='preferredDate' value={checkUp.preferredDate} type="date" onChange={submitCheckUp}/>
+                            </div>
+                            <div>
+                                <label>Preferred Time:<span>*</span></label>
+                                <input id='time' name='preferredTime' value={checkUp.preferredTime} type="time" onChange={submitCheckUp}/>
+>>>>>>> 069ec22db9121d0fa171a5c361c57358f0b5703d
                             </div>
                         </div>
                     </div>
@@ -100,7 +119,11 @@ const CheckUp = () => {
                     {/* Mobility Section */}
                     <div className="checkbox-row">
                         <label id='borrow-label'>Mobility: <span className="required">*</span></label>
+<<<<<<< HEAD
                         <select id='borrow-select' name='mobility' value={checkUp.mobility} onChange={submitCheckUp} required>
+=======
+                        <select id='borrow-select' name='mobility' value={checkUp.mobility} onChange={submitCheckUp}>
+>>>>>>> 069ec22db9121d0fa171a5c361c57358f0b5703d
                             <option value="">Select an Option</option>
                             <option value="stretcher">Stretcher</option>
                             <option value="wheel-chair">Wheel Chair</option>
@@ -111,7 +134,11 @@ const CheckUp = () => {
                     {/* Patient For Section */}
                     <div className="checkbox-row">
                         <label id='borrow-label'>Patient for: <span className="required">*</span></label>
+<<<<<<< HEAD
                         <select id='borrow-select' name='patientFor' value={checkUp.patientFor} onChange={submitCheckUp} required>
+=======
+                        <select id='borrow-select' name='patientFor' value={checkUp.patientFor} onChange={submitCheckUp}>
+>>>>>>> 069ec22db9121d0fa171a5c361c57358f0b5703d
                             <option value="">Select an Option</option>
                             <option value="Admission">Admission</option>
                             <option value="Discharge">Discharge</option>
@@ -127,11 +154,18 @@ const CheckUp = () => {
                             name='escort'
                             value={checkUp.escort}
                             onChange={submitCheckUp}
+<<<<<<< HEAD
                             required
                         >
                             <option value="">Select an Option</option>
                             <option value="Medical">Medical</option>
                             <option value="Family">Family</option>
+=======
+                        >
+                            <option value="">Select an Option</option>
+                            <option value="ambulance">Medical</option>
+                            <option value="rescue-truck">Family</option>
+>>>>>>> 069ec22db9121d0fa171a5c361c57358f0b5703d
                             <option value="other">Other</option>
                         </select>
                         
@@ -149,7 +183,11 @@ const CheckUp = () => {
                         )}
                     </div>
 
+<<<<<<< HEAD
                     <button type="submit" className="submit-btn">Submit Check-Up</button>
+=======
+                    <button type="submit" className="submit-btn">Submit Incident Report</button>
+>>>>>>> 069ec22db9121d0fa171a5c361c57358f0b5703d
                 </form>
             </main>
         </div>

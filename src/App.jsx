@@ -12,17 +12,24 @@ import LoginPage from './pages/login'
 import Adminlogin from './pages/adminlogin'
 import RegisterAdmin from './pages/register-admin'
 import AdminNavbar from './components/adminNavbar'
+<<<<<<< HEAD
 import HazardReport from './pages/HazardReport'
 import UserHazardmap from './pages/Hazardmap'
+=======
+import Hazardmap from './pages/Hazardmap'
+>>>>>>> 069ec22db9121d0fa171a5c361c57358f0b5703d
 import Settings from './pages/Settings'
 import ReportedIncident from './pages/incidentReported'
 import BorrowedVehicles from './pages/borrowedVehicles'
 import TrackAppointment from './pages/trackAppointment'
 import CheckUpTable from './pages/checkUpTable'
 import CreateUser from './pages/CreateUser'
+<<<<<<< HEAD
 import UserApproval from './pages/userApproval'
 import background from './Images/background.png'
 import AdminHazardMap from './pages/AdminHazardMap'
+=======
+>>>>>>> 069ec22db9121d0fa171a5c361c57358f0b5703d
 function App() {
  const location = useLocation();
   const path = location.pathname;
@@ -30,7 +37,11 @@ function App() {
   // --- EASY NAVBAR LOGIC ---
   let currentNavbar;
 
+<<<<<<< HEAD
   if (path === '/' || path === '/admin' || path === '/admin/register-admin' || path === '/register') {
+=======
+  if (path === '/' || path === '/admin' || path === '/register-admin' || path === '/register') {
+>>>>>>> 069ec22db9121d0fa171a5c361c57358f0b5703d
     // 1. If we are on login or register pages, show NO navbar
     currentNavbar = null;
   } else if (path.includes('/admin/')) {
@@ -41,11 +52,16 @@ function App() {
     currentNavbar = <Navbar />;
   }
   return (
+<<<<<<< HEAD
     <div className="app" style={{backgroundImage:`url(${background})`, repeat:'no-repeat', backgroundSize:'cover', minHeight:'100vh', maxHeight:'100vh', overflowY:'auto', scrollbarWidth:'none' }}>
+=======
+    <div className="app">
+>>>>>>> 069ec22db9121d0fa171a5c361c57358f0b5703d
 {currentNavbar}
   
       
 
+<<<<<<< HEAD
       <div className="content"  >
         <Routes>
 
@@ -54,6 +70,14 @@ function App() {
           <Route path="/admin/dashboard" element={<Admin />} />
            <Route path="/admin/hazard-map" element={<AdminHazardMap />} />
           <Route path="/admin/pending-account" element={<UserApproval />} />
+=======
+      <div className="content">
+        <Routes>
+
+          <Route path="/register-admin" element={<RegisterAdmin />} />
+          <Route path="/admin" element={<Adminlogin />} />
+          <Route path="/admin/dashboard" element={<Admin />} />
+>>>>>>> 069ec22db9121d0fa171a5c361c57358f0b5703d
           <Route path="/admin/report" element={<ReportedIncident />} />
           <Route path="/admin/borrow" element={<BorrowedVehicles />} />
           <Route path="/admin/appointment" element={<TrackAppointment />} />
@@ -64,11 +88,18 @@ function App() {
           <Route path="/home" element={<Home />} />
           <Route path="/about" element={<About />} />
           <Route path="/report" element={<Report />} />
+<<<<<<< HEAD
           <Route path="/hazard-report" element={<HazardReport />} />
           <Route path="/borrow" element={<Borrow />} />
           <Route path="/appointment" element={<Appointment />} />
           <Route path="/checkup" element={<CheckUp />} />
           <Route path="/hazardmap" element={<UserHazardmap />} />
+=======
+          <Route path="/borrow" element={<Borrow />} />
+          <Route path="/appointment" element={<Appointment />} />
+          <Route path="/checkup" element={<CheckUp />} />
+          <Route path="/hazardmap" element={<Hazardmap />} />
+>>>>>>> 069ec22db9121d0fa171a5c361c57358f0b5703d
           <Route path="/settings" element={<Settings />} />
           <Route path="/register" element={<CreateUser />} />
           <Route path="*" element={<Navigate to="/home" />} />
@@ -78,4 +109,8 @@ function App() {
   )
 }
 
+<<<<<<< HEAD
 export default App
+=======
+export default App
+>>>>>>> 069ec22db9121d0fa171a5c361c57358f0b5703d

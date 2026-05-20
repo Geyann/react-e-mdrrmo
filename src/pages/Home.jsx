@@ -3,7 +3,10 @@ import earthquakeImg from '../Images/earthquake.jpg';
 import floodingImg from '../Images/flooding.jpg';
 import hotImg from '../Images/hotline-h1.png';
 import hazardImg from '../Images/hazard-map-icon.png'
+<<<<<<< HEAD
 import UserMonthlyIncidentGraph from "../components/UserMonthlyIncidentGraph";
+=======
+>>>>>>> 069ec22db9121d0fa171a5c361c57358f0b5703d
 export default function Home() {
     return(
                <div className="homepage">
@@ -21,9 +24,15 @@ export default function Home() {
                 <div className="chart-grid">
                     <div className="chart-item">
                         <div className="chart-box">
+<<<<<<< HEAD
                             <UserMonthlyIncidentGraph />
                         </div>
                         <p className="chart-label">Incidents Reported</p>
+=======
+                            <img id='flooding' src={floodingImg} alt="Flooding Chart " />
+                        </div>
+                        <p className="chart-label">Flooding</p>
+>>>>>>> 069ec22db9121d0fa171a5c361c57358f0b5703d
                     </div>
                     <div className="chart-item">
                         <div className="chart-box">
