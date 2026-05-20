@@ -1,27 +1,15 @@
 import React, { useState } from 'react';
-<<<<<<< HEAD
 import imglogo from '../images/icon.png';
-=======
-import imglogo from '../Images/icon.png';
->>>>>>> 069ec22db9121d0fa171a5c361c57358f0b5703d
 
 const Settings = () => {
   const [isDarkMode, setIsDarkMode] = useState(false);
 
   return (
-<<<<<<< HEAD
     <div  className={`settings-wrapper ${isDarkMode ? 'dark-mode' : 'light-mode'}`} style={{backgroundColor:'#e5e7eb', borderRadius:'40px', padding:'50px', boxShadow:'0 5px 10px gray', margin:'40px auto'}} >
       <div className="settings-container" >
         <h1 className="settings-main-title">Settings</h1>
 
         <div className="settings-grid-top" >
-=======
-    <div className={`settings-wrapper ${isDarkMode ? 'dark-mode' : 'light-mode'}`}>
-      <div className="settings-container">
-        <h1 className="settings-main-title">Settings</h1>
-
-        <div className="settings-grid-top">
->>>>>>> 069ec22db9121d0fa171a5c361c57358f0b5703d
           {/* General & Account Card */}
           <div className="settings-card purple-card">
             <div className="card-header">
@@ -112,8 +100,4 @@ const Settings = () => {
   );
 };
 
-<<<<<<< HEAD
 export default Settings;
-=======
-export default Settings;
->>>>>>> 069ec22db9121d0fa171a5c361c57358f0b5703d

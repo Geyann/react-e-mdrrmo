@@ -31,11 +31,7 @@ const LoginPage = () => {
     
   <div className="access-portal-container"> 
     <img id="loginimg" src={imlogo} alt="logo" />
-<<<<<<< HEAD
     <form onSubmit={handleLogin}  >
-=======
-    <form onSubmit={handleLogin}>
->>>>>>> 069ec22db9121d0fa171a5c361c57358f0b5703d
        
       <h2>User Login</h2>
       <br />
@@ -60,19 +56,8 @@ const LoginPage = () => {
        
     </form>
     <br />
-<<<<<<< HEAD
     <Link to="/register"  
     >Create New Account</Link>
-=======
-    <Link to="/register" className="btn-execute-login" 
-    style={{
-      textDecoration:"none",
-      padding:"10px 121px",
-      background:"#ffff",
-      color:"black",
-      fontWeight:"bold",
-      }}>Create New Account</Link>
->>>>>>> 069ec22db9121d0fa171a5c361c57358f0b5703d
     <a href="" className="portal-link">Forgot password?</a>
   </div>
   );

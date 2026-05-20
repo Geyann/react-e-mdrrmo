@@ -1,6 +1,5 @@
 
 import React from 'react'
-<<<<<<< HEAD
 import IncidentDashboard from '../components/IncidentDashboard';
 import AdminIncidentAnalytics from '../components/AdminIncidentAnalytics';
 import IncidentStats from '../components/IncidentStats';
@@ -46,16 +45,6 @@ const Admin = () => {
   <AdminCheckUpAnalytics />
     
       </div>
-=======
-
-const Admin = () => {
-
-  return (
-
-<div className="admin-container">
-      <h1>Admin Dashboard</h1>
-      <p>Welcome to the admin dashboard! Here you can manage reports, appointments, and more.</p>
->>>>>>> 069ec22db9121d0fa171a5c361c57358f0b5703d
 </div>
 
   )

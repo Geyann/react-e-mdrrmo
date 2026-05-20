@@ -79,11 +79,7 @@ const Report = () => {
   }
 
   return (
-<<<<<<< HEAD
     <form onSubmit={createUser} style={{backgroundColor:'#e5e7eb', borderRadius:'40px', padding:'50px', boxShadow:'0 5px 10px gray', maxWidth:'600px', margin:'40px auto'}}>
-=======
-    <form onSubmit={createUser}>
->>>>>>> 069ec22db9121d0fa171a5c361c57358f0b5703d
       <main className="report-page">
         <div className="form-wrapper">
           <div className="icon"><img src="https://cdn-icons-png.flaticon.com/128/2668/2668417.png" loading="lazy" alt="Emergency " title="Emergency " width="64" height="64" /></div>

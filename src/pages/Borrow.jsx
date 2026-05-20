@@ -69,26 +69,16 @@ const Borrow = () => {
     
     <main className="borrow-container">
         <div className="borrow-form-card">
-<<<<<<< HEAD
            
 
             <form onSubmit={submitRequest} style={{backgroundColor:'#e5e7eb', borderRadius:'40px', padding:'50px', boxShadow:'0 5px 10px gray', maxWidth:'600px', margin:'40px auto'}}>
                  <div className="borrow-form-header">
-=======
-            <div className="borrow-form-header">
->>>>>>> 069ec22db9121d0fa171a5c361c57358f0b5703d
                 <center>
                <img src="https://cdn-icons-png.flaticon.com/128/4084/4084244.png" loading="lazy" alt="Fire truck " title="Fire truck " width="64" height="64" /></center>
                 <h1 id='borrow-h1'> Emergency Response Vehicle Dispatch</h1>
                 <p id='borrow-p'>Please provide details below. All fields marked <span className="required">*</span> are required for immediate assessment.</p>
             </div>
-<<<<<<< HEAD
             <h3 className="borrow-section-title">Kilometer Reading <span className="required">*</span></h3>
-=======
-
-            <form onSubmit={submitRequest}>
-                <h3 className="borrow-section-title">Kilometer Reading <span className="required">*</span></h3>
->>>>>>> 069ec22db9121d0fa171a5c361c57358f0b5703d
 
                 <div className="borrow-form-grid">
                     <div className="borrow-form-group">
@@ -97,10 +87,7 @@ const Borrow = () => {
                             name='departure' type="text"
                             placeholder='Enter Deptarture' 
                             onChange={handleChange}
-<<<<<<< HEAD
                             value={borrow.departure}
-=======
->>>>>>> 069ec22db9121d0fa171a5c361c57358f0b5703d
                             />
                     </div>
                     <div className="borrow-form-group">
@@ -109,10 +96,7 @@ const Borrow = () => {
                             name='date'
                             type="date"
                             onChange={handleChange}
-<<<<<<< HEAD
                             value={borrow.date}
-=======
->>>>>>> 069ec22db9121d0fa171a5c361c57358f0b5703d
                            />
                     </div>
                     <div className="borrow-form-group">
@@ -122,10 +106,7 @@ const Borrow = () => {
                             type="text"
                             placeholder='Enter Arrival'
                             onChange={handleChange}
-<<<<<<< HEAD
                             value={borrow.arrival}
-=======
->>>>>>> 069ec22db9121d0fa171a5c361c57358f0b5703d
                            />
                     </div>
                     <div className="borrow-form-group">

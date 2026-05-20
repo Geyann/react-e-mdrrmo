@@ -10,52 +10,36 @@
     "preview": "vite preview"
   },
   "dependencies": {
-<<<<<<< HEAD
     "@headlessui/react": "^2.2.10",
     "@heroicons/react": "^2.2.0",
-=======
->>>>>>> 069ec22db9121d0fa171a5c361c57358f0b5703d
     "@supabase/supabase-js": "^2.97.0",
     "datatables.net-dt": "^2.3.8",
     "datatables.net-react": "^1.0.1",
     "gh-pages": "^6.3.0",
     "git": "^0.1.5",
     "leaflet": "^1.9.4",
-<<<<<<< HEAD
     "leaflet.heat": "^0.2.0",
     "lucide-react": "^1.14.0",
-=======
->>>>>>> 069ec22db9121d0fa171a5c361c57358f0b5703d
     "react": "^19.0.0-rc.1",
     "react-dom": "^19.0.0-rc.1",
     "react-hook-form": "^7.71.2",
     "react-leaflet": "^5.0.0",
     "react-router-dom": "^7.13.1",
-<<<<<<< HEAD
     "recharts": "^3.8.1",
     "supabase": "^2.98.2"
-=======
-    "supabase": "^2.76.14"
->>>>>>> 069ec22db9121d0fa171a5c361c57358f0b5703d
   },
   "devDependencies": {
     "@eslint/js": "^9.39.1",
     "@types/react": "^19.2.5",
     "@types/react-dom": "^19.2.3",
     "@vitejs/plugin-react": "^5.1.1",
-<<<<<<< HEAD
     "autoprefixer": "^10.5.0",
-=======
->>>>>>> 069ec22db9121d0fa171a5c361c57358f0b5703d
     "eslint": "^9.39.1",
     "eslint-plugin-react-hooks": "^7.0.1",
     "eslint-plugin-react-refresh": "^0.4.24",
     "globals": "^16.5.0",
-<<<<<<< HEAD
     "postcss": "^8.5.14",
     "tailwindcss": "^3.4.19",
-=======
->>>>>>> 069ec22db9121d0fa171a5c361c57358f0b5703d
     "vite": "npm:rolldown-vite@7.2.5"
   },
   "overrides": {
