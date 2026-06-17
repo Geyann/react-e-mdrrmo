@@ -29,7 +29,6 @@ const IncidentReported = () => {
     setReport(data || []);
   }
 
-  // Define columns based on your table headers
   const columns = [
     { title: "Report ID", data: "reportIncidentId" },
     { title: "Patient Name", data: "patientName" },
@@ -51,20 +50,22 @@ const IncidentReported = () => {
   ];
 
   return (
-    <div className="admin-container">
+    <div className="admin-container" >
       <h1>Reported Incidents</h1>
       
       <DataTable
         data={report}
         columns={columns}
-        className="display admin-table"
+        className="display"
+      
         options={{
           responsive: true,
           pageLength: 10,
           order: [[0, 'desc']], // Sort by Report ID descending by default
         }}
+        
       >
-        <thead>
+        <thead >
           <tr>
             <th>Report ID</th>
             <th>Patient Name</th>

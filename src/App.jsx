@@ -23,6 +23,9 @@ import CreateUser from './pages/CreateUser'
 import UserApproval from './pages/userApproval'
 import background from './Images/background.png'
 import AdminHazardMap from './pages/AdminHazardMap'
+import GuestNavbar from './components/GuestNavbar'
+import Guest from './pages/Guest'
+import MonthlyIncidentTrends from './pages/MonthlyIncidentTrends'
 function App() {
  const location = useLocation();
   const path = location.pathname;
@@ -30,13 +33,14 @@ function App() {
   // --- EASY NAVBAR LOGIC ---
   let currentNavbar;
 
-  if (path === '/' || path === '/admin' || path === '/admin/register-admin' || path === '/register') {
-    // 1. If we are on login or register pages, show NO navbar
+  if ( path === '/admin' || path === '/admin/register-admin' || path === '/register' || path === '/login') {
     currentNavbar = null;
   } else if (path.includes('/admin/')) {
-    // 2. If the URL contains "/admin/", show the Admin Navbar
     currentNavbar = <AdminNavbar />;
-  } else {
+  }else if(path.includes('/guest/') || path === '/' ){
+    currentNavbar = <GuestNavbar />
+  }
+   else {
     // 3. For everything else (Home, About, etc.), show the User Navbar
     currentNavbar = <Navbar />;
   }
@@ -60,7 +64,8 @@ function App() {
           <Route path="/admin/checkup" element={<CheckUpTable />} />
           <Route path="/admin/*" element={<Navigate to="/admin/dashboard" />} />
 
-          <Route path="/" element={<LoginPage />} />
+
+          <Route path="/login" element={<LoginPage />} />
           <Route path="/home" element={<Home />} />
           <Route path="/about" element={<About />} />
           <Route path="/report" element={<Report />} />
@@ -71,7 +76,15 @@ function App() {
           <Route path="/hazardmap" element={<UserHazardmap />} />
           <Route path="/settings" element={<Settings />} />
           <Route path="/register" element={<CreateUser />} />
-          <Route path="*" element={<Navigate to="/home" />} />
+           <Route path="/yearly-incident-trends" element={<MonthlyIncidentTrends />} />
+          <Route path="*" element={<Navigate to="/" />} />
+
+           <Route path="/guest/hazardmap" element={<UserHazardmap />} />
+            <Route path="/guest/yearly-incident-trends" element={<MonthlyIncidentTrends   />} />
+          <Route path="/" element={<Guest />} />
+
+          
+          
         </Routes>
       </div>
     </div>

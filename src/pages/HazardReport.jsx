@@ -75,28 +75,58 @@ const HazardReport = () => {
       return;
     }
 
-    // Extract raw string names from file objects to store in the text[] column
-    const imageNames = hazardReport.hazardPhotos.map((file) => file.name);
+    const uploadedImageNames = [];
 
-    // Write row directly to the public.hazard_reports Supabase table
+    // 1. ITERATE & UPLOAD MULTIPLE IMAGES TO SUPABASE STORAGE BUCKET
+    try {
+      await Promise.all(
+        hazardReport.hazardPhotos.map(async (file) => {
+          // Create an entirely distinct hashed filename for each file to prevent overrides
+          const fileExt = file.name.split(".").pop();
+          const generatedName = `${Date.now()}_${Math.random().toString(36).substring(2, 7)}.${fileExt}`;
+
+          const { data, error: uploadError } = await supabase.storage
+            .from("hazard-photos") // ⚠️ Replace with your exact Supabase Storage bucket ID
+            .upload(generatedName, file, {
+              cacheControl: "3600",
+              upsert: false,
+            });
+
+          if (uploadError) {
+            throw uploadError;
+          }
+
+          // Push the unique generated string key to save inside the text[] column array
+          if (data) {
+            uploadedImageNames.push(generatedName);
+          }
+        })
+      );
+    } catch (storageErr) {
+      console.error("Storage Batch processing failure:", storageErr);
+      alert(`Photo upload failed: ${storageErr.message || storageErr}`);
+      return; // Stop form execution if any storage upload crashes
+    }
+
+    // 2. WRITE ARTIFACT DIRECTLY TO THE PUBLIC.HAZARD_REPORTS TABLE
     const { data, error } = await supabase
       .from("hazard_reports")
       .insert([
         {
           reporter_name: hazardReport.reporterName || null,
-          department: hazardReport.department || null,
           reporter_contact: hazardReport.reporterContact || null,
           address: hazardReport.address,
-          landmark: hazardReport.landMark, // Mapped to match your lowercase database column
+          landmark: hazardReport.landMark, 
           date_observed: hazardReport.dateObserved,
           time_observed: hazardReport.timeObserved,
           hazard_category: hazardReport.hazardCategory,
           risk_level: hazardReport.riskLevel,
           hazard_description: hazardReport.hazardDescription,
           recommended_action: hazardReport.recommendedAction || null,
-          hazard_photos: imageNames, // Maps perfectly into your text[] column
+          hazard_photos: uploadedImageNames, // Storing array of file strings strings [ '123_a.png', '456_b.jpg' ]
           latitude: hazardReport.latitude,   
           longitude: hazardReport.longitude, 
+          report_status: "pending" // Default to lowercase string enum target tracking
         },
       ]);
 
@@ -126,6 +156,10 @@ const HazardReport = () => {
       latitude: hazardReport.latitude, // Preserve location details for consecutive entries
       longitude: hazardReport.longitude,
     });
+
+    // Clear out the file element from DOM explicitly
+    const fileDomElement = document.querySelector('input[type="file"]');
+    if (fileDomElement) fileDomElement.value = "";
   }
 
   return (
@@ -148,8 +182,18 @@ const HazardReport = () => {
             onChange={handleChange}
             name="reporterName"
             type="text"
-            placeholder="Enter your name"
+            placeholder="Enter your name (Optional)"
             value={hazardReport.reporterName}
+          />
+
+          <label>Reporter Contact Details:</label>
+          <input
+            id="report-input"
+            onChange={handleChange}
+            name="reporterContact"
+            type="text"
+            placeholder="Enter your contact number or email (Optional)"
+            value={hazardReport.reporterContact}
           />
 
           <label>Location / Address:<span id="required">*</span></label>
@@ -174,7 +218,7 @@ const HazardReport = () => {
             required
           />
 
-          <div className="date-time-grid">
+          <div className="date-time-grid" >
             <div>
               <label>Date Observed:<span id="required">*</span></label>
               <input
@@ -185,8 +229,8 @@ const HazardReport = () => {
                 value={hazardReport.dateObserved}
                 required
               />
-            </div>
-            <div>
+              </div>
+          <div>
               <label>Time Observed:<span id="required">*</span></label>
               <input
                 id="report-input"
@@ -247,6 +291,16 @@ const HazardReport = () => {
             required
           />
 
+          <label>Recommended / Immediate Action Taken:</label>
+          <input
+            id="report-input"
+            name="recommendedAction"
+            type="text"
+            onChange={handleChange}
+            placeholder="e.g., Placed warning markers, bypassed route (Optional)"
+            value={hazardReport.recommendedAction}
+          />
+
           {/* Photo Evidence Section supporting multiple files */}
           <label>Photo Evidence (Upload 2-4 pictures):<span id="required">*</span></label>
           <div className="upload-box">
@@ -263,6 +317,7 @@ const HazardReport = () => {
               type="file"
               accept="image/png, image/jpeg"
               multiple 
+              required
             />
           </div>
           {hazardReport.hazardPhotos.length > 0 && (

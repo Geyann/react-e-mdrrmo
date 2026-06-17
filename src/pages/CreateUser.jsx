@@ -1,12 +1,11 @@
-import React, { useState } from 'react';
-import { supabase } from '../createClient';
+import { useState } from "react";
+import { supabase } from "../createClient";
 import imlogo from '../Images/icon.png';
 
-const CreateUser = () => {
+export default function CreateUser() {
   const [loading, setLoading] = useState(false);
   const [idFile, setIdFile] = useState(null);
   
-  // Initial state object for easy resetting
   const initialFormState = {
     email: '', password: '', firstName: '', middleName: '',
     lastName: '', age: '', address: '', mobileNumber: '',
@@ -30,10 +29,8 @@ const CreateUser = () => {
     try {
       let idPublicUrl = '';
 
-      // 1. Upload ID Image to 'id-previews' bucket
       if (idFile) {
         const fileExt = idFile.name.split('.').pop();
-        // Standardize file path
         const fileName = `${Date.now()}-${Math.random().toString(36).substring(7)}.${fileExt}`;
         const filePath = `pending_ids/${fileName}`;
 
@@ -50,7 +47,6 @@ const CreateUser = () => {
         idPublicUrl = urlData.publicUrl;
       }
 
-      // 2. Insert into Pending Table
       const { error: dbError } = await supabase
         .from('pending_registrations')
         .insert([{
@@ -70,8 +66,6 @@ const CreateUser = () => {
       if (dbError) throw dbError;
 
       alert('Application submitted! Please wait for admin approval.');
-      
-      // 3. Proper Reset: Clear state and the file input
       setFormData(initialFormState);
       setIdFile(null);
       e.target.reset(); 
@@ -84,41 +78,42 @@ const CreateUser = () => {
   };
 
   return (
-    <div className="login-page">
-      <div className="access-portal-container" style={{minWidth:'100vh', maxHeight: '160vh', overflowY: 'auto' }}>
-        <img src={imlogo} id="loginimg" alt="Logo" />
-        <h2>Create Account</h2>
+    <div className="min-h-screen  py-10 px-4">
+      <div className="max-w-2xl mx-auto bg-white rounded-2xl shadow-xl border p-8">
+        <div className="flex flex-col items-center mb-8">
+          <img src={imlogo} alt="Logo" className="w-50 h-40 mb-4" />
+          <h2 className="text-3xl font-bold text-gray-800">Create Account</h2>
+        </div>
         
-        <form onSubmit={handleRegister}>      
-          <input className="portal-input-field" name="firstName" value={formData.firstName} placeholder="First Name" onChange={handleChange} required />
-          {/* Ensure name="middleName" matches your state key */}
-          <input className="portal-input-field" name="middleName" value={formData.middleName} type="text" placeholder="Middle Name" onChange={handleChange} />
-          <input className="portal-input-field" name="lastName" value={formData.lastName} placeholder="Last Name" onChange={handleChange} required />
-          <input className="portal-input-field" name="email" value={formData.email} type="email" placeholder="Email" onChange={handleChange} required />
-          <input className="portal-input-field" name="password" value={formData.password} type="password" placeholder="Password" onChange={handleChange} required />
+        <form onSubmit={handleRegister} className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <input className="p-3 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" name="firstName" placeholder="First Name" onChange={handleChange} required />
+          <input className="p-3 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" name="middleName" placeholder="Middle Name" onChange={handleChange} />
+          <input className="p-3 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" name="lastName" placeholder="Last Name" onChange={handleChange} required />
+          <input className="p-3 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" name="email" type="email" placeholder="Email" onChange={handleChange} required />
+          <input className="p-3 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500 md:col-span-2" name="password" type="password" placeholder="Password" onChange={handleChange} required />
           
-          <div style={{ display: 'flex', gap: '10px' }}>
-            <input className="portal-input-field" name="age" value={formData.age} type="number" placeholder="Age" onChange={handleChange} required />
-            <input className="portal-input-field" name="birthdate" value={formData.birthdate} type="date" onChange={handleChange} required />
+          <input className="p-3 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" name="age" type="number" placeholder="Age" onChange={handleChange} required />
+          <input className="p-3 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500" name="birthdate" type="date" onChange={handleChange} required />
+
+          <input className="p-3 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500 md:col-span-2" name="idNumber" placeholder="Valid ID Number" onChange={handleChange} required />
+          
+          <div className="md:col-span-2 flex flex-col gap-1">
+            <label className="text-xs text-gray-500 font-medium">Upload ID Picture:</label>
+            <input className="p-2 border rounded-lg cursor-pointer" type="file" accept="image/*" onChange={handleFileChange} required />
           </div>
 
-          <input className="portal-input-field" name="idNumber" value={formData.idNumber} placeholder="Valid ID Number" onChange={handleChange} required />
-          
-          <div style={{ textAlign: 'left', margin: '10px 0' }}>
-            <label style={{ fontSize: '12px', color: '#666', marginLeft: '5px' }}>Upload ID Picture:</label>
-            <input className="portal-input-field" type="file" accept="image/*" onChange={handleFileChange} required />
-          </div>
+          <input className="p-3 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500 md:col-span-2" name="mobileNumber" type="tel" placeholder="Mobile Number" onChange={handleChange} required />
+          <textarea className="p-3 border rounded-lg outline-none focus:ring-2 focus:ring-blue-500 md:col-span-2 h-24" name="address" placeholder="Full Address" onChange={handleChange} required />
 
-          <input className="portal-input-field" name="mobileNumber" value={formData.mobileNumber} type="tel" placeholder="Mobile Number" onChange={handleChange} required />
-          <textarea className="portal-input-field" name="address" value={formData.address} placeholder="Full Address" onChange={handleChange} required style={{ height: '60px' }} />
-
-          <button type="submit" className="btn-execute-login" disabled={loading}>
-            {loading ? 'TRANSMITTING...' : 'REGISTER'}
+          <button 
+            type="submit" 
+            className="md:col-span-2 bg-purple-600 text-white font-bold py-3 rounded-lg hover:bg-blue-700 transition disabled:opacity-50" 
+            disabled={loading}
+          >
+            {loading ? 'TRANSMITTING...' : 'Create Account'}
           </button>
         </form>
       </div>
     </div>
   );
-};
-
-export default CreateUser;
+}

@@ -4,6 +4,7 @@ import floodingImg from '../Images/flooding.jpg';
 import hotImg from '../Images/hotline-h1.png';
 import hazardImg from '../Images/hazard-map-icon.png'
 import UserMonthlyIncidentGraph from "../components/UserMonthlyIncidentGraph";
+import UserHazardMonthlyGraph from "../components/UserMonthlyHazardGraph";
 export default function Home() {
     return(
                <div className="homepage">
@@ -12,7 +13,7 @@ export default function Home() {
                     <h1>Report Hazards. Keep <br /> Your <span className="purple-text">Community Safe.</span></h1>
                     <div className="button-group">
                         <Link to="/hazardmap" className="btn-map" ><img src={hazardImg} alt="" />View Hazard Map</Link>
-                        <Link to="/weekly-incident" className="btn-trends">Weekly Incident Trends</Link>
+                        <Link to="/yearly-incident" className="btn-trends">Yearly Incident Trends</Link>
                     </div>
                     </div>
                     </section>
@@ -27,9 +28,9 @@ export default function Home() {
                     </div>
                     <div className="chart-item">
                         <div className="chart-box">
-                            <img id='earthquake' src={earthquakeImg} alt="Earthquake Chart " />
+                            <UserHazardMonthlyGraph />
                         </div>
-                        <p className="chart-label">Earthquake</p>
+                        <p className="chart-label">Hazard and Risk Reported</p>
                     </div>
                 </div>
             </section>

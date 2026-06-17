@@ -26,7 +26,8 @@ const AdminNavbar = () => {
           {isOpen ? '✖' : '☰'}
         </button>
         <div className="logo">
-          <img id="logo" src={imgLogo} alt="logo" />
+          <Link to="/admin/dashboard"><img id="logo" src={imgLogo} alt="logo" /></Link>
+          
         </div>
 
 

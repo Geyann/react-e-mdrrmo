@@ -18,8 +18,8 @@ export default function Navbar() {
         <button className="hamburger" onClick={toggleMenu}>
           {isOpen ? '✖' : '☰'}
         </button>
-        <div className="logo">
-          <img id="logo" src={imgLogo} alt="logo" />
+        <div className="logo"> 
+          <Link to="/home"><img id="logo" src={imgLogo} alt="logo" /></Link>
         </div>
 
 
