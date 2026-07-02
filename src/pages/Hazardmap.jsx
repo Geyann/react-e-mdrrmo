@@ -1,14 +1,17 @@
+"use client";
+
 import React, { useMemo, useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Polygon, CircleMarker, Tooltip } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { supabase } from "../createClient"; 
+import { supabase } from "../createClient";
 
 const UserHazardMap = () => {
   const [isRealistic, setIsRealistic] = useState(false);
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedCategory, setSelectedCategory] = useState('all');
+  const [menuOpen, setMenuOpen] = useState(false);
 
   // Hardcoded list matching requested parameters
   const categories = [
@@ -26,7 +29,7 @@ const UserHazardMap = () => {
       setLoading(true);
       const { data, error } = await supabase
         .from('hazard_reports')
-        .select('*'); 
+        .select('*');
 
       if (error) throw error;
       setReports(data || []);
@@ -249,123 +252,105 @@ const UserHazardMap = () => {
     [120.708354, 14.403861], [120.687116, 14.363579], [120.686765, 14.362958],
   ];
 
-  const flippedBoundary = useMemo(() => 
-    naicBoundaryRaw.map(coord => [coord[1], coord[0]]), 
-  [naicBoundaryRaw]);
+  const flippedBoundary = useMemo(() =>
+    naicBoundaryRaw.map(coord => [coord[1], coord[0]]),
+    [naicBoundaryRaw]);
 
   const worldBounds = [[-90, -180], [-90, 180], [90, 180], [90, -180]];
   const maskCoordinates = [worldBounds, flippedBoundary];
   const bounds = useMemo(() => L.latLngBounds(flippedBoundary), [flippedBoundary]);
 
-  const standardTiles = "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png";
-  const realisticTiles = "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}";
-
   const getHeatmapColor = (riskLevel) => {
     switch (riskLevel?.toLowerCase()) {
-      case 'critical': return '#dc2626'; 
-      case 'high':     return '#ea580c'; 
-      case 'medium':   return '#eab308'; 
-      case 'low':      return '#22c55e'; 
-      default:         return '#3b82f6'; 
+      case 'critical': return '#dc2626';
+      case 'high': return '#ea580c';
+      case 'medium': return '#eab308';
+      case 'low': return '#22c55e';
+      default: return '#3b82f6';
     }
   };
 
   return (
-    <div style={{ height: '600px', width: '100%', position: 'relative', border: '2px solid #1e293b', borderRadius: '4px', overflow: 'hidden'}}>
-      
-      {/* Classification Matrix Filtering Interface */}
-      <div style={{
-        position: 'absolute', top: '15px', left: '50px', zIndex: 1000,
-        display: 'flex', flexDirection: 'column', gap: '6px',
-        backgroundColor: 'white', padding: '10px',
-        border: '2px solid #334155', boxShadow: '4px 4px 0px #000000'
-      }}>
-        <div style={{ color: '#38bdf8', fontFamily: 'monospace', fontSize: '11px', fontWeight: 'bold', marginBottom: '4px', textTransform: 'uppercase' }}>
-          Filter Classification Layer
-        </div>
-        {categories.map((cat) => {
-          const isActive = selectedCategory === cat.id;
-          return (
-            <button
-              key={cat.id}
-              onClick={() => setSelectedCategory(cat.id)}
-              style={{
-                padding: '6px 12px',
-                backgroundColor: isActive ? '#38bdf8' : '#1e293b',
-                color: isActive ? '#0f172a' : '#f8fafc',
-                border: isActive ? '1px solid #ffffff' : '1px solid #475569',
-                cursor: 'pointer',
-                fontWeight: 'bold',
-                fontFamily: 'monospace',
-                fontSize: '11px',
-                textAlign: 'left',
-                textTransform: 'uppercase',
-                transition: 'all 0.15s ease'
-              }}
-            >
-              {isActive ? `> ${cat.label}` : cat.label}
-            </button>
-          );
-        })}
-      </div>
+    <div className="relative w-full h-[100vh] border-2 border-slate-800 rounded-lg overflow-hidden shadow-2xl">
 
-      {/* View Toggle Controller */}
-      <button 
-        onClick={() => setIsRealistic(!isRealistic)}
-        aria-label={isRealistic ? 'Switch to standard map' : 'Switch to realistic view'}
-        style={{
-          position: 'absolute', top: '15px', right: '15px', zIndex: 1000,
-          padding: '8px 14px', backgroundColor: 'white', color: '#000000',
-          border: '2px solid #334155', borderRadius: '0px', cursor: 'pointer',
-          fontWeight: 'bold', fontFamily: 'monospace', textTransform: 'uppercase',
-          boxShadow: '4px 4px 0px #000000'
-        }}
+      {/* Hamburger Menu Button */}
+      <button
+        onClick={() => setMenuOpen(!menuOpen)}
+        className="absolute top-5 right-4 z-[2000] p-2 bg-white border-2 border-slate-800 shadow-[4px_4px_0px_0px_rgba(0,0,0,1)] hover:bg-slate-100"
       >
-        {isRealistic ? 'Show Standard Map' : 'Show Realistic View'}
+        <div className="w-6 h-5 flex flex-col justify-between">
+          <span className="block w-full h-0.5 bg-purple-600"></span>
+          <span className="block w-full h-0.5 bg-purple-600"></span>
+          <span className="block w-full h-0.5 bg-purple-600"></span>
+        </div>
       </button>
 
-      {/* Loading Overlay widget */}
+      {/* Slide-out Drawer */}
+      <div className={`absolute top-0 left-0 h-full z-[1500] w-64 bg-white p-6 transform transition-transform duration-300 ${menuOpen ? 'translate-x-0' : '-translate-x-full'} shadow-xl`}>
+        <h2 className="text-purple-400 font-mono font-bold mb-6 mt-12 uppercase">Menu</h2>
+
+        {/* Map View Toggle */}
+        <button
+          onClick={() => setIsRealistic(!isRealistic)}
+          className="w-full mb-6 p-3 bg-white text-slate-900 font-bold font-mono text-xs uppercase border-2 border-slate-700 hover:bg-slate-200"
+        >
+          {isRealistic ? 'Switch: Standard' : 'Switch: Satellite'}
+        </button>
+
+        {/* Filters */}
+        <div className="space-y-2">
+          <p className="text-[10px] text-slate-400 font-mono uppercase mb-2">Filter Hazards</p>
+          {['all', 'physical', 'chemical/biological', 'electrical', 'procedural/safety practices', 'natural disaster'].map((cat) => (
+            <button
+              key={cat}
+              onClick={() => setSelectedCategory(cat)}
+              className={`w-full text-left px-3 py-2 text-[11px] font-bold font-mono uppercase border-l-4 
+                ${selectedCategory === cat ? 'bg-purple-600 text-purple-900 border-purple-700' : 'text-slate-400 border-purple-700'}`}
+            >
+              {cat}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* Loading Overlay */}
       {loading && (
-        <div style={{
-          position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
-          backgroundColor: 'rgba(15, 23, 42, 0.85)', color: '#38bdf8', zIndex: 1001,
-          display: 'flex', justifyContent: 'center', alignItems: 'center', 
-          fontWeight: 'bold', fontFamily: 'monospace', fontSize: '14px'
-        }}>
-          [SYSTEM] SYNCHRONIZING HAZARDS HEATMAP WITH DATABASE...
+        <div className="absolute inset-0 z-[1001] bg-slate-900/90 flex justify-center items-center font-mono text-sky-400 font-bold p-4">
+          [SYSTEM] SYNCHRONIZING...
         </div>
       )}
 
-      <MapContainer 
+      <MapContainer
         bounds={bounds}
         maxBounds={bounds}
         maxBoundsViscosity={1.0}
         zoom={12}
-        minZoom={12}
         maxZoom={18}
-        style={{ height: '100%', width: '100%', background: '#0f172a' }}
+        minZoom={12}
+        className="h-full w-full bg-slate-900"
       >
         <TileLayer
           key={isRealistic ? 'realistic' : 'standard'}
-          url={isRealistic ? realisticTiles : standardTiles}
-          attribution={isRealistic ? 'Tiles &copy; Esri' : '&copy; OpenStreetMap'}
+          url={isRealistic
+            ? "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
+            : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"}
         />
-        
+
         {/* Map Clipping Mask Outlying Areas */}
-        <Polygon 
-          positions={maskCoordinates} 
-          pathOptions={{ fillColor: '#White', fillOpacity: 0.6, color: 'transparent' }} 
+        <Polygon
+          positions={maskCoordinates}
+          pathOptions={{ fillColor: '#White', fillOpacity: 0.6, color: 'transparent' }}
         />
 
         {/* Boundary Area Perimeter Line */}
-        <Polygon 
-          positions={flippedBoundary} 
-          pathOptions={{ color: '#38bdf8', fillOpacity: 0, weight: 2, dashArray: '4, 4' }} 
+        <Polygon
+          positions={flippedBoundary}
+          pathOptions={{ color: '#38bdf8', fillOpacity: 0, weight: 2, dashArray: '4, 4' }}
         />
 
-        {/* Dynamic Filtered Heatmap Layer */}
+        {/* Dynamic Filtered Hazard Points */}
         {reports
-          .filter(report => report.latitude && report.longitude) 
+          .filter(report => report.latitude && report.longitude)
           .filter(report => {
             if (selectedCategory === 'all') return true;
             return report.hazard_category?.toLowerCase() === selectedCategory.toLowerCase();
@@ -374,23 +359,23 @@ const UserHazardMap = () => {
             const hazardColor = getHeatmapColor(report.risk_level);
 
             return (
-              <CircleMarker 
-                key={report.id} 
+              <CircleMarker
+                key={report.id}
                 center={[parseFloat(report.latitude), parseFloat(report.longitude)]}
-                radius={22} 
+                radius={22}
                 pathOptions={{
                   fillColor: hazardColor,
-                  fillOpacity: 0.45,  
+                  fillOpacity: 0.45,
                   color: hazardColor,
                   weight: 1.5,
                   opacity: 0.7
                 }}
               >
-                <Tooltip 
-                  direction="top" 
-                  offset={[0, -15]} 
+                <Tooltip
+                  direction="top"
+                  offset={[0, -15]}
                   opacity={0.95}
-                  sticky={true} 
+                  sticky={true}
                 >
                   <div>
                     <span style={{
@@ -408,6 +393,6 @@ const UserHazardMap = () => {
       </MapContainer>
     </div>
   );
-};
+}
 
 export default UserHazardMap;

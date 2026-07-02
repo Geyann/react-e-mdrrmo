@@ -1,5 +1,6 @@
 import React from 'react'
 import { Route, Routes, useLocation, Navigate } from 'react-router-dom'
+import AdminAppointmentDashboard from './components/AdminAppointmentDashboard'
 import Home from './pages/Home'
 import About from './pages/About'
 import Report from './pages/Report'
@@ -26,6 +27,9 @@ import AdminHazardMap from './pages/AdminHazardMap'
 import GuestNavbar from './components/GuestNavbar'
 import Guest from './pages/Guest'
 import MonthlyIncidentTrends from './pages/MonthlyIncidentTrends'
+import Profile from './pages/Profile'; // Add this import at the top
+
+// Then add this route inside the <Routes> block:
 function App() {
  const location = useLocation();
   const path = location.pathname;
@@ -50,7 +54,7 @@ function App() {
   
       
 
-      <div className="content"  >
+      <div className="content p-30"  >
         <Routes>
 
           <Route path="/admin/register-admin" element={<RegisterAdmin />} />
@@ -60,12 +64,13 @@ function App() {
           <Route path="/admin/pending-account" element={<UserApproval />} />
           <Route path="/admin/report" element={<ReportedIncident />} />
           <Route path="/admin/borrow" element={<BorrowedVehicles />} />
-          <Route path="/admin/appointment" element={<TrackAppointment />} />
+          <Route path="/admin/appointment" element={<AdminAppointmentDashboard />} />
           <Route path="/admin/checkup" element={<CheckUpTable />} />
           <Route path="/admin/*" element={<Navigate to="/admin/dashboard" />} />
 
 
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/profile" element={<Profile />} /> 
           <Route path="/home" element={<Home />} />
           <Route path="/about" element={<About />} />
           <Route path="/report" element={<Report />} />

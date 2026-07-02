@@ -1,159 +1,116 @@
+"use client";
+
 import React, { useState } from 'react';
 import { supabase } from '../createClient';
 
 const CheckUp = () => {
-    const [checkUp, setCheckUp] = useState({
-        patientName: "",
-        location: "",
-        hospitalName: "",
-        contactDetails: "",
-        preferredDate: "",
-        preferredTime: "",
-        mobility: "",
-        patientFor: "",
-        specificVehicle: "",
-        escort: "",
-    });
+  const [checkUp, setCheckUp] = useState({
+    patientName: "", location: "", hospitalName: "", contactDetails: "",
+    preferredDate: "", preferredTime: "", mobility: "", patientFor: "",
+    specificVehicle: "", escort: "",
+  });
 
-    function submitCheckUp(event) {
-        setCheckUp((prevFormData) => ({
-            ...prevFormData, [event.target.name]: event.target.value
-        }));
+  function handleChange(event) {
+    const { name, value } = event.target;
+    setCheckUp((prev) => ({ ...prev, [name]: value }));
+  }
+
+  async function handleSubmit(event) {
+    event.preventDefault();
+    const finalEscort = checkUp.escort === "other" ? checkUp.specificVehicle : checkUp.escort;
+
+    const { error } = await supabase
+      .from("outPatientCheckUp")
+      .insert([{
+        patientName: checkUp.patientName,
+        location: checkUp.location,
+        hospitalName: checkUp.hospitalName,
+        contactDetails: checkUp.contactDetails,
+        preferredDate: checkUp.preferredDate,
+        preferredTime: checkUp.preferredTime,
+        mobility: checkUp.mobility,
+        patientFor: checkUp.patientFor,
+        escort: finalEscort
+      }]);
+
+    if (error) {
+      console.error("Error:", error);
+    } else {
+      alert("Submitted successfully!");
+      setCheckUp({
+        patientName: "", location: "", hospitalName: "", contactDetails: "",
+        preferredDate: "", preferredTime: "", mobility: "", patientFor: "",
+        specificVehicle: "", escort: "",
+      });
     }
+  }
 
-    async function handleSubmit(event) {
-        event.preventDefault();
-        
-        // If "other" is picked, we send the text from 'specificVehicle' to the 'escort' column
-        const finalEscort = checkUp.escort === "other" ? checkUp.specificVehicle : checkUp.escort;
-
-        const { data, error } = await supabase
-            .from("outPatientCheckUp")
-            .insert([{
-                patientName: checkUp.patientName,
-                location: checkUp.location,
-                hospitalName: checkUp.hospitalName,
-                contactDetails: checkUp.contactDetails,
-                preferredDate: checkUp.preferredDate,
-                preferredTime: checkUp.preferredTime,
-                mobility: checkUp.mobility,
-                patientFor: checkUp.patientFor,
-                escort: finalEscort 
-            }]);
-
-        if (error) {
-            console.error("Error:", error);
-        } else {
-            alert("Submitted!");
-            setCheckUp({
-                patientName: "", location: "", hospitalName: "", contactDetails: "",
-                preferredDate: "", preferredTime: "", mobility: "", patientFor: "",
-                specificVehicle: "", escort: ""
-            });
-        }
-    }
-
-    return (
-        <div> 
-            <main className="checkup-container">
-               
-
-                <form className="assessment-form" onSubmit={handleSubmit} style={{backgroundColor:'#e5e7eb', borderRadius:'40px', padding:'60px', boxShadow:'0 5px 10px gray', maxWidth:'600px', margin:'40px auto'}}>
-                     <section className="form-header">
-                    <div className="icon"><img src="https://cdn-icons-png.flaticon.com/128/1429/1429246.png" loading="lazy" alt="Medical " title="Medical " width="64" height="64" /></div>
-                    <h1 id='checkup'>Out Patient Check Up</h1>
-                    <p>Please provide details below. All fields marked <span className="required">*</span> are required for immediate assessment.</p>
-                </section>
-                <div className="input-group">
-                        <label>Patient Name:<span className="required">*</span></label>
-                        <input type="text" name='patientName' value={checkUp.patientName} onChange={submitCheckUp} required />
-                    </div>
-
-                    <div className="input-group">
-                        <label>Location / Address:<span className="required">*</span></label>
-                        <input type="text" name='location' value={checkUp.location} onChange={submitCheckUp} required />
-                    </div>
-
-                    <div className="input-group">
-                        <label>Hospital Name:<span className="required">*</span></label>
-                        <input type="text" name='hospitalName' value={checkUp.hospitalName} onChange={submitCheckUp} required />
-                    </div>
-
-                    <div className="input-group">
-                        <label>Contact Details of Person Reporting:<span className="required">*</span></label>
-                        <input type="text" name='contactDetails' value={checkUp.contactDetails} onChange={submitCheckUp} required />
-                    </div>
-
-                    <div className="input-group">
-                        <div className="checkup-row">
-                            <div>
-                                <label>Preferred Date:<span>*</span></label>
-                                <input id='date' name='preferredDate' value={checkUp.preferredDate} type="date" onChange={submitCheckUp} required />
-                            </div>
-                            <div>
-                                <label>Preferred Time:<span>*</span></label>
-                                <input id='time' name='preferredTime' value={checkUp.preferredTime} type="time" onChange={submitCheckUp} required />
-                            </div>
-                        </div>
-                    </div>
-
-                    {/* Mobility Section */}
-                    <div className="checkbox-row">
-                        <label id='borrow-label'>Mobility: <span className="required">*</span></label>
-                        <select id='borrow-select' name='mobility' value={checkUp.mobility} onChange={submitCheckUp} required>
-                            <option value="">Select an Option</option>
-                            <option value="stretcher">Stretcher</option>
-                            <option value="wheel-chair">Wheel Chair</option>
-                            <option value="walker">Walker</option>
-                        </select>
-                    </div>
-
-                    {/* Patient For Section */}
-                    <div className="checkbox-row">
-                        <label id='borrow-label'>Patient for: <span className="required">*</span></label>
-                        <select id='borrow-select' name='patientFor' value={checkUp.patientFor} onChange={submitCheckUp} required>
-                            <option value="">Select an Option</option>
-                            <option value="Admission">Admission</option>
-                            <option value="Discharge">Discharge</option>
-                            <option value="Check Up">Check Up</option>
-                        </select>
-                    </div>
-
-                    {/* Vehicle Selection Section */}
-                    <div className="checkbox-row">
-                        <label id='borrow-label'>Vehicle to be used: <span className="required">*</span></label>
-                        <select 
-                            id='borrow-select'
-                            name='escort'
-                            value={checkUp.escort}
-                            onChange={submitCheckUp}
-                            required
-                        >
-                            <option value="">Select an Option</option>
-                            <option value="Medical">Medical</option>
-                            <option value="Family">Family</option>
-                            <option value="other">Other</option>
-                        </select>
-                        
-                        {/* Matching your original structure for the conditional input */}
-                        {checkUp.escort === "other" && (
-                            <label>If Specific: 
-                                <input 
-                                    type="text" 
-                                    id='specific' 
-                                    name="specificVehicle"
-                                    value={checkUp.specificVehicle} 
-                                    onChange={submitCheckUp} 
-                                />
-                            </label>
-                        )}
-                    </div>
-
-                    <button type="submit" className="submit-btn">Submit Check-Up</button>
-                </form>
-            </main>
+  return (
+    <div className="min-h-screen bg-transparent py-12 px-4 ">
+      <form
+        onSubmit={handleSubmit}
+        className="max-w-2xl mx-auto bg-white p-8 md:p-10 rounded-3xl shadow-xl border border-gray-100"
+      >
+        <div className="flex flex-col items-center mb-8 pt-5">
+          <img src="https://cdn-icons-png.flaticon.com/128/1429/1429246.png" alt="Medical" className="w-16 h-16 mb-4" />
+          <h1 className="text-3xl font-extrabold text-gray-900">Out Patient Check Up</h1>
+          <p className="text-gray-500 mt-2 text-sm text-center">
+            Fields marked <span className="text-red-500">*</span> are required for assessment.
+          </p>
         </div>
-    );
-}
+
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+          {[
+            { label: "Patient Name", name: "patientName" },
+            { label: "Location / Address", name: "location" },
+            { label: "Hospital Name", name: "hospitalName" },
+            { label: "Contact Details", name: "contactDetails" },
+          ].map((field) => (
+            <div key={field.name} className="flex flex-col gap-1.5 md:col-span-2">
+              <label className="text-sm font-medium text-gray-700">{field.label} <span className="text-red-500">*</span></label>
+              <input name={field.name} value={(checkUp )[field.name]} onChange={handleChange} className="p-3 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-500" required />
+            </div>
+          ))}
+
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-gray-700">Preferred Date <span className="text-red-500">*</span></label>
+            <input type="date" name="preferredDate" value={checkUp.preferredDate} onChange={handleChange} className="p-3 border border-gray-300 rounded-xl outline-none" required />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-medium text-gray-700">Preferred Time <span className="text-red-500">*</span></label>
+            <input type="time" name="preferredTime" value={checkUp.preferredTime} onChange={handleChange} className="p-3 border border-gray-300 rounded-xl outline-none" required />
+          </div>
+        </div>
+
+        <div className="mt-5 space-y-5">
+          {[
+            { label: "Mobility", name: "mobility", options: ["Stretcher", "Wheel Chair", "Walker"] },
+            { label: "Patient for", name: "patientFor", options: ["Admission", "Discharge", "Check Up"] },
+            { label: "Escort / Vehicle", name: "escort", options: ["Medical", "Family", "Other"] },
+          ].map((field) => (
+            <div key={field.name} className="flex flex-col gap-1.5">
+              <label className="text-sm font-medium text-gray-700">{field.label} <span className="text-red-500">*</span></label>
+              <select name={field.name} value={(checkUp)[field.name]} onChange={handleChange} className="p-3 border border-gray-300 rounded-xl bg-white outline-none" required>
+                <option value="">Select an Option</option>
+                {field.options.map(opt => <option key={opt} value={opt.toLowerCase().replace(" ", "-")}>{opt}</option>)}
+              </select>
+            </div>
+          ))}
+
+          {checkUp.escort === "other" && (
+            <div className="flex flex-col gap-1.5 animate-in fade-in slide-in-from-top-2">
+              <label className="text-sm font-medium text-gray-700">Specify Escort/Vehicle</label>
+              <input name="specificVehicle" value={checkUp.specificVehicle} onChange={handleChange} className="p-3 border border-blue-500 rounded-xl outline-none" placeholder="Enter details..." required />
+            </div>
+          )}
+        </div>
+
+        <button type="submit" className="w-full mt-8 bg-blue-600 text-white font-bold py-4 rounded-2xl hover:bg-blue-700 transition shadow-lg shadow-blue-200">
+          Submit Check-Up
+        </button>
+      </form>
+    </div>
+  );
+};
 
 export default CheckUp;

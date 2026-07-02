@@ -1,332 +1,540 @@
-import React from 'react';
-import { useState, useEffect } from 'react';
-import { Link } from 'react-router-dom';
-import { supabase } from '../createClient';
-import reportImg from "../Images/photo-icon.png";
+"use client";
 
-const HazardReport = () => {
-  const [report, setReport] = useState({
-    reporterName: "",
-    department: "",
-    address: "",
-    landMark: "",
-    reporterContact: "",
-    dateObserved: "",
-    timeObserved: "",
-    hazardCategory: "",
-    riskLevel: "",
-    hazardPhotos: [], // Array for multiple pictures
-    hazardDescription: "",
-    recommendedAction: "",
-    latitude: null,    // GPS
-    longitude: null,   // GPS
+import React, { useState, useEffect } from "react";
+import { supabase } from "../createClient";
+import { CalendarDays, AlertCircle, ChevronLeft, ChevronRight } from "lucide-react";
+
+const AppointmentForm = () => {
+  const [formData, setFormData] = useState({
+    fullName: "",
+    purpose: "",
+    date: "",
+    time: "",
+    reason: "",
   });
 
-  const [geoError, setGeoError] = useState(null);
+  const [availableDates, setAvailableDates] = useState([]);
+  const [unavailableDates, setUnavailableDates] = useState([]);
+  const [dateVolumeLimits, setDateVolumeLimits] = useState({});
+  const [bookingsPerDate, setBookingsPerDate] = useState({});
+  const [loading, setLoading] = useState(true);
+  const [selectedDateBookings, setSelectedDateBookings] = useState(0);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [currentMonth, setCurrentMonth] = useState(new Date());
 
-  // Automatically track GPS location on initialization
+  // Fetch availability data
   useEffect(() => {
-    if (navigator.geolocation) {
-      navigator.geolocation.getCurrentPosition(
-        (position) => {
-          setReport((prev) => ({
-            ...prev,
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
-          }));
-        },
-        (error) => {
-          console.error("Error fetching GPS location:", error);
-          setGeoError("GPS location unavailable.");
-        },
-        { enableHighAccuracy: true, timeout: 10000 }
-      );
-    } else {
-      setGeoError("Geolocation not supported.");
-    }
+    const fetchAvailabilityData = async () => {
+      try {
+        setLoading(true);
+        setError("");
+
+        // Fetch all appointments
+        const { data: appointments, error: appointmentError } = await supabase
+          .from("appointments")
+          .select("date");
+
+        if (appointmentError) throw appointmentError;
+
+        // Fetch date restrictions
+        const { data: restrictions, error: restrictionError } = await supabase
+          .from("date_restrictions")
+          .select("date, is_unavailable, volume_limit");
+
+        if (restrictionError && restrictionError.code !== "PGRST116") {
+          throw restrictionError;
+        }
+
+        // Count bookings per date
+        const bookingCounts = {};
+        appointments?.forEach((apt) => {
+          bookingCounts[apt.date] = (bookingCounts[apt.date] || 0) + 1;
+        });
+
+        // Process restrictions - collect everything first
+        const unavailable = [];
+        const limits = {};
+        restrictions?.forEach((restriction) => {
+          if (restriction.is_unavailable) {
+            unavailable.push(restriction.date);
+          }
+          if (restriction.volume_limit) {
+            limits[restriction.date] = restriction.volume_limit;
+          }
+        });
+
+        // Calculate available dates (next 90 days) using local variables, not state
+        // FIXED: Removed weekend skip — now ALL dates are considered
+        // The admin can mark specific weekends as unavailable via date_restrictions
+        const available = [];
+        const today = new Date();
+        today.setHours(0, 0, 0, 0);
+
+        for (let i = 1; i <= 90; i++) {
+          const checkDate = new Date(today);
+          checkDate.setDate(checkDate.getDate() + i);
+
+          const dateString = checkDate.toISOString().split("T")[0];
+
+          // Check if date is marked as unavailable (using local variable)
+          if (unavailable.includes(dateString)) continue;
+
+          // Check if date has reached volume limit
+          const bookingCount = bookingCounts[dateString] || 0;
+          const limit = limits[dateString];
+          if (limit && bookingCount >= limit) continue;
+
+          available.push(dateString);
+        }
+
+        // Set all state at once after calculations are done
+        setUnavailableDates(unavailable);
+        setDateVolumeLimits(limits);
+        setBookingsPerDate(bookingCounts);
+        setAvailableDates(available);
+      } catch (err) {
+        console.error("Error fetching availability:", err);
+        setError("Failed to load available dates. Please try again later.");
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchAvailabilityData();
   }, []);
 
   function handleChange(event) {
-    const { name, value, type, files } = event.target;
+    const { name, value } = event.target;
+    setFormData((prev) => ({
+      ...prev,
+      [name]: value,
+    }));
 
-    if (type === "file") {
-      // Accept up to 4 files maximum
-      const selectedFiles = Array.from(files).slice(0, 4);
-      setReport((prevFormData) => ({
-        ...prevFormData,
-        hazardPhotos: selectedFiles,
-      }));
-    } else {
-      setReport((prevFormData) => ({
-        ...prevFormData,
-        [name]: value,
-      }));
+    if (name === "date") {
+      setSelectedDateBookings(bookingsPerDate[value] || 0);
     }
   }
 
-  async function createHazardReport(event) {
-    event.preventDefault();
-
-    // Restrict proof to 2-4 pictures
-    if (report.hazardPhotos.length < 2) {
-      alert("Please upload at least 2-4 proof pictures.");
+  const handleDateSelect = (date) => {
+    if (!availableDates.includes(date)) {
       return;
     }
+    setFormData((prev) => ({
+      ...prev,
+      date: date,
+    }));
+    setSelectedDateBookings(bookingsPerDate[date] || 0);
+  };
+
+  async function createAppointment(event) {
+    event.preventDefault();
 
     try {
-      const uploadedFilePaths = [];
-      
-      // Upload each file to the Supabase Storage Bucket
-      for (const file of report.hazardPhotos) {
-        const fileExt = file.name.split('.').pop();
-        const fileName = `${Math.random()}_${Date.now()}.${fileExt}`;
-        const filePath = `hazard-proofs/${fileName}`;
+      setError("");
+      setSuccess("");
 
-        const { error: uploadError } = await supabase.storage
-          .from("hazard-media") 
-          .upload(filePath, file);
-
-        if (uploadError) throw uploadError;
-        uploadedFilePaths.push(filePath);
+      if (!availableDates.includes(formData.date)) {
+        setError("This date is no longer available. Please select another date.");
+        return;
       }
 
-      // Insert record to DB table with 'pending' status for admin approval
-      const { data, error } = await supabase
-        .from("hazard_reports")
+      const bookingCount = bookingsPerDate[formData.date] || 0;
+      const limit = dateVolumeLimits[formData.date];
+      if (limit && bookingCount >= limit) {
+        setError("This date has reached maximum capacity.");
+        return;
+      }
+
+      const { error } = await supabase
+        .from("appointments")
         .insert([
           {
-            reporter_name: report.reporterName,
-            department: report.department,
-            address: report.address,
-            landmark: report.landMark,
-            reporter_contact: report.reporterContact,
-            date_observed: report.dateObserved,
-            time_observed: report.timeObserved,
-            hazard_category: report.hazardCategory,
-            risk_level: report.riskLevel,
-            hazard_photos: uploadedFilePaths, // Stores array of file paths
-            hazard_description: report.hazardDescription,
-            recommended_action: report.recommendedAction,
-            latitude: report.latitude,
-            longitude: report.longitude,
-            status: 'pending', // Awaiting admin intervention
+            fullName: formData.fullName,
+            purpose: formData.purpose,
+            date: formData.date,
+            time: formData.time,
+            reason: formData.reason,
           },
         ]);
 
       if (error) throw error;
 
-      console.log("Hazard reported successfully:", data);
-      alert("Hazard reported successfully! Pending Admin Approval.");
+      setSuccess("Appointment scheduled successfully! Please wait for admin confirmation.");
+      setFormData({ fullName: "", purpose: "", date: "", time: "", reason: "" });
 
-      // Clear form
-      setReport({
-        reporterName: "",
-        department: "",
-        address: "",
-        landMark: "",
-        reporterContact: "",
-        dateObserved: "",
-        timeObserved: "",
-        hazardCategory: "",
-        riskLevel: "",
-        hazardPhotos: [],
-        hazardDescription: "",
-        recommendedAction: "",
-        latitude: report.latitude,
-        longitude: report.longitude,
-      });
-
+      setTimeout(() => {
+        setSuccess("");
+        window.location.reload();
+      }, 3000);
     } catch (err) {
-      console.error("Insert error:", err);
-      alert("Failed to submit report.");
+      console.error("Error creating appointment:", err.message);
+      setError(err.message || "Failed to schedule appointment.");
     }
   }
 
+  // Calendar helper functions
+  const getDaysInMonth = (date) => {
+    return new Date(date.getFullYear(), date.getMonth() + 1, 0).getDate();
+  };
+
+  const getFirstDayOfMonth = (date) => {
+    return new Date(date.getFullYear(), date.getMonth(), 1).getDay();
+  };
+
+  const previousMonth = () => {
+    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() - 1));
+  };
+
+  const nextMonth = () => {
+    setCurrentMonth(new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1));
+  };
+
+  const isDateAvailable = (day) => {
+    const dateString = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    return availableDates.includes(dateString);
+  };
+
+  const isDateUnavailable = (day) => {
+    const dateString = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    return unavailableDates.includes(dateString);
+  };
+
+  const isDateSelected = (day) => {
+    const dateString = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    return formData.date === dateString;
+  };
+
+  const isDateInPast = (day) => {
+    const today = new Date();
+    today.setHours(0, 0, 0, 0);
+    const checkDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
+    return checkDate < today;
+  };
+
+  const isDateAtCapacity = (day) => {
+    const dateString = `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+    const bookingCount = bookingsPerDate[dateString] || 0;
+    const limit = dateVolumeLimits[dateString];
+    return limit && bookingCount >= limit;
+  };
+
+  const isWeekend = (day) => {
+    const checkDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
+    return checkDate.getDay() === 0 || checkDate.getDay() === 6;
+  };
+
+  const monthNames = [
+    "January", "February", "March", "April", "May", "June",
+    "July", "August", "September", "October", "November", "December"
+  ];
+
+  const dayNames = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+  const daysInMonth = getDaysInMonth(currentMonth);
+  const firstDayOfMonth = getFirstDayOfMonth(currentMonth);
+  const days = [];
+
+  for (let i = 0; i < firstDayOfMonth; i++) {
+    days.push(null);
+  }
+
+  for (let day = 1; day <= daysInMonth; day++) {
+    days.push(day);
+  }
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-transparent py-10 px-4 flex items-center justify-center">
+        <div className="text-center">
+          <div className="inline-block animate-spin">
+            <CalendarDays className="w-12 h-12 text-blue-600" />
+          </div>
+          <p className="mt-4 text-gray-600 font-semibold">Loading available dates...</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <main className="appointment-page">
-      <form 
-        id="appointment-form" 
-        onSubmit={createHazardReport} 
-        style={{
-          backgroundColor: '#e5e7eb', 
-          borderRadius: '40px', 
-          padding: '50px 160px 20px 40px', 
-          boxShadow: '0 5px 10px gray', 
-          maxWidth: '600px', 
-          margin: '40px auto'
-        }}
+    <div className="min-h-screen bg-gradient-to-b from-blue-50 to-transparent py-10 px-4">
+      <form
+        onSubmit={createAppointment}
+        className="max-w-5xl mx-auto bg-white p-8 md:p-10 rounded-3xl shadow-xl border border-gray-200"
       >
-        <div className="appointment-form-card">
-          <div className="icon-circle">
-            <img 
-              src="https://cdn-icons-png.flaticon.com/128/4151/4151111.png" 
-              loading="lazy" 
-              alt="Hazard Report" 
-              title="Hazard Report" 
-              width="64" 
-              height="64" 
-            />
-          </div>
-          <h2>Hazard & Risk Report</h2>
-          <p className="subtitle">
-            Please provide details below. All fields marked <span id="required">*</span> are required for immediate assessment.
-          </p>
-
-          <label>Reporter Name:</label>
-          <input 
-            id="appointment-input" 
-            name="reporterName" 
-            type="text" 
-            placeholder="Enter your name" 
-            value={report.reporterName}
-            onChange={handleChange}
-          />
-
-          <label>Location / Address:<span id="required">*</span></label>
-          <input 
-            id="appointment-input" 
-            name="address" 
-            type="text" 
-            placeholder="Enter physical address" 
-            value={report.address}
-            onChange={handleChange}
-            required
-          />
-
-          <label>Landmark:<span id="required">*</span></label>
-          <input 
-            id="appointment-input" 
-            name="landMark" 
-            type="text" 
-            placeholder="e.g., Near the main gate, 2nd floor lobby" 
-            value={report.landMark}
-            onChange={handleChange}
-            required
-          />
-
-          <div className="appointmentt-row">
-            <div>
-              <label>Date Observed:<span id="required">*</span></label>
-              <input 
-                id="appointment-input" 
-                name="dateObserved" 
-                type="date" 
-                value={report.dateObserved}
-                onChange={handleChange}
-                required
-              />
-            </div>
-
-            <div>
-              <label>Time Observed:<span id="required">*</span></label>
-              <input 
-                id="appointment-input" 
-                name="timeObserved" 
-                type="time" 
-                value={report.timeObserved}
-                onChange={handleChange}
-                required
-              />
-            </div>
-          </div>
-
-          <div className="appointmentt-row">
-            <div>
-              <label>Hazard Category:<span id="required">*</span></label>
-              <select
-                id="appointment-input"
-                name="hazardCategory"
-                value={report.hazardCategory}
-                onChange={handleChange}
-                style={{ width: '100%', height: '42px', borderRadius: '5px', border: '1px solid #ccc', padding: '5px' }}
-                required
-              >
-                <option value="">Select Category</option>
-                <option value="Physical">Physical (Trip/Slip)</option>
-                <option value="Chemical">Chemical/Biological</option>
-                <option value="Electrical">Electrical</option>
-                <option value="Natural Disaster">Natural Disaster</option>
-                <option value="Procedural">Procedural/Safety Practice</option>
-              </select>
-            </div>
-
-            <div>
-              <label>Priority Level:<span id="required">*</span></label>
-              <select
-                id="appointment-input"
-                name="riskLevel"
-                value={report.riskLevel}
-                onChange={handleChange}
-                style={{ width: '100%', height: '42px', borderRadius: '5px', border: '1px solid #ccc', padding: '5px' }}
-                required
-              >
-                <option value="">Assess Risk</option>
-                <option value="Low">Low</option>
-                <option value="Medium">Medium</option>
-                <option value="High">High</option>
-                <option value="Critical">Critical</option>
-              </select>
-            </div>
-          </div>
-
-          <label>Hazard Description:<span id="required">*</span></label>
-          <textarea 
-            placeholder="Describe the hazard and potential danger..." 
-            name="hazardDescription"
-            value={report.hazardDescription}
-            onChange={handleChange}
-            required
-          ></textarea>
-
-          {/* Picture Proof Upload Block matching your structure elements */}
-          <label>Photo Evidence (Upload 2-4 pictures):<span id="required">*</span></label>
-          <div className="upload-box" style={{ position: 'relative', border: '2px dashed #aaa', padding: '15px', textAlign: 'center', backgroundColor: '#f9f9f9', borderRadius: '8px', cursor: 'pointer', marginBottom: '15px' }}>
-            <img src={reportImg} alt="photo-icon" style={{ marginRight: '8px', verticalAlign: 'middle' }} /> 
-            <span style={{ fontSize: '14px', color: '#555' }}>
-              {report.hazardPhotos.length > 0 
-                ? `${report.hazardPhotos.length} files selected` 
-                : "Attach Proof Images"}
-            </span>
-            <input
-              type="file"
-              name="hazardPhotos"
-              accept="image/png, image/jpeg"
-              multiple
-              onChange={handleChange}
-              style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', opacity: 0, cursor: 'pointer' }}
-            />
-          </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           
-          {report.hazardPhotos.length > 0 && (
-            <div style={{ fontSize: '12px', color: '#555', margin: '-10px 0 15px 5px' }}>
-              Files: {report.hazardPhotos.map(f => f.name).join(', ')}
+          {/* Left Column - Form Fields */}
+          <div className="flex flex-col gap-6">
+            <div>
+              <h1 className="text-3xl font-bold text-gray-800 flex items-center gap-3">
+                <CalendarDays className="w-8 h-8 text-blue-600" />
+                Schedule Appointment
+              </h1>
+              <p className="text-gray-500 mt-2 text-sm">
+                Please provide details below. All fields marked{" "}
+                <span className="text-red-500">*</span> are required.
+              </p>
             </div>
-          )}
 
-          {/* Coordinates tracking feedback indicator */}
-          <div style={{ fontSize: '13px', fontWeight: '500', margin: '5px 0 15px 5px' }}>
-            {report.latitude && report.longitude ? (
-              <span style={{ color: 'green' }}>✓ GPS Coordinates captured successfully.</span>
-            ) : geoError ? (
-              <span style={{ color: 'red' }}>⚠ Location Error: {geoError}</span>
-            ) : (
-              <span style={{ color: 'orange' }}>⌛ Fetching active device location...</span>
+            {/* Error Message */}
+            {error && (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-4 flex gap-3">
+                <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                <p className="text-red-700 text-sm font-medium">{error}</p>
+              </div>
             )}
+
+            {/* Success Message */}
+            {success && (
+              <div className="bg-green-50 border border-green-200 rounded-xl p-4 flex gap-3">
+                <CalendarDays className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                <p className="text-green-700 text-sm font-medium">{success}</p>
+              </div>
+            )}
+
+            {/* Full Name */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-semibold text-gray-700">
+                Full Name<span className="text-red-500">*</span>
+              </label>
+              <input
+                name="fullName"
+                type="text"
+                value={formData.fullName}
+                onChange={handleChange}
+                placeholder="Enter Full Name"
+                className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition"
+                required
+              />
+            </div>
+
+            {/* Purpose */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-semibold text-gray-700">
+                Purpose<span className="text-red-500">*</span>
+              </label>
+              <input
+                name="purpose"
+                type="text"
+                value={formData.purpose}
+                onChange={handleChange}
+                placeholder="What is the purpose of your visit?"
+                className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition"
+                required
+              />
+            </div>
+
+            {/* Time */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-semibold text-gray-700">
+                Time<span className="text-red-500">*</span>
+              </label>
+              <input
+                name="time"
+                type="time"
+                value={formData.time}
+                onChange={handleChange}
+                className="w-full p-3 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-500 transition disabled:bg-gray-100 disabled:cursor-not-allowed"
+                disabled={!formData.date}
+                required
+              />
+              {!formData.date && (
+                <p className="text-xs text-gray-500">Select a date first</p>
+              )}
+            </div>
+
+            {/* Booking Status */}
+            {formData.date && availableDates.includes(formData.date) && (
+              <div className="bg-green-50 border border-green-200 rounded-xl p-3 text-sm text-green-700">
+                <span className="font-semibold">✓ Selected Date:</span> {formData.date}
+                <br />
+                <span className="font-semibold">Current Bookings:</span> {selectedDateBookings}
+                {dateVolumeLimits[formData.date] && (
+                  <span> / {dateVolumeLimits[formData.date]}</span>
+                )}
+              </div>
+            )}
+
+            {/* Reason Textarea */}
+            <div className="flex flex-col gap-1.5">
+              <label className="text-sm font-semibold text-gray-700">
+                Reason / Additional Notes
+              </label>
+              <textarea
+                name="reason"
+                value={formData.reason}
+                onChange={handleChange}
+                placeholder="Provide brief details..."
+                className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 outline-none transition h-24"
+              />
+            </div>
+
+            <button
+              type="submit"
+              disabled={availableDates.length === 0 || !formData.date || !availableDates.includes(formData.date) || !formData.fullName || !formData.purpose || !formData.time}
+              className="w-full mt-4 bg-blue-600 text-white font-bold py-4 rounded-2xl hover:bg-blue-700 transition shadow-lg disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+            >
+              <CalendarDays className="w-5 h-5" />
+              Confirm Appointment
+            </button>
           </div>
 
-          <div className="terms" style={{ display: 'flex', alignItems: 'flex-start', gap: '8px', marginBottom: '15px' }}>
-            <input type="checkbox" required style={{ marginTop: '4px' }} />
-            <p style={{ margin: 0, fontSize: '13px', color: '#333' }}>
-              I agree to the <Link to="#">Terms & Conditions</Link> and understand that my 
-              current coordinates <b>({report.latitude || "0.00"}, {report.longitude || "0.00"})</b> will be cataloged to verify this report site.
-            </p>
+          {/* Right Column - Calendar */}
+          <div className="flex flex-col gap-6">
+            <div className="bg-gradient-to-br from-blue-50 to-indigo-50 p-6 rounded-2xl border border-blue-200">
+              <h2 className="text-lg font-bold text-gray-800 mb-2 flex items-center gap-2">
+                <CalendarDays className="w-5 h-5 text-blue-600" />
+                Select a Date
+              </h2>
+              <p className="text-gray-600 text-sm mb-4">
+                Choose an available date for your appointment.
+              </p>
+
+              {/* Availability Legend */}
+              <div className="grid grid-cols-2 gap-2 mb-6 p-3 bg-white rounded-lg border border-gray-200">
+                <div className="flex items-center gap-2 text-xs">
+                  <div className="w-4 h-4 bg-green-400 rounded"></div>
+                  <span className="text-gray-700 font-medium">Available</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs">
+                  <div className="w-4 h-4 bg-red-400 rounded"></div>
+                  <span className="text-gray-700 font-medium">Unavailable</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs">
+                  <div className="w-4 h-4 bg-yellow-400 rounded"></div>
+                  <span className="text-gray-700 font-medium">At Capacity</span>
+                </div>
+                <div className="flex items-center gap-2 text-xs">
+                  <div className="w-4 h-4 bg-blue-600 rounded"></div>
+                  <span className="text-gray-700 font-medium">Selected</span>
+                </div>
+              </div>
+
+              {/* Calendar Navigation */}
+              <div className="flex items-center justify-between mb-4">
+                <button
+                  onClick={previousMonth}
+                  type="button"
+                  className="p-2 hover:bg-gray-200 rounded-lg transition"
+                >
+                  <ChevronLeft className="w-5 h-5 text-gray-700" />
+                </button>
+                <h3 className="text-xl font-bold text-gray-800">
+                  {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
+                </h3>
+                <button
+                  onClick={nextMonth}
+                  type="button"
+                  className="p-2 hover:bg-gray-200 rounded-lg transition"
+                >
+                  <ChevronRight className="w-5 h-5 text-gray-700" />
+                </button>
+              </div>
+
+              {/* Calendar Grid */}
+              <div className="bg-white rounded-xl p-4 border border-gray-200">
+                {/* Day names */}
+                <div className="grid grid-cols-7 gap-2 mb-2">
+                  {dayNames.map((day) => (
+                    <div
+                      key={day}
+                      className="text-center text-xs font-bold text-gray-600 py-2"
+                    >
+                      {day}
+                    </div>
+                  ))}
+                </div>
+
+                {/* Days grid */}
+                <div className="grid grid-cols-7 gap-2">
+                  {days.map((day, idx) => {
+                    if (day === null) {
+                      return <div key={`empty-${idx}`} className="aspect-square"></div>;
+                    }
+
+                    const isAvailable = isDateAvailable(day);
+                    const isUnavailable = isDateUnavailable(day);
+                    const isSelected = isDateSelected(day);
+                    const inPast = isDateInPast(day);
+                    const atCapacity = isDateAtCapacity(day);
+                    const weekend = isWeekend(day);
+
+                    let bgColor = "bg-gray-100 text-gray-400";
+                    let cursor = "cursor-not-allowed";
+
+                    if (inPast) {
+                      bgColor = "bg-gray-200 text-gray-400 cursor-not-allowed";
+                      cursor = "cursor-not-allowed";
+                    } else if (isUnavailable) {
+                      bgColor = "bg-red-500 text-white font-bold cursor-not-allowed";
+                      cursor = "cursor-not-allowed";
+                    } else if (atCapacity) {
+                      bgColor = "bg-yellow-400 text-gray-800 font-bold cursor-not-allowed";
+                      cursor = "cursor-not-allowed";
+                    } else if (isSelected) {
+                      bgColor = "bg-blue-600 text-white font-bold shadow-lg cursor-pointer";
+                      cursor = "cursor-pointer";
+                    } else if (isAvailable) {
+                      bgColor = "bg-green-400 text-white font-bold hover:bg-green-500 cursor-pointer transition";
+                      cursor = "cursor-pointer";
+                    }
+
+                    return (
+                      <button
+                        key={day}
+                        onClick={() => {
+                          if (isAvailable && !inPast && !isUnavailable && !atCapacity) {
+                            handleDateSelect(
+                              `${currentMonth.getFullYear()}-${String(currentMonth.getMonth() + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`
+                            );
+                          }
+                        }}
+                        disabled={!isAvailable || inPast || isUnavailable || atCapacity}
+                        type="button"
+                        className={`aspect-square rounded-lg flex items-center justify-center text-sm font-semibold ${bgColor} ${cursor}`}
+                        title={
+                          inPast
+                            ? "Past date"
+                            : isUnavailable
+                            ? "Date unavailable"
+                            : atCapacity
+                            ? "Date at full capacity"
+                            : weekend
+                            ? "Weekend — available if enabled by admin"
+                            : "Available"
+                        }
+                      >
+                        {day}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Info Box */}
+              {availableDates.length === 0 ? (
+                <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-lg p-3 flex gap-2">
+                  <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
+                  <p className="text-yellow-700 text-sm font-medium">
+                    No available dates at the moment. Please check back later.
+                  </p>
+                </div>
+              ) : (
+                <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-3 flex gap-2">
+                  <CalendarDays className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
+                  <p className="text-blue-700 text-sm font-medium">
+                    {availableDates.length} dates available in the next 90 days.
+                  </p>
+                </div>
+              )}
+            </div>
           </div>
 
-          <button id="appointment-submit" type="submit">Submit Hazard Report</button>
         </div>
       </form>
-    </main>
+    </div>
   );
 };
 
-export default HazardReport;
+export default AppointmentForm;

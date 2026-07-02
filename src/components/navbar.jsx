@@ -1,46 +1,73 @@
-import React, { useState } from 'react'; // 1. Import useState
-import { Link } from 'react-router-dom';
+import React, { useState } from 'react';
+import { Link, useNavigate } from 'react-router-dom';
 import imgLogo from '../Images/icon.png';
-import profile from '../Images/profile.png';
+import { supabase } from '../createClient';
+import { BellIcon, User2Icon } from 'lucide-react';
 
 export default function Navbar() {
-  // 2. State to handle menu visibility
   const [isOpen, setIsOpen] = useState(false);
+  const navigate = useNavigate();
 
-  const toggleMenu = () => {
-    setIsOpen(!isOpen);
+  const handleLogout = async () => {
+    await supabase.auth.signOut();
+    localStorage.clear();
+    navigate('/');
   };
 
+  const NavLink = ({ to, children, onClick }) => (
+    <Link 
+      to={to} 
+      onClick={onClick}
+      className="group relative inline-block py-2 px-1 text-center font-semibold uppercase text-[#262626] transition-colors text-nowrap "
+    >
+      <span className="relative z-10 transition-colors duration-300 group-hover:text-white ">
+        {children}
+      </span>
+      <span className="absolute inset-0 border-y-2 border-[#262626] opacity-0 transition-all duration-300 scale-y-[2] group-hover:scale-y-100 group-hover:opacity-100" />
+      <span className="absolute top-[2px] left-0 h-full w-full origin-top scale-0 bg-[#262626] opacity-0 transition-all duration-300 group-hover:scale-100 group-hover:opacity-100" />
+    </Link>
+  );
+
   return (
-    <header className="navbar-container">
-      <div className="top-row">        
-        {/* 3. Hamburger Toggle Button (Visible only on mobile) */}
-        <button className="hamburger" onClick={toggleMenu}>
+    <header className="bg-white absolute inset-x-0 top-0 z-5000 w-full p-6 border-b-1 border-gray-500">
+      <div className="flex items-center justify-between">
+        <Link to="/home" className="z-50">
+          <img src={imgLogo} alt="logo" className="h-10 w-auto" />
+        </Link>
+
+        <button 
+          className="lg:hidden z-50 text-2xl font-bold" 
+          onClick={() => setIsOpen(!isOpen)}
+        >
           {isOpen ? '✖' : '☰'}
         </button>
-        <div className="logo"> 
-          <Link to="/home"><img id="logo" src={imgLogo} alt="logo" /></Link>
+
+        <nav className={`${isOpen ? 'flex' : 'hidden'} lg:flex flex-col lg:flex-row absolute lg:static top-full left-0 w-full lg:w-auto bg-white/95 lg:bg-transparent p-6 lg:p-0 gap-2 items-center`}>
+          <NavLink to="/hazard-report" onClick={() => setIsOpen(false)}>Hazard Report</NavLink>
+          <NavLink to="/report" onClick={() => setIsOpen(false)}>Report Incident</NavLink>
+          <NavLink to="/borrow" onClick={() => setIsOpen(false)}>Borrow Vehicle</NavLink>
+          <NavLink to="/appointment" onClick={() => setIsOpen(false)}>Book an Appointment</NavLink>
+          <NavLink to="/track" onClick={() => setIsOpen(false)}>Track Appointment/s</NavLink>
+          <NavLink to="/checkup" onClick={() => setIsOpen(false)}>Out Patient Check-up</NavLink>
+          <NavLink to="/about" onClick={() => setIsOpen(false)}>About</NavLink>
+          <NavLink to="/settings" onClick={() => setIsOpen(false)}>Settings</NavLink>
+          
+         <Link 
+      to="/"
+      className="group relative inline-block py-2 px-4 text-center font-semibold uppercase text-[#262626] transition-colors "
+    >
+      <span className="text-nowrap relative z-10 transition-colors duration-300 group-hover:text-white">
+        Log out
+      </span>
+      <span className="absolute inset-0 border-y-2 border-[#262626] opacity-0 transition-all duration-300 scale-y-[2] group-hover:scale-y-100 group-hover:opacity-100" />
+      <span className="absolute top-[2px] left-0 h-full w-full origin-top scale-0 bg-[#262626] opacity-0 transition-all duration-300 group-hover:scale-100 group-hover:opacity-100" />
+    </Link>
+        </nav>
+
+        <div className="hidden lg:flex items-center gap-4">
+          <Link to="/profile"><User2Icon className=' hover:bg-red-100 '/></Link>
+          <Link to="/notification"><BellIcon/></Link>
         </div>
-
-
-      <nav className={`links-row ${isOpen ? 'active' : ''}`}>
-        <Link id='navbar-a' to="/home" onClick={() => setIsOpen(false)}>Home</Link>
-        <Link id='navbar-a' to="/hazard-report" onClick={() => setIsOpen(false)}>Hazard Report</Link>
-        <Link id='navbar-a' to="/report" onClick={() => setIsOpen(false)}>Report Incident</Link>
-        <Link id='navbar-a' to="/borrow" onClick={() => setIsOpen(false)}>Borrow Vehicle</Link>
-        <Link id='navbar-a' to="/appointment" onClick={() => setIsOpen(false)}>Book an Appointment</Link>
-        <Link id='navbar-a' to="/track" onClick={() => setIsOpen(false)}>Track Appointment/s</Link>
-        <Link id='navbar-a' to="/checkup" onClick={() => setIsOpen(false)}>Out Patient Check-up</Link>
-        <Link id='navbar-a' to="/about" onClick={() => setIsOpen(false)}>About</Link>
-        <Link id='navbar-a' to="/settings" onClick={() => setIsOpen(false)}>Settings</Link>
-      </nav>  
-        <div className="notif">
-          <Link id='navbar-a' to="/" className="logout-btn" style={{textWrap:'nowrap'}}>Log out</Link>
-          <Link id='navbar-a' to="/profile" className="profile"><img src="https://cdn-icons-png.flaticon.com/128/3033/3033143.png" loading="lazy" alt="Account " title="Account " width="35" height="35" /></Link>
-          <Link id='navbar-a' to="/notification" className="notification"><img src="   https://cdn-icons-png.flaticon.com/512/3602/3602123.png " width="35" height="35" alt="" title=""  /></Link>
-      
-
-      </div>
       </div>
     </header>
   );
