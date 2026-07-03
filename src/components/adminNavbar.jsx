@@ -29,7 +29,7 @@ export default function AdminNavbar() {
   );
 
   return (
-    <header className="absolute inset-x-0 top-0 z-5000 bg-white  w-full p-6">
+    <header className="absolute inset-x-0 top-0 z-5000 bg-white w-full p-6">
       <div className="flex items-center justify-between">
         {/* Logo */}
         <Link to="/admin/dashboard" className="z-50">
@@ -55,26 +55,29 @@ export default function AdminNavbar() {
           <NavLink to="/admin/checkup" onClick={() => setIsOpen(false)}>Out Patient Check-ups</NavLink>
           <NavLink to="/admin/settings" onClick={() => setIsOpen(false)}>Settings</NavLink>
           
-          <button onClick={handleLogout} className="lg:hidden py-2 px-4 text-lg font-semibold uppercase text-red-600">
+          {/* Mobile logout button */}
+          <button 
+            onClick={handleLogout}
+            className="lg:hidden py-2 px-4 text-lg font-semibold uppercase text-red-600"
+          >
             Log out
           </button>
         </nav>
 
-         <Link 
-      to="/"
-      className="group relative inline-block py-2 px-4 text-center font-semibold uppercase text-[#262626] transition-colors "
-    >
-      <span className="text-nowrap relative z-10 transition-colors duration-300 group-hover:text-white">
-        Log out
-      </span>
-      <span className="absolute inset-0 border-y-2 border-[#262626] opacity-0 transition-all duration-300 scale-y-[2] group-hover:scale-y-100 group-hover:opacity-100" />
-      <span className="absolute top-[2px] left-0 h-full w-full origin-top scale-0 bg-[#262626] opacity-0 transition-all duration-300 group-hover:scale-100 group-hover:opacity-100" />
-    </Link>
-        
-
+        {/* Desktop logout + icons */}
         <div className="hidden lg:flex items-center gap-4">
-          <Link to="/profile"><User2Icon className=' hover:bg-red-100 '/></Link>
-          <Link to="/notification"><BellIcon/></Link>
+          <button
+            onClick={handleLogout}
+            className="group relative inline-block py-2 px-4 text-center font-semibold uppercase text-[#262626] transition-colors"
+          >
+            <span className="text-nowrap relative z-10 transition-colors duration-300 group-hover:text-white">
+              Log out
+            </span>
+            <span className="absolute inset-0 border-y-2 border-[#262626] opacity-0 transition-all duration-300 scale-y-[2] group-hover:scale-y-100 group-hover:opacity-100" />
+            <span className="absolute top-[2px] left-0 h-full w-full origin-top scale-0 bg-[#262626] opacity-0 transition-all duration-300 group-hover:scale-100 group-hover:opacity-100" />
+          </button>
+          <Link to="/profile"><User2Icon className="hover:bg-red-100" /></Link>
+          <Link to="/notification"><BellIcon /></Link>
         </div>
       </div>
     </header>

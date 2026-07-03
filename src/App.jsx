@@ -27,75 +27,124 @@ import AdminHazardMap from './pages/AdminHazardMap'
 import GuestNavbar from './components/GuestNavbar'
 import Guest from './pages/Guest'
 import MonthlyIncidentTrends from './pages/MonthlyIncidentTrends'
-import Profile from './pages/Profile'; // Add this import at the top
-import AuthCallback from './pages/AuthCallback';
-import CreateUserForOauth from './components/CreateUserForOauth';
-// Then add this route inside the <Routes> block:
+import Profile from './pages/Profile'
+import AuthCallback from './pages/AuthCallback'
+import CreateUserForOauth from './components/CreateUserForOauth'
+import ProtectedRoute from './components/ProtectedRoute'
+import AdminLoginRedirect from './components/AdminLoginRedirect'
+
 function App() {
- const location = useLocation();
+  const location = useLocation();
   const path = location.pathname;
 
   // --- EASY NAVBAR LOGIC ---
   let currentNavbar;
-
-  if ( path === '/admin' || path === '/admin/register-admin' || path === '/register' || path === '/login' || path === '/login/' || path === '/auth/callback' || path === '/admin/') {
+  if (
+    path === '/admin' ||
+    path === '/admin/' ||
+    path === '/admin/register-admin' ||
+    path === '/register' ||
+    path === '/login' ||
+    path === '/login/' ||
+    path === '/auth/callback'
+  ) {
     currentNavbar = null;
   } else if (path.includes('/admin/')) {
     currentNavbar = <AdminNavbar />;
-  }else if(path.includes('/guest/') || path === '/' || path === '/auth/callback'){
+  } else if (path.includes('/guest/') || path === '/' || path === '/auth/callback') {
     currentNavbar = <GuestNavbar />
-  }
-   else {
-    // 3. For everything else (Home, About, etc.), show the User Navbar
+  } else {
     currentNavbar = <Navbar />;
   }
-  return (
-    <div className="app" style={{backgroundImage:`url(${background})`, repeat:'no-repeat', backgroundSize:'cover', minHeight:'100vh', maxHeight:'100vh', overflowY:'auto', scrollbarWidth:'none' }}>
-{currentNavbar}
-  
-      
 
-      <div className="content p-30"  >
+  return (
+    <div className="app" style={{ backgroundImage: `url(${background})`, repeat: 'no-repeat', backgroundSize: 'cover', minHeight: '100vh', maxHeight: '100vh', overflowY: 'auto', scrollbarWidth: 'none' }}>
+      {currentNavbar}
+      <div className="content p-30">
         <Routes>
+          {/* ===== PUBLIC ROUTES (no protection needed) ===== */}
+          <Route path="/" element={<Guest />} />
+          <Route path="/login" element={<LoginPage />} />
+          <Route path="/register" element={<CreateUser />} />
           <Route path="/register/oauth" element={<CreateUserForOauth />} />
           <Route path="/auth/callback" element={<AuthCallback />} />
+          
+          {/* ===== ADMIN LOGIN ROUTES (exact paths, must be BEFORE /admin/*) ===== */}
+          <Route path="/admin" element={<AdminLoginRedirect />} />
+          <Route path="/admin/" element={<AdminLoginRedirect />} />
           <Route path="/admin/register-admin" element={<RegisterAdmin />} />
-          <Route path="/admin" element={<Adminlogin />} />
-          <Route path="/admin/dashboard" element={<Admin />} />
-           <Route path="/admin/hazard-map" element={<AdminHazardMap />} />
-          <Route path="/admin/pending-account" element={<UserApproval />} />
-          <Route path="/admin/report" element={<ReportedIncident />} />
-          <Route path="/admin/borrow" element={<BorrowedVehicles />} />
-          <Route path="/admin/appointment" element={<AdminAppointmentDashboard />} />
-          <Route path="/admin/checkup" element={<CheckUpTable />} />
-          <Route path="/admin/*" element={<Navigate to="/admin/dashboard" />} />
 
+          {/* ===== GUEST ROUTES (no login needed) ===== */}
+          <Route path="/guest/hazardmap" element={<UserHazardmap />} />
+          <Route path="/guest/yearly-incident-trends" element={<MonthlyIncidentTrends />} />
 
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/profile" element={<Profile />} /> 
-          <Route path="/home" element={<Home />} />
-          <Route path="/about" element={<About />} />
-          <Route path="/report" element={<Report />} />
-          <Route path="/hazard-report" element={<HazardReport />} />
-          <Route path="/borrow" element={<Borrow />} />
-          <Route path="/appointment" element={<Appointment />} />
-          <Route path="/checkup" element={<CheckUp />} />
-          <Route path="/hazardmap" element={<UserHazardmap />} />
-          <Route path="/settings" element={<Settings />} />
-          <Route path="/register" element={<CreateUser />} />
-           <Route path="/yearly-incident-trends" element={<MonthlyIncidentTrends />} />
+          {/* ===== PROTECTED USER ROUTES ===== */}
+          <Route path="/home" element={
+            <ProtectedRoute><Home /></ProtectedRoute>
+          } />
+          <Route path="/about" element={
+            <ProtectedRoute><About /></ProtectedRoute>
+          } />
+          <Route path="/report" element={
+            <ProtectedRoute><Report /></ProtectedRoute>
+          } />
+          <Route path="/hazard-report" element={
+            <ProtectedRoute><HazardReport /></ProtectedRoute>
+          } />
+          <Route path="/borrow" element={
+            <ProtectedRoute><Borrow /></ProtectedRoute>
+          } />
+          <Route path="/appointment" element={
+            <ProtectedRoute><Appointment /></ProtectedRoute>
+          } />
+          <Route path="/checkup" element={
+            <ProtectedRoute><CheckUp /></ProtectedRoute>
+          } />
+          <Route path="/hazardmap" element={
+            <ProtectedRoute><UserHazardmap /></ProtectedRoute>
+          } />
+          <Route path="/settings" element={
+            <ProtectedRoute><Settings /></ProtectedRoute>
+          } />
+          <Route path="/profile" element={
+            <ProtectedRoute><Profile /></ProtectedRoute>
+          } />
+          <Route path="/yearly-incident-trends" element={
+            <ProtectedRoute><MonthlyIncidentTrends /></ProtectedRoute>
+          } />
+
+          {/* ===== PROTECTED ADMIN ROUTES ===== */}
+          <Route path="/admin/dashboard" element={
+            <ProtectedRoute adminOnly={true}><Admin /></ProtectedRoute>
+          } />
+          <Route path="/admin/hazard-map" element={
+            <ProtectedRoute adminOnly={true}><AdminHazardMap /></ProtectedRoute>
+          } />
+          <Route path="/admin/pending-account" element={
+            <ProtectedRoute adminOnly={true}><UserApproval /></ProtectedRoute>
+          } />
+          <Route path="/admin/report" element={
+            <ProtectedRoute adminOnly={true}><ReportedIncident /></ProtectedRoute>
+          } />
+          <Route path="/admin/borrow" element={
+            <ProtectedRoute adminOnly={true}><BorrowedVehicles /></ProtectedRoute>
+          } />
+          <Route path="/admin/appointment" element={
+            <ProtectedRoute adminOnly={true}><AdminAppointmentDashboard /></ProtectedRoute>
+          } />
+          <Route path="/admin/checkup" element={
+            <ProtectedRoute adminOnly={true}><CheckUpTable /></ProtectedRoute>
+          } />
+          
+          {/* ===== ADMIN CATCH-ALL (must be LAST after all /admin/* exact routes) ===== */}
+          <Route path="/admin/*" element={<Navigate to="/admin" />} />
+
+          {/* ===== CATCH-ALL FOR EVERYTHING ELSE ===== */}
           <Route path="*" element={<Navigate to="/" />} />
-
-           <Route path="/guest/hazardmap" element={<UserHazardmap />} />
-            <Route path="/guest/yearly-incident-trends" element={<MonthlyIncidentTrends   />} />
-          <Route path="/" element={<Guest />} />
-
-          
-          
         </Routes>
       </div>
     </div>
   )
 }
 
-export default App;
+export default App

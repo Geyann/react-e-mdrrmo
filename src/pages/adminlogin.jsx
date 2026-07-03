@@ -1,85 +1,192 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import imgLogo from '../Images/icon.png';
+import { useState } from 'react';
 import { supabase } from '../createClient';
-import { BellIcon, User2Icon } from 'lucide-react';
+import { useNavigate } from 'react-router-dom'; 
+import imlogo from '../Images/icon.png';
+import { Shield, Mail, Lock, AlertCircle, ArrowLeft, Eye, EyeOff } from 'lucide-react';
 
-export default function AdminNavbar() {
-  const [isOpen, setIsOpen] = useState(false);
+export default function AdminLogin() {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    localStorage.clear();
-    navigate('/admin');
+  const handleAdminSignIn = async (e) => {
+    e.preventDefault();
+    setError('');
+    setLoading(true);
+
+    try {
+      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (authError) {
+        setError(authError.message);
+        return;
+      }
+
+      let adminProfile = null;
+      
+      const { data: adminData, error: adminError } = await supabase
+        .from('admin_users')
+        .select('*')
+        .eq('email', email)
+        .single();
+
+      if (!adminError && adminData) {
+        adminProfile = adminData;
+      }
+
+      if (!adminProfile) {
+        const { data: profileData, error: profileError } = await supabase
+          .from('profiles')
+          .select('*')
+          .eq('id', authData.user.id)
+          .eq('role', 'admin')
+          .single();
+
+        if (!profileError && profileData) {
+          adminProfile = profileData;
+        }
+      }
+
+      if (!adminProfile) {
+        const { data: regData, error: regError } = await supabase
+          .from('pending_registrations')
+          .select('role')
+          .eq('id', authData.user.id)
+          .single();
+
+        if (!regError && regData?.role === 'admin') {
+          adminProfile = regData;
+        }
+      }
+
+      if (adminProfile) {
+        navigate('/admin/dashboard');
+      } else {
+        await supabase.auth.signOut();
+        setError("Access Denied: You are not an authorized administrator.");
+      }
+    } catch (err) {
+      console.error("Admin login error:", err);
+      setError("An unexpected error occurred. Please try again.");
+      await supabase.auth.signOut();
+    } finally {
+      setLoading(false);
+    }
   };
 
-  const NavLink = ({ to, children, onClick }) => (
-    <Link 
-      to={to} 
-      onClick={onClick}
-      className="group relative inline-block py-2 px-1 text-center font-semibold uppercase text-[#262626] transition-colors text-nowrap"
-    >
-      <span className="relative z-10 transition-colors duration-300 group-hover:text-white">
-        {children}
-      </span>
-      <span className="absolute inset-0 border-y-2 border-[#262626] opacity-0 transition-all duration-300 scale-y-[2] group-hover:scale-y-100 group-hover:opacity-100" />
-      <span className="absolute top-[2px] left-0 h-full w-full origin-top scale-0 bg-[#262626] opacity-0 transition-all duration-300 group-hover:scale-100 group-hover:opacity-100" />
-    </Link>
-  );
-
   return (
-    <header className="absolute inset-x-0 top-0 z-5000 bg-white w-full p-6">
-      <div className="flex items-center justify-between">
-        {/* Logo */}
-        <Link to="/admin/dashboard" className="z-50">
-          <img src={imgLogo} alt="logo" className="h-10 w-auto" />
-        </Link>
+    <div className="min-h-screen flex items-center justify-center from-slate-900 via-purple-900 to-slate-900 p-4">
+      <button
+        onClick={() => navigate('/')}
+        className="absolute top-6 left-6 flex items-center gap-2 text-gray-600 hover:text-purple-600 transition font-semibold z-10"
+      >
+        <ArrowLeft className="w-5 h-5" />
+        Back to Home
+      </button>
 
-        {/* Hamburger Toggle */}
-        <button 
-          className="lg:hidden z-50 text-2xl font-bold" 
-          onClick={() => setIsOpen(!isOpen)}
-        >
-          {isOpen ? '✖' : '☰'}
-        </button>
+      <div className="w-full max-w-md">
+        <div className="bg-white rounded-3xl shadow-2xl overflow-hidden">
+          <div className="bg-gradient-to-r from-purple-600 to-blue-600 p-8 text-center">
+            <img src={imlogo} alt="logo" className="w-24 h-24 object-contain mx-auto mb-4 bg-white rounded-full p-2 shadow-lg" />
+            <h2 className="text-2xl font-bold text-white flex items-center justify-center gap-2">
+              <Shield className="w-6 h-6" />
+              Admin Portal
+            </h2>
+            <p className="text-purple-200 text-sm mt-1">Authorized personnel only</p>
+          </div>
 
-        {/* Navigation Links */}
-        <nav className={`${isOpen ? 'flex' : 'hidden'} lg:flex flex-col lg:flex-row absolute lg:static top-full left-0 w-full lg:w-auto bg-white/95 lg:bg-transparent p-6 lg:p-0 gap-2 items-center`}>
-          <NavLink to="/admin/dashboard" onClick={() => setIsOpen(false)}>Dashboard</NavLink>
-          <NavLink to="/admin/hazard-map" onClick={() => setIsOpen(false)}>Hazard Map</NavLink>
-          <NavLink to="/admin/pending-account" onClick={() => setIsOpen(false)}>User Approval</NavLink>
-          <NavLink to="/admin/report" onClick={() => setIsOpen(false)}>Incident Reported</NavLink>
-          <NavLink to="/admin/borrow" onClick={() => setIsOpen(false)}>Borrowed Vehicles</NavLink>
-          <NavLink to="/admin/appointment" onClick={() => setIsOpen(false)}>Appointments</NavLink>
-          <NavLink to="/admin/checkup" onClick={() => setIsOpen(false)}>Out Patient Check-ups</NavLink>
-          <NavLink to="/admin/settings" onClick={() => setIsOpen(false)}>Settings</NavLink>
-        </nav>
+          <div className="p-8">
+            {error && (
+              <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
+                <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                <p className="text-red-700 text-sm font-medium">{error}</p>
+              </div>
+            )}
 
-        {/* Desktop Logout Button */}
-        <div className="hidden lg:flex items-center gap-4">
-          <button
-            onClick={handleLogout}
-            className="group relative inline-block py-2 px-4 text-center font-semibold uppercase text-[#262626] transition-colors"
-          >
-            <span className="text-nowrap relative z-10 transition-colors duration-300 group-hover:text-white">
-              Log out
-            </span>
-            <span className="absolute inset-0 border-y-2 border-[#262626] opacity-0 transition-all duration-300 scale-y-[2] group-hover:scale-y-100 group-hover:opacity-100" />
-            <span className="absolute top-[2px] left-0 h-full w-full origin-top scale-0 bg-[#262626] opacity-0 transition-all duration-300 group-hover:scale-100 group-hover:opacity-100" />
-          </button>
-          <Link to="/profile"><User2Icon className="hover:bg-red-100" /></Link>
-          <Link to="/notification"><BellIcon /></Link>
+            <form onSubmit={handleAdminSignIn} className="flex flex-col gap-5">
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="email" className="text-sm font-bold text-gray-700">
+                  <Mail className="w-4 h-4 inline mr-1 text-purple-600" />
+                  Email Address
+                </label>
+                <input 
+                  id="email"
+                  className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none transition bg-gray-50"
+                  type="email" 
+                  placeholder="admin@email.com" 
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)} 
+                  required
+                />
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label htmlFor="password" className="text-sm font-bold text-gray-700">
+                  <Lock className="w-4 h-4 inline mr-1 text-purple-600" />
+                  Password
+                </label>
+                <div className="relative">
+                  <input 
+                    id="password"
+                    className="w-full p-3 pr-12 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none transition bg-gray-50"
+                    type={showPassword ? "text" : "password"} 
+                    placeholder="***********" 
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)} 
+                    required
+                  />
+                  <button
+                    type="button"
+                    onClick={() => setShowPassword(!showPassword)}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
+                  >
+                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+                  </button>
+                </div>
+              </div>
+
+              <button 
+                type="submit" 
+                className="w-full mt-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white font-bold py-3.5 rounded-xl hover:from-purple-700 hover:to-blue-700 transition shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+                disabled={loading}
+              >
+                {loading ? (
+                  <>
+                    <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
+                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
+                    </svg>
+                    VERIFYING...
+                  </>
+                ) : (
+                  <>
+                    <Shield className="w-5 h-5" />
+                    Login as Admin
+                  </>
+                )}
+              </button>
+            </form>
+
+            <div className="mt-6 text-center">
+              <p className="text-sm text-gray-500">
+                Not an admin?{' '}
+                <button
+                  onClick={() => navigate('/login')}
+                  className="text-purple-600 font-bold hover:text-purple-700 hover:underline transition"
+                >
+                  User Login
+                </button>
+              </p>
+            </div>
+          </div>
         </div>
-
-        {/* Mobile Logout Button (inside nav) */}
-        <button
-          onClick={handleLogout}
-          className={`${isOpen ? 'flex' : 'hidden'} lg:hidden fixed bottom-6 left-1/2 -translate-x-1/2 bg-red-600 text-white font-bold py-3 px-8 rounded-xl shadow-lg hover:bg-red-700 transition`}
-        >
-          Log out
-        </button>
       </div>
-    </header>
+    </div>
   );
 }
