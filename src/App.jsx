@@ -28,7 +28,8 @@ import GuestNavbar from './components/GuestNavbar'
 import Guest from './pages/Guest'
 import MonthlyIncidentTrends from './pages/MonthlyIncidentTrends'
 import Profile from './pages/Profile'; // Add this import at the top
-
+import AuthCallback from './pages/AuthCallback';
+import CreateUserForOauth from './components/CreateUserForOauth';
 // Then add this route inside the <Routes> block:
 function App() {
  const location = useLocation();
@@ -37,11 +38,11 @@ function App() {
   // --- EASY NAVBAR LOGIC ---
   let currentNavbar;
 
-  if ( path === '/admin' || path === '/admin/register-admin' || path === '/register' || path === '/login') {
+  if ( path === '/admin' || path === '/admin/register-admin' || path === '/register' || path === '/login' || path === '/login/' || path === '/auth/callback' || path === '/admin/') {
     currentNavbar = null;
   } else if (path.includes('/admin/')) {
     currentNavbar = <AdminNavbar />;
-  }else if(path.includes('/guest/') || path === '/' ){
+  }else if(path.includes('/guest/') || path === '/' || path === '/auth/callback'){
     currentNavbar = <GuestNavbar />
   }
    else {
@@ -56,7 +57,8 @@ function App() {
 
       <div className="content p-30"  >
         <Routes>
-
+          <Route path="/register/oauth" element={<CreateUserForOauth />} />
+          <Route path="/auth/callback" element={<AuthCallback />} />
           <Route path="/admin/register-admin" element={<RegisterAdmin />} />
           <Route path="/admin" element={<Adminlogin />} />
           <Route path="/admin/dashboard" element={<Admin />} />

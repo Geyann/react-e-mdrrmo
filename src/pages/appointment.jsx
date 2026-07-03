@@ -2,9 +2,11 @@
 
 import React, { useState, useEffect } from "react";
 import { supabase } from "../createClient";
-import { CalendarDays, AlertCircle, ChevronLeft, ChevronRight } from "lucide-react";
+import { CalendarDays, AlertCircle, ChevronLeft, ChevronRight, User } from "lucide-react";
 
 const AppointmentForm = () => {
+  const [currentUser, setCurrentUser] = useState(null);
+  const [userDisplayId, setUserDisplayId] = useState(null);
   const [formData, setFormData] = useState({
     fullName: "",
     purpose: "",
@@ -23,6 +25,36 @@ const AppointmentForm = () => {
   const [success, setSuccess] = useState("");
   const [currentMonth, setCurrentMonth] = useState(new Date());
 
+  // Fetch current user's profile and display ID
+  useEffect(() => {
+    const fetchCurrentUser = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          setCurrentUser(user);
+          
+          const { data: profile } = await supabase
+            .from("pending_registrations")
+            .select("user_id, first_name, last_name")
+            .eq("id", user.id)
+            .single();
+
+          if (profile) {
+            setUserDisplayId(profile.user_id);
+            setFormData(prev => ({
+              ...prev,
+              fullName: `${profile.first_name || ''} ${profile.last_name || ''}`.trim()
+            }));
+          }
+        }
+      } catch (err) {
+        console.error("Error fetching user:", err);
+      }
+    };
+
+    fetchCurrentUser();
+  }, []);
+
   // Fetch availability data
   useEffect(() => {
     const fetchAvailabilityData = async () => {
@@ -30,14 +62,12 @@ const AppointmentForm = () => {
         setLoading(true);
         setError("");
 
-        // Fetch all appointments
         const { data: appointments, error: appointmentError } = await supabase
           .from("appointments")
           .select("date");
 
         if (appointmentError) throw appointmentError;
 
-        // Fetch date restrictions
         const { data: restrictions, error: restrictionError } = await supabase
           .from("date_restrictions")
           .select("date, is_unavailable, volume_limit");
@@ -46,13 +76,11 @@ const AppointmentForm = () => {
           throw restrictionError;
         }
 
-        // Count bookings per date
         const bookingCounts = {};
         appointments?.forEach((apt) => {
           bookingCounts[apt.date] = (bookingCounts[apt.date] || 0) + 1;
         });
 
-        // Process restrictions - collect everything first
         const unavailable = [];
         const limits = {};
         restrictions?.forEach((restriction) => {
@@ -64,9 +92,6 @@ const AppointmentForm = () => {
           }
         });
 
-        // Calculate available dates (next 90 days) using local variables, not state
-        // FIXED: Removed weekend skip — now ALL dates are considered
-        // The admin can mark specific weekends as unavailable via date_restrictions
         const available = [];
         const today = new Date();
         today.setHours(0, 0, 0, 0);
@@ -77,10 +102,8 @@ const AppointmentForm = () => {
 
           const dateString = checkDate.toISOString().split("T")[0];
 
-          // Check if date is marked as unavailable (using local variable)
           if (unavailable.includes(dateString)) continue;
 
-          // Check if date has reached volume limit
           const bookingCount = bookingCounts[dateString] || 0;
           const limit = limits[dateString];
           if (limit && bookingCount >= limit) continue;
@@ -88,7 +111,6 @@ const AppointmentForm = () => {
           available.push(dateString);
         }
 
-        // Set all state at once after calculations are done
         setUnavailableDates(unavailable);
         setDateVolumeLimits(limits);
         setBookingsPerDate(bookingCounts);
@@ -138,7 +160,6 @@ const AppointmentForm = () => {
         setError("This date is no longer available. Please select another date.");
         return;
       }
-
       const bookingCount = bookingsPerDate[formData.date] || 0;
       const limit = dateVolumeLimits[formData.date];
       if (limit && bookingCount >= limit) {
@@ -146,22 +167,39 @@ const AppointmentForm = () => {
         return;
       }
 
+      // Build the insert object
+      const appointmentData = {
+        fullName: formData.fullName,
+        purpose: formData.purpose,
+        date: formData.date,
+        time: formData.time,
+        reason: formData.reason,
+      };
+
+      // Include user_id if available (the display ID from pending_registrations)
+      if (userDisplayId) {
+        appointmentData.user_id = userDisplayId;
+      }
+
+      // Also include the auth UUID if your schema has a userId column
+      if (currentUser?.id) {
+        appointmentData.userId = currentUser.id;
+      }
+
       const { error } = await supabase
         .from("appointments")
-        .insert([
-          {
-            fullName: formData.fullName,
-            purpose: formData.purpose,
-            date: formData.date,
-            time: formData.time,
-            reason: formData.reason,
-          },
-        ]);
+        .insert([appointmentData]);
 
       if (error) throw error;
 
       setSuccess("Appointment scheduled successfully! Please wait for admin confirmation.");
-      setFormData({ fullName: "", purpose: "", date: "", time: "", reason: "" });
+      setFormData({
+        fullName: formData.fullName,
+        purpose: "",
+        date: "",
+        time: "",
+        reason: "",
+      });
 
       setTimeout(() => {
         setSuccess("");
@@ -219,11 +257,6 @@ const AppointmentForm = () => {
     return limit && bookingCount >= limit;
   };
 
-  const isWeekend = (day) => {
-    const checkDate = new Date(currentMonth.getFullYear(), currentMonth.getMonth(), day);
-    return checkDate.getDay() === 0 || checkDate.getDay() === 6;
-  };
-
   const monthNames = [
     "January", "February", "March", "April", "May", "June",
     "July", "August", "September", "October", "November", "December"
@@ -276,6 +309,17 @@ const AppointmentForm = () => {
                 <span className="text-red-500">*</span> are required.
               </p>
             </div>
+
+            {/* User Info Display */}
+            {userDisplayId && (
+              <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-center gap-3">
+                <User className="w-5 h-5 text-blue-600 flex-shrink-0" />
+                <div className="text-sm">
+                  <span className="font-semibold text-blue-800">User ID: </span>
+                  <span className="text-blue-700 font-mono">{userDisplayId}</span>
+                </div>
+              </div>
+            )}
 
             {/* Error Message */}
             {error && (
@@ -391,7 +435,6 @@ const AppointmentForm = () => {
                 Choose an available date for your appointment.
               </p>
 
-              {/* Availability Legend */}
               <div className="grid grid-cols-2 gap-2 mb-6 p-3 bg-white rounded-lg border border-gray-200">
                 <div className="flex items-center gap-2 text-xs">
                   <div className="w-4 h-4 bg-green-400 rounded"></div>
@@ -411,42 +454,25 @@ const AppointmentForm = () => {
                 </div>
               </div>
 
-              {/* Calendar Navigation */}
               <div className="flex items-center justify-between mb-4">
-                <button
-                  onClick={previousMonth}
-                  type="button"
-                  className="p-2 hover:bg-gray-200 rounded-lg transition"
-                >
+                <button onClick={previousMonth} type="button" className="p-2 hover:bg-gray-200 rounded-lg transition">
                   <ChevronLeft className="w-5 h-5 text-gray-700" />
                 </button>
                 <h3 className="text-xl font-bold text-gray-800">
                   {monthNames[currentMonth.getMonth()]} {currentMonth.getFullYear()}
                 </h3>
-                <button
-                  onClick={nextMonth}
-                  type="button"
-                  className="p-2 hover:bg-gray-200 rounded-lg transition"
-                >
+                <button onClick={nextMonth} type="button" className="p-2 hover:bg-gray-200 rounded-lg transition">
                   <ChevronRight className="w-5 h-5 text-gray-700" />
                 </button>
               </div>
 
-              {/* Calendar Grid */}
               <div className="bg-white rounded-xl p-4 border border-gray-200">
-                {/* Day names */}
                 <div className="grid grid-cols-7 gap-2 mb-2">
                   {dayNames.map((day) => (
-                    <div
-                      key={day}
-                      className="text-center text-xs font-bold text-gray-600 py-2"
-                    >
-                      {day}
-                    </div>
+                    <div key={day} className="text-center text-xs font-bold text-gray-600 py-2">{day}</div>
                   ))}
                 </div>
 
-                {/* Days grid */}
                 <div className="grid grid-cols-7 gap-2">
                   {days.map((day, idx) => {
                     if (day === null) {
@@ -458,26 +484,20 @@ const AppointmentForm = () => {
                     const isSelected = isDateSelected(day);
                     const inPast = isDateInPast(day);
                     const atCapacity = isDateAtCapacity(day);
-                    const weekend = isWeekend(day);
 
                     let bgColor = "bg-gray-100 text-gray-400";
                     let cursor = "cursor-not-allowed";
 
                     if (inPast) {
                       bgColor = "bg-gray-200 text-gray-400 cursor-not-allowed";
-                      cursor = "cursor-not-allowed";
                     } else if (isUnavailable) {
                       bgColor = "bg-red-500 text-white font-bold cursor-not-allowed";
-                      cursor = "cursor-not-allowed";
                     } else if (atCapacity) {
                       bgColor = "bg-yellow-400 text-gray-800 font-bold cursor-not-allowed";
-                      cursor = "cursor-not-allowed";
                     } else if (isSelected) {
                       bgColor = "bg-blue-600 text-white font-bold shadow-lg cursor-pointer";
-                      cursor = "cursor-pointer";
                     } else if (isAvailable) {
                       bgColor = "bg-green-400 text-white font-bold hover:bg-green-500 cursor-pointer transition";
-                      cursor = "cursor-pointer";
                     }
 
                     return (
@@ -493,17 +513,6 @@ const AppointmentForm = () => {
                         disabled={!isAvailable || inPast || isUnavailable || atCapacity}
                         type="button"
                         className={`aspect-square rounded-lg flex items-center justify-center text-sm font-semibold ${bgColor} ${cursor}`}
-                        title={
-                          inPast
-                            ? "Past date"
-                            : isUnavailable
-                            ? "Date unavailable"
-                            : atCapacity
-                            ? "Date at full capacity"
-                            : weekend
-                            ? "Weekend — available if enabled by admin"
-                            : "Available"
-                        }
                       >
                         {day}
                       </button>
@@ -512,25 +521,19 @@ const AppointmentForm = () => {
                 </div>
               </div>
 
-              {/* Info Box */}
               {availableDates.length === 0 ? (
                 <div className="mt-4 bg-yellow-50 border border-yellow-200 rounded-lg p-3 flex gap-2">
                   <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
-                  <p className="text-yellow-700 text-sm font-medium">
-                    No available dates at the moment. Please check back later.
-                  </p>
+                  <p className="text-yellow-700 text-sm font-medium">No available dates at the moment.</p>
                 </div>
               ) : (
                 <div className="mt-4 bg-blue-50 border border-blue-200 rounded-lg p-3 flex gap-2">
                   <CalendarDays className="w-5 h-5 text-blue-600 flex-shrink-0 mt-0.5" />
-                  <p className="text-blue-700 text-sm font-medium">
-                    {availableDates.length} dates available in the next 90 days.
-                  </p>
+                  <p className="text-blue-700 text-sm font-medium">{availableDates.length} dates available in the next 90 days.</p>
                 </div>
               )}
             </div>
           </div>
-
         </div>
       </form>
     </div>

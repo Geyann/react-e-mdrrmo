@@ -32,7 +32,6 @@ const AdminRegister = () => {
     setLoading(true);
 
     try {
-      // 1. Sign up user and inject the 'admin' role directly into raw_user_meta_data
       const { data: authData, error: authError } = await supabase.auth.signUp({
         email: email,
         password: password,
@@ -40,7 +39,7 @@ const AdminRegister = () => {
           data: {
             first_name: firstName,
             last_name: lastName,
-            role: 'admin', // Passed securely to user metadata
+            role: 'admin',
           },
         },
       });
@@ -48,7 +47,20 @@ const AdminRegister = () => {
       if (authError) throw authError;
 
       if (authData?.user) {
-        // Check if user needs to confirm email or if they are auto-logged in
+        // Also insert into admin_users table
+        const { error: adminInsertError } = await supabase
+          .from('admin_users')
+          .insert([{
+            id: authData.user.id,
+            email: email,
+            full_name: `${firstName} ${lastName}`,
+            role: 'admin'
+          }]);
+
+        if (adminInsertError) {
+          console.error('Admin insert error:', adminInsertError);
+        }
+
         const isEmailConfirmationRequired = authData.session === null;
 
         if (isEmailConfirmationRequired) {
@@ -67,17 +79,17 @@ const AdminRegister = () => {
   };
 
   return (
-    <div>
-      <div>
-        <div>
-          <div><span>E</span></div>
-          <h2>Create Admin Account</h2>
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 to-purple-900 flex items-center justify-center p-4">
+      <div className="bg-white rounded-3xl shadow-2xl overflow-hidden max-w-md w-full">
+        <div className="bg-gradient-to-r from-purple-600 to-blue-600 p-6 text-center">
+          <h2 className="text-2xl font-bold text-white">Create Admin Account</h2>
+          <p className="text-purple-200 text-sm mt-1">Register a new administrator</p>
         </div>
 
-        <form onSubmit={handleRegister}>
-          <div>
-            <div>
-              <label>First Name:</label>
+        <form onSubmit={handleRegister} className="p-8 flex flex-col gap-4">
+          <div className="grid grid-cols-2 gap-4">
+            <div className="flex flex-col gap-1">
+              <label className="text-sm font-bold text-gray-700">First Name:</label>
               <input
                 type="text"
                 placeholder="John"
@@ -85,10 +97,11 @@ const AdminRegister = () => {
                 onChange={(e) => setFirstName(e.target.value)}
                 required
                 disabled={loading}
+                className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none"
               />
             </div>
-            <div>
-              <label>Last Name:</label>
+            <div className="flex flex-col gap-1">
+              <label className="text-sm font-bold text-gray-700">Last Name:</label>
               <input
                 type="text"
                 placeholder="Doe"
@@ -96,12 +109,13 @@ const AdminRegister = () => {
                 onChange={(e) => setLastName(e.target.value)}
                 required
                 disabled={loading}
+                className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none"
               />
             </div>
           </div>
 
-          <div>
-            <label>Email Address:</label>
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-bold text-gray-700">Email Address:</label>
             <input
               type="email"
               placeholder="admin@emdrrmo.gov"
@@ -109,11 +123,12 @@ const AdminRegister = () => {
               onChange={(e) => setEmail(e.target.value)}
               required
               disabled={loading}
+              className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none"
             />
           </div>
 
-          <div>
-            <label>Password:</label>
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-bold text-gray-700">Password:</label>
             <input
               type="password"
               placeholder="••••••••"
@@ -121,11 +136,12 @@ const AdminRegister = () => {
               onChange={(e) => setPassword(e.target.value)}
               required
               disabled={loading}
+              className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none"
             />
           </div>
 
-          <div>
-            <label>Confirm Password:</label>
+          <div className="flex flex-col gap-1">
+            <label className="text-sm font-bold text-gray-700">Confirm Password:</label>
             <input
               type="password"
               placeholder="••••••••"
@@ -133,17 +149,27 @@ const AdminRegister = () => {
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
               disabled={loading}
+              className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none"
             />
           </div>
 
-          <button type="submit" disabled={loading}>
+          <button 
+            type="submit" 
+            disabled={loading}
+            className="w-full mt-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white font-bold py-3.5 rounded-xl hover:from-purple-700 hover:to-blue-700 transition shadow-lg disabled:opacity-50"
+          >
             {loading ? 'Creating Admin Account...' : 'Register Admin'}
           </button>
         </form>
 
-        <div>
-          <span>Already have an admin account?</span>
-          <a href="/login">Login here</a>
+        <div className="pb-6 text-center">
+          <span className="text-sm text-gray-500">Already have an admin account?</span>
+          <button
+            onClick={() => navigate('/login')}
+            className="ml-1 text-purple-600 font-bold hover:text-purple-700 hover:underline transition"
+          >
+            Login here
+          </button>
         </div>
       </div>
     </div>

@@ -96,7 +96,7 @@ export default function CreateUser() {
   const labelClass = "text-sm font-bold text-gray-700";
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 py-10 px-4">
+    <div className="min-h-screen  from-blue-50 to-purple-50 py-10 px-4">
       <div className="max-w-3xl mx-auto">
         <button
           onClick={() => navigate(-1)}
@@ -125,55 +125,46 @@ export default function CreateUser() {
             )}
 
             <form onSubmit={handleRegister} className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              {/* First Name */}
               <div className="flex flex-col gap-1.5">
                 <label className={labelClass}><User className="w-4 h-4 inline mr-1 text-purple-600" />First Name</label>
                 <input className={inputClass} name="firstName" placeholder="First Name" value={formData.firstName} onChange={handleChange} required />
               </div>
 
-              {/* Middle Name */}
               <div className="flex flex-col gap-1.5">
                 <label className={labelClass}>Middle Name</label>
                 <input className={inputClass} name="middleName" placeholder="Middle Name" value={formData.middleName} onChange={handleChange} />
               </div>
 
-              {/* Last Name */}
               <div className="flex flex-col gap-1.5">
                 <label className={labelClass}><User className="w-4 h-4 inline mr-1 text-purple-600" />Last Name</label>
                 <input className={inputClass} name="lastName" placeholder="Last Name" value={formData.lastName} onChange={handleChange} required />
               </div>
 
-              {/* Email */}
               <div className="flex flex-col gap-1.5">
                 <label className={labelClass}><Mail className="w-4 h-4 inline mr-1 text-purple-600" />Email</label>
                 <input className={inputClass} name="email" type="email" placeholder="your@email.com" value={formData.email} onChange={handleChange} required />
               </div>
 
-              {/* Password */}
               <div className="md:col-span-2 flex flex-col gap-1.5">
                 <label className={labelClass}><Lock className="w-4 h-4 inline mr-1 text-purple-600" />Password</label>
                 <input className={inputClass} name="password" type="password" placeholder="Create a strong password" value={formData.password} onChange={handleChange} required />
               </div>
 
-              {/* Age */}
               <div className="flex flex-col gap-1.5">
                 <label className={labelClass}><Calendar className="w-4 h-4 inline mr-1 text-purple-600" />Age</label>
                 <input className={inputClass} name="age" type="number" placeholder="Age" value={formData.age} onChange={handleChange} required />
               </div>
 
-              {/* Birthdate */}
               <div className="flex flex-col gap-1.5">
                 <label className={labelClass}><Calendar className="w-4 h-4 inline mr-1 text-purple-600" />Birthdate</label>
                 <input className={inputClass} name="birthdate" type="date" value={formData.birthdate} onChange={handleChange} required />
               </div>
 
-              {/* ID Number */}
               <div className="md:col-span-2 flex flex-col gap-1.5">
                 <label className={labelClass}><IdCard className="w-4 h-4 inline mr-1 text-purple-600" />Valid ID Number</label>
                 <input className={inputClass} name="idNumber" placeholder="e.g., Passport, Driver's License No." value={formData.idNumber} onChange={handleChange} required />
               </div>
 
-              {/* ID Image Upload */}
               <div className="md:col-span-2 flex flex-col gap-1.5">
                 <label className={labelClass}><Camera className="w-4 h-4 inline mr-1 text-purple-600" />Upload ID Picture</label>
                 <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-purple-500 transition cursor-pointer bg-gray-50">
@@ -188,19 +179,16 @@ export default function CreateUser() {
                 </div>
               </div>
 
-              {/* Mobile Number */}
               <div className="md:col-span-2 flex flex-col gap-1.5">
                 <label className={labelClass}><Phone className="w-4 h-4 inline mr-1 text-purple-600" />Mobile Number</label>
                 <input className={inputClass} name="mobileNumber" type="tel" placeholder="09123456789" value={formData.mobileNumber} onChange={handleChange} required />
               </div>
 
-              {/* Address */}
               <div className="md:col-span-2 flex flex-col gap-1.5">
                 <label className={labelClass}><MapPin className="w-4 h-4 inline mr-1 text-purple-600" />Full Address</label>
                 <textarea className={`${inputClass} h-24 resize-none`} name="address" placeholder="House No., Street, Barangay, City, Province" value={formData.address} onChange={handleChange} required />
               </div>
 
-              {/* Submit */}
               <button 
                 type="submit" 
                 className="md:col-span-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white font-bold py-4 rounded-xl hover:from-purple-700 hover:to-blue-700 transition shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-2"

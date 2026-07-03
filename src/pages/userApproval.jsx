@@ -30,16 +30,51 @@ const AdminApproval = () => {
     }
   };
 
+  // Generate a user-friendly display ID
+  const generateUserId = () => {
+    const prefix = 'USR';
+    const timestamp = Date.now().toString(36).toUpperCase();
+    const random = Math.random().toString(36).substring(2, 6).toUpperCase();
+    return `${prefix}-${timestamp}-${random}`;
+  };
+
   const handleAction = async (user, action) => {
     if (action === 'approve') {
       try {
+        const newUserId = generateUserId();
+
+        // Update pending_registrations status to approved and set user_id
         const { error: updateError } = await supabase
           .from('pending_registrations')
-          .update({ status: 'approved' })
+          .update({ 
+            status: 'approved',
+            user_id: newUserId 
+          })
           .eq('id', user.id);
 
         if (updateError) throw updateError;
-        alert(`${user.first_name} ${user.last_name} has been approved!`);
+
+        // Also upsert into profiles table with the user_id
+        const { error: profileError } = await supabase
+          .from('profiles')
+          .upsert({
+            id: user.id,
+            user_id: newUserId,
+            email: user.email,
+            first_name: user.first_name,
+            middle_name: user.middle_name,
+            last_name: user.last_name,
+            age: user.age,
+            birthdate: user.birthdate,
+            address: user.address,
+            mobile_number: user.mobile_number,
+            role: user.role || 'user',
+            full_name: `${user.first_name} ${user.middle_name ? user.middle_name + ' ' : ''}${user.last_name}`
+          }, { onConflict: 'id' });
+
+        if (profileError) throw profileError;
+
+        alert(`${user.first_name} ${user.last_name} has been approved! User ID: ${newUserId}`);
       } catch (err) {
         alert(`Approval failed: ${err.message}`);
       }
@@ -86,7 +121,6 @@ const AdminApproval = () => {
   return (
     <div className="p-6 md:p-10 bg-slate-50 min-h-screen">
       <div className="max-w-6xl mx-auto">
-        {/* Header */}
         <div className="flex items-center justify-between mb-8">
           <div>
             <h1 className="text-3xl font-black text-slate-800 flex items-center gap-3">
@@ -106,7 +140,6 @@ const AdminApproval = () => {
           </button>
         </div>
 
-        {/* Stats Cards */}
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 mb-8">
           <div className="p-6 rounded-2xl border border-yellow-200 bg-yellow-50 shadow-sm">
             <div className="flex items-center justify-between">
@@ -137,7 +170,6 @@ const AdminApproval = () => {
           </div>
         </div>
 
-        {/* Search */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 mb-6">
           <div className="relative">
             <Search className="absolute left-3 top-3 w-5 h-5 text-slate-400" />
@@ -151,7 +183,6 @@ const AdminApproval = () => {
           </div>
         </div>
 
-        {/* Users Table */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -257,7 +288,6 @@ const AdminApproval = () => {
           Showing {filteredUsers.length} pending application(s)
         </div>
 
-        {/* ID Image Modal */}
         {selectedUser && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4" onClick={() => setSelectedUser(null)}>
             <div className="bg-white rounded-2xl p-6 max-w-lg w-full shadow-2xl" onClick={e => e.stopPropagation()}>
