@@ -2,15 +2,11 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import imgLogo from '../Images/icon.png';
 import { supabase } from '../createClient';
+import { BellIcon, User2Icon } from 'lucide-react';
 
-const AdminNavbar = () => {
-  // 2. State to handle menu visibility
+export default function AdminNavbar() {
   const [isOpen, setIsOpen] = useState(false);
   const navigate = useNavigate();
-
-  const toggleMenu = () => {
-    setIsOpen(!isOpen);
-  };
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
@@ -18,39 +14,72 @@ const AdminNavbar = () => {
     navigate('/admin');
   };
 
+  const NavLink = ({ to, children, onClick }) => (
+    <Link 
+      to={to} 
+      onClick={onClick}
+      className="group relative inline-block py-2 px-1 text-center font-semibold uppercase text-[#262626] transition-colors text-nowrap"
+    >
+      <span className="relative z-10 transition-colors duration-300 group-hover:text-white">
+        {children}
+      </span>
+      <span className="absolute inset-0 border-y-2 border-[#262626] opacity-0 transition-all duration-300 scale-y-[2] group-hover:scale-y-100 group-hover:opacity-100" />
+      <span className="absolute top-[2px] left-0 h-full w-full origin-top scale-0 bg-[#262626] opacity-0 transition-all duration-300 group-hover:scale-100 group-hover:opacity-100" />
+    </Link>
+  );
+
   return (
-    <header className="navbar-container">
-      <div className="top-row">        
-        {/* 3. Hamburger Toggle Button (Visible only on mobile) */}
-        <button className="hamburger" onClick={toggleMenu}>
+    <header className="absolute inset-x-0 top-0 z-5000 bg-white w-full p-6">
+      <div className="flex items-center justify-between">
+        {/* Logo */}
+        <Link to="/admin/dashboard" className="z-50">
+          <img src={imgLogo} alt="logo" className="h-10 w-auto" />
+        </Link>
+
+        {/* Hamburger Toggle */}
+        <button 
+          className="lg:hidden z-50 text-2xl font-bold" 
+          onClick={() => setIsOpen(!isOpen)}
+        >
           {isOpen ? '✖' : '☰'}
         </button>
-        <div className="logo">
-          <img id="logo" src={imgLogo} alt="logo" />
+
+        {/* Navigation Links */}
+        <nav className={`${isOpen ? 'flex' : 'hidden'} lg:flex flex-col lg:flex-row absolute lg:static top-full left-0 w-full lg:w-auto bg-white/95 lg:bg-transparent p-6 lg:p-0 gap-2 items-center`}>
+          <NavLink to="/admin/dashboard" onClick={() => setIsOpen(false)}>Dashboard</NavLink>
+          <NavLink to="/admin/hazard-map" onClick={() => setIsOpen(false)}>Hazard Map</NavLink>
+          <NavLink to="/admin/pending-account" onClick={() => setIsOpen(false)}>User Approval</NavLink>
+          <NavLink to="/admin/report" onClick={() => setIsOpen(false)}>Incident Reported</NavLink>
+          <NavLink to="/admin/borrow" onClick={() => setIsOpen(false)}>Borrowed Vehicles</NavLink>
+          <NavLink to="/admin/appointment" onClick={() => setIsOpen(false)}>Appointments</NavLink>
+          <NavLink to="/admin/checkup" onClick={() => setIsOpen(false)}>Out Patient Check-ups</NavLink>
+          <NavLink to="/admin/settings" onClick={() => setIsOpen(false)}>Settings</NavLink>
+          
+          {/* Mobile logout button */}
+          <button 
+            onClick={handleLogout}
+            className="lg:hidden py-2 px-4 text-lg font-semibold uppercase text-red-600"
+          >
+            Log out
+          </button>
+        </nav>
+
+        {/* Desktop logout + icons */}
+        <div className="hidden lg:flex items-center gap-4">
+          <button
+            onClick={handleLogout}
+            className="group relative inline-block py-2 px-4 text-center font-semibold uppercase text-[#262626] transition-colors"
+          >
+            <span className="text-nowrap relative z-10 transition-colors duration-300 group-hover:text-white">
+              Log out
+            </span>
+            <span className="absolute inset-0 border-y-2 border-[#262626] opacity-0 transition-all duration-300 scale-y-[2] group-hover:scale-y-100 group-hover:opacity-100" />
+            <span className="absolute top-[2px] left-0 h-full w-full origin-top scale-0 bg-[#262626] opacity-0 transition-all duration-300 group-hover:scale-100 group-hover:opacity-100" />
+          </button>
+          <Link to="/profile"><User2Icon className="hover:bg-red-100" /></Link>
+          <Link to="/notification"><BellIcon /></Link>
         </div>
-
-
-      {/* 4. Conditional class based on isOpen state */}
-      <nav className={`links-row ${isOpen ? 'active' : ''}`}>
-        <Link className='navbar-a' to="/admin/dashboard" onClick={() => setIsOpen(false)}>Dashboard </Link>
-          <Link className='navbar-a' to="/admin/hazard-map" onClick={() => setIsOpen(false)}>Hazard Map </Link>
-        <Link className='navbar-a' to="/admin/pending-account" onClick={() => setIsOpen(false)}>User Approval </Link>
-        <Link className='navbar-a' to="/admin/report" onClick={() => setIsOpen(false)}>Incident Reported</Link>
-        <Link className='navbar-a' to="/admin/borrow" onClick={() => setIsOpen(false)}>Borrowed Vehicles</Link>
-        <Link className='navbar-a' to="/admin/appointment" onClick={() => setIsOpen(false)}>Appointments</Link>
-        <Link className='navbar-a' to="/admin/checkup" onClick={() => setIsOpen(false)}>Out Patient Check-ups</Link>
-        <Link className='navbar-a' to="/admin/settings" onClick={() => setIsOpen(false)}>Settings</Link>
-      </nav>  
-         <div className="notif">
-                  <Link id='navbar-a' to="/admin" className="logout-btn">Log out</Link>
-                  <Link className="navbar-a profile" to="/profile"><img src="https://cdn-icons-png.flaticon.com/128/3033/3033143.png" loading="lazy" alt="Account" title="Account" width="35" height="35" /></Link>
-                  <Link className="navbar-a notification" to="/notification"><img src="https://cdn-icons-png.flaticon.com/512/3602/3602123.png" width="35" height="35" alt="Notifications" title="Notifications"  /></Link>
-              
-        
-              </div>
       </div>
     </header>
-  )
+  );
 }
-
-export default AdminNavbar

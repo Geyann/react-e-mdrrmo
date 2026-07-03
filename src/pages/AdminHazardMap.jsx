@@ -2,10 +2,9 @@ import React, { useMemo, useState, useEffect } from 'react';
 import { MapContainer, TileLayer, Polygon, Marker, Tooltip } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { supabase } from "../createClient"; // Uses your existing Supabase configuration client
+import { supabase } from "../createClient";
 import AdminApproval from '../components/AdminApproval';
 
-// Fix Leaflet default marker icon broken reference issue in React
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
   iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
@@ -15,17 +14,15 @@ L.Icon.Default.mergeOptions({
 
 const AdminHazardMap = () => {
   const [isRealistic, setIsRealistic] = useState(false);
-  // State array to manage structural data fetched directly from PostgreSQL
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // Fetch real-time data from your Supabase public.hazard_reports table
   const fetchReports = async () => {
     try {
       setLoading(true);
       const { data, error } = await supabase
         .from('hazard_reports')
-        .select('*'); // Pulls all rows including coordinates, status, and descriptions
+        .select('*');
 
       if (error) throw error;
       setReports(data || []);
@@ -36,18 +33,16 @@ const AdminHazardMap = () => {
     }
   };
 
-  // Run the data ingestion hook when the map layout renders on screen
   useEffect(() => {
     fetchReports();
   }, []);
 
-  // Raw Coordinates [Lng, Lat]
   const naicBoundaryRaw = [
     [120.676693, 14.346669], [120.683441, 14.335786], [120.723202, 14.313171],
     [120.726786, 14.310712], [120.733770, 14.306325], [120.736533, 14.303019],
     [120.737455, 14.302343], [120.745282, 14.294946], [120.745602, 14.294668],
     [120.745803, 14.294520], [120.746162, 14.294151], [120.746301, 14.294031],
-    [120.74645, 14.293735],  [120.747109, 14.293254], [120.747533, 14.292911],
+    [120.74645, 14.293735], [120.747109, 14.293254], [120.747533, 14.292911],
     [120.747852, 14.292674], [120.748284, 14.292371], [120.748703, 14.292116],
     [120.749145, 14.291734], [120.749515, 14.291505], [120.749520, 14.291427],
     [120.749729, 14.291396], [120.750271, 14.291021], [120.750813, 14.290548],
@@ -161,7 +156,7 @@ const AdminHazardMap = () => {
     [120.852120, 14.254697], [120.852034, 14.254869], [120.852141, 14.256023],
     [120.851959, 14.256886], [120.851508, 14.257136], [120.851229, 14.257479],
     [120.850822, 14.257676], [120.850425, 14.257520], [120.850317, 14.257385],
-    [120.840006, 14.257406], [120.849835, 14.257489], [120.849663, 14.257780],
+    [120.849835, 14.257489], [120.849663, 14.257780],
     [120.849459, 14.257895], [120.849320, 14.258103], [120.849328, 14.258425],
     [120.849481, 14.258955], [120.849416, 14.259413], [120.849234, 14.259610],
     [120.849094, 14.260026], [120.848848, 14.260109], [120.848558, 14.260151],
@@ -184,75 +179,42 @@ const AdminHazardMap = () => {
     [120.821301, 14.283795], [120.820679, 14.283910], [120.819810, 14.284513],
     [120.819317, 14.284664], [120.819150, 14.285209], [120.818506, 14.285901],
     [120.818329, 14.286062], [120.818024, 14.286566], [120.817389, 14.286896],
-    [120.816975, 14.286984], [120.81643, 14.287161],  [120.816548, 14.287429],
+    [120.816975, 14.286984], [120.81643, 14.287161], [120.816548, 14.287429],
     [120.816854, 14.287965], [120.817292, 14.288653], [120.817260, 14.288892],
     [120.817013, 14.289105], [120.816766, 14.289230], [120.816366, 14.289358],
-    [120.816329, 14.289519], [120.816329, 14.290122], [120.816275, 14.290439],
-    [120.816141, 14.290439], [120.815776, 14.290205], [120.81513, 14.289826],
-    [120.815288, 14.289748], [120.814918, 14.290034], [120.814703, 14.290553],
-    [120.814583, 14.290930], [120.814492, 14.291891], [120.814564, 14.292331],
-    [120.814644, 14.292560], [120.814918, 14.293896], [120.814899, 14.294636],
-    [120.814803, 14.294969], [120.814519, 14.295270], [120.814089, 14.29535],
-    [120.813719, 14.295660], [120.813024, 14.296116], [120.812620, 14.296502],
-    [120.812568, 14.296672], [120.812659, 14.297051], [120.812847, 14.297566],
-    [120.812788, 14.298044], [120.812316, 14.298512], [120.812450, 14.298710],
-    [120.812482, 14.299037], [120.812488, 14.299261], [120.812531, 14.299417],
-    [120.812670, 14.299656], [120.812877, 14.299710], [120.813265, 14.299703],
-    [120.813501, 14.299848], [120.813609, 14.300061], [120.813593, 14.300357],
-    [120.813748, 14.300633], [120.813925, 14.300763], [120.814092, 14.300825],
-    [120.814193, 14.300779], [120.814864, 14.301969], [120.816618, 14.301709],
-    [120.819633, 14.308196], [120.821913, 14.314018], [120.823056, 14.317610],
-    [120.822691, 14.317771], [120.822567, 14.317776], [120.822455, 14.317792],
-    [120.822331, 14.317859], [120.82245, 14.317932],  [120.822117, 14.318077],
-    [120.822106, 14.318285], [120.822170, 14.318483], [120.822149, 14.319086],
-    [120.821956, 14.319226], [120.821832, 14.319273], [120.821602, 14.319252],
-    [120.821435, 14.319346], [120.821285, 14.319663], [120.821291, 14.319980],
-    [120.820872, 14.320401], [120.820636, 14.320552], [120.820411, 14.320588],
-    [120.820223, 14.320973], [120.820266, 14.321232], [120.820373, 14.321368],
-    [120.820652, 14.321908], [120.820674, 14.322293], [120.820588, 14.322688],
-    [120.820363, 14.322963], [120.819649, 14.323457], [120.819553, 14.323540],
-    [120.819349, 14.323816], [120.819113, 14.324018], [120.818641, 14.324133],
-    [120.818549, 14.324299], [120.818598, 14.324606], [120.818732, 14.324788],
-    [120.818769, 14.325016], [120.818743, 14.325209], [120.818442, 14.325391],
-    [120.817819, 14.325448], [120.817900, 14.325760], [120.817852, 14.325973],
-    [120.817718, 14.326191], [120.817772, 14.326456], [120.817820, 14.326659],
-    [120.817857, 14.327376], [120.817541, 14.327782], [120.817080, 14.328036],
-    [120.816618, 14.328166], [120.816329, 14.328270], [120.816125, 14.328572],
-    [120.815803, 14.328624], [120.815218, 14.328774], [120.814569, 14.329086],
-    [120.814183, 14.329372], [120.814059, 14.329502], [120.813791, 14.329590],
-    [120.813625, 14.329601], [120.813507, 14.329575], [120.813389, 14.329559],
-    [120.813190, 14.329543], [120.812960, 14.329627], [120.812697, 14.330697],
-    [120.812767, 14.330973], [120.812895, 14.331196], [120.812981, 14.331451],
-    [120.812976, 14.332407], [120.812622, 14.333041], [120.812461, 14.333546],
-    [120.812176, 14.333847], [120.811978, 14.334221], [120.811710, 14.334419],
-    [120.811479, 14.334393], [120.811018, 14.334689], [120.810626, 14.334881],
-    [120.810288, 14.335141], [120.810020, 14.335396], [120.809897, 14.335599],
-    [120.809859, 14.335812], [120.809736, 14.335952], [120.808641, 14.336243],
-    [120.808142, 14.336285], [120.807869, 14.336357], [120.807606, 14.336633],
-    [120.807488, 14.336893], [120.807343, 14.337085], [120.807053, 14.337251],
-    [120.806614, 14.337215], [120.806496, 14.337251], [120.806308, 14.337454],
-    [120.806131, 14.337818], [120.805643, 14.338493], [120.805369, 14.339190],
-    [120.804500, 14.339767], [120.803095, 14.340884], [120.802842, 14.341144],
-    [120.802687, 14.341456], [120.802698, 14.341804], [120.802853, 14.342012],
-    [120.802799, 14.342142], [120.801710, 14.342953], [120.801061, 14.343270],
-    [120.799280, 14.343618], [120.798736, 14.343921], [120.797247, 14.345437],
-    [120.796410, 14.346357], [120.796142, 14.346419], [120.795552, 14.346170],
-    [120.794391, 14.345532], [120.793377, 14.345200], [120.792655, 14.345151],
-    [120.790778, 14.345640], [120.790064, 14.345842], [120.788729, 14.346414],
-    [120.788329, 14.346525], [120.787951, 14.346398], [120.787827, 14.346201],
-    [120.787854, 14.345842], [120.788181, 14.344798], [120.788080, 14.344621],
-    [120.787817, 14.344626], [120.787039, 14.345084], [120.785730, 14.345707],
-    [120.784617, 14.345730], [120.782468, 14.346045], [120.782134, 14.346156],
+    [120.816329, 14.289519], [120.814059, 14.329502], [120.813791, 14.329590], [120.813625, 14.329601],
+    [120.813507, 14.329575], [120.813389, 14.329559], [120.813190, 14.329543],
+    [120.812960, 14.329627], [120.812697, 14.330697], [120.812767, 14.330973],
+    [120.812895, 14.331196], [120.812981, 14.331451], [120.812976, 14.332407],
+    [120.812622, 14.333041], [120.812461, 14.333546], [120.812176, 14.333847],
+    [120.811978, 14.334221], [120.811710, 14.334419], [120.811479, 14.334393],
+    [120.811018, 14.334689], [120.810626, 14.334881], [120.810288, 14.335141],
+    [120.810020, 14.335396], [120.809897, 14.335599], [120.809859, 14.335812],
+    [120.809736, 14.335952], [120.808641, 14.336243], [120.808142, 14.336285],
+    [120.807869, 14.336357], [120.807606, 14.336633], [120.807488, 14.336893],
+    [120.807343, 14.337085], [120.807053, 14.337251], [120.806614, 14.337215],
+    [120.806496, 14.337251], [120.806308, 14.337454], [120.806131, 14.337818],
+    [120.805643, 14.338493], [120.805369, 14.339190], [120.804500, 14.339767],
+    [120.803095, 14.340884], [120.802842, 14.341144], [120.802687, 14.341456],
+    [120.802698, 14.341804], [120.802853, 14.342012], [120.802799, 14.342142],
+    [120.801710, 14.342953], [120.801061, 14.343270], [120.799280, 14.343618],
+    [120.798736, 14.343921], [120.797247, 14.345437], [120.796410, 14.346357],
+    [120.796142, 14.346419], [120.795552, 14.346170], [120.794391, 14.345532],
+    [120.793377, 14.345200], [120.792655, 14.345151], [120.790778, 14.345640],
+    [120.790064, 14.345842], [120.788729, 14.346414], [120.788329, 14.346525],
+    [120.787951, 14.346398], [120.787827, 14.346201], [120.787854, 14.345842],
+    [120.788181, 14.344798], [120.788080, 14.344621], [120.787817, 14.344626],
+    [120.787039, 14.345084], [120.785730, 14.345707], [120.784617, 14.345730],
+    [120.782468, 14.346045], [120.782134, 14.346156],
     [120.782134, 14.346156], [120.781753, 14.346354], [120.781417, 14.346684],
     [120.781304, 14.346866], [120.781143, 14.347396], [120.781047, 14.347952],
     [120.780961, 14.348087], [120.744502, 14.377321], [120.708761, 14.406043],
     [120.708354, 14.403861], [120.687116, 14.363579], [120.686765, 14.362958],
   ];
 
-  // Reverse coordinates context mapping for Leaflet [Lat, Lng]
-  const flippedBoundary = useMemo(() => 
-    naicBoundaryRaw.map(coord => [coord[1], coord[0]]), 
-  [naicBoundaryRaw]);
+  const flippedBoundary = useMemo(() =>
+    naicBoundaryRaw.map(coord => [coord[1], coord[0]]),
+    [naicBoundaryRaw]);
 
   const worldBounds = [[-90, -180], [-90, 180], [90, 180], [90, -180]];
   const maskCoordinates = [worldBounds, flippedBoundary];
@@ -263,127 +225,101 @@ const AdminHazardMap = () => {
 
   return (
     <div>
-      
-<AdminApproval />
-   
-    <div style={{ height: '600px', width: '100%', position: 'relative', border: '1px solid #ccc', borderRadius: '8px', overflow: 'hidden'}}>
-      
-      {/* View Toggle Controller */}
-      <button 
-        onClick={() => setIsRealistic(!isRealistic)}
-        aria-label={isRealistic ? 'Switch to standard map' : 'Switch to realistic view'}
-        style={{
-          position: 'absolute',
-          top: '15px',
-          right: '15px',
-          zIndex: 1000,
-          padding: '10px 15px',
-          backgroundColor: '#ffffff',
-          border: '2px solid #2563eb',
-          borderRadius: '5px',
-          cursor: 'pointer',
-          fontWeight: 'bold',
-          boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
-        }}
-      >
-        {isRealistic ? 'Show Standard Map' : 'Show Realistic View'}
-      </button>
+      <AdminApproval />
 
-      {/* Loading Overlay widget */}
-      {loading && (
-        <div style={{
-          position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
-          backgroundColor: 'rgba(255,255,255,0.7)', zIndex: 1001,
-          display: 'flex', justifyContent: 'center', alignItems: 'center', fontWeight: 'bold'
-        }}>
-          Synchronizing hazards map with database...
-        </div>
-      )}
+      <div style={{ height: '600px', width: '100%', position: 'relative', border: '1px solid #ccc', borderRadius: '8px', overflow: 'hidden' }}>
+        <button
+          onClick={() => setIsRealistic(!isRealistic)}
+          aria-label={isRealistic ? 'Switch to standard map' : 'Switch to realistic view'}
+          style={{
+            position: 'absolute', top: '15px', right: '15px', zIndex: 1000,
+            padding: '10px 15px', backgroundColor: '#ffffff',
+            border: '2px solid #2563eb', borderRadius: '5px',
+            cursor: 'pointer', fontWeight: 'bold', boxShadow: '0 2px 5px rgba(0,0,0,0.2)'
+          }}
+        >
+          {isRealistic ? 'Show Standard Map' : 'Show Realistic View'}
+        </button>
 
-      <MapContainer 
-        bounds={bounds}
-        maxBounds={bounds}
-        maxBoundsViscosity={1.0}
-        zoom={12}
-        minZoom={12}
-        maxZoom={18}
-        style={{ height: '100%', width: '100%', background: '#ffffff' }}
-      >
-        <TileLayer
-          key={isRealistic ? 'realistic' : 'standard'}
-          url={isRealistic ? realisticTiles : standardTiles}
-          attribution={isRealistic ? 'Tiles &copy; Esri' : '&copy; OpenStreetMap'}
-        />
-        
-        <Polygon 
-          positions={maskCoordinates} 
-          pathOptions={{ fillColor: 'white', fillOpacity: 1, color: 'transparent' }} 
-        />
+        {loading && (
+          <div style={{
+            position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+            backgroundColor: 'rgba(255,255,255,0.7)', zIndex: 1001,
+            display: 'flex', justifyContent: 'center', alignItems: 'center', fontWeight: 'bold'
+          }}>
+            Synchronizing hazards map with database...
+          </div>
+        )}
 
-        <Polygon 
-          positions={flippedBoundary} 
-          pathOptions={{ color: '#2563eb', fillOpacity: 0, weight: 3 }} 
-        />
+        <MapContainer
+          bounds={bounds}
+          maxBounds={bounds}
+          maxBoundsViscosity={1.0}
+          zoom={12}
+          minZoom={12}
+          maxZoom={18}
+          style={{ height: '100%', width: '100%', background: '#ffffff' }}
+        >
+          <TileLayer
+            key={isRealistic ? 'realistic' : 'standard'}
+            url={isRealistic ? realisticTiles : standardTiles}
+            attribution={isRealistic ? 'Tiles &copy; Esri' : '&copy; OpenStreetMap'}
+          />
 
-        {/* Dynamically render pins directly from your Supabase table schema */}
-        {reports
-          .filter(report => report.latitude && report.longitude) // Safety check to prevent map errors if coordinates are missing
-          .map((report) => (
-            <Marker key={report.id} position={[parseFloat(report.latitude), parseFloat(report.longitude)]}>
-              <Tooltip direction="top" offset={[0, -10]} opacity={1}>
-                <div style={{ padding: '6px', minWidth: '180px', fontFamily: 'sans-serif' }}>
-                  
-                  {/* Category Status pill indicator badge */}
-                  <span style={{
-                    display: 'inline-block',
-                    padding: '2px 6px',
-                    borderRadius: '3px',
-                    fontSize: '10px',
-                    fontWeight: 'bold',
-                    textTransform: 'uppercase',
-                    color: '#ffffff',
-                    backgroundColor: report.risk_level === 'Critical' || report.risk_level === 'High' ? '#dc2626' : '#ea580c',
-                    marginBottom: '6px'
-                  }}>
-                    {report.hazard_category} ({report.risk_level})
-                  </span>
+          <Polygon
+            positions={maskCoordinates}
+            pathOptions={{ fillColor: 'white', fillOpacity: 1, color: 'transparent' }}
+          />
 
-                  {/* Operational Status (Pending, Reviewed, Resolved) */}
-                  <span style={{
-                    display: 'inline-block',
-                    padding: '2px 6px',
-                    borderRadius: '3px',
-                    fontSize: '10px',
-                    fontWeight: 'bold',
-                    textTransform: 'uppercase',
-                    color: '#1f2937',
-                    backgroundColor: '#e5e7eb',
-                    marginLeft: '5px',
-                    marginBottom: '6px'
-                  }}>
-                    {report.status || 'pending'}
-                  </span>
+          <Polygon
+            positions={flippedBoundary}
+            pathOptions={{ color: '#2563eb', fillOpacity: 0, weight: 3 }}
+          />
 
-                  <h4 style={{ margin: '0 0 4px 0', fontSize: '14px', color: '#1f2937' }}>
-                    {report.hazard_category} Hazard
-                  </h4>
-                  
-                  <p style={{ margin: '0 0 6px 0', fontSize: '12px', color: '#4b5563', lineHeight: '1.3' }}>
-                    {report.hazard_description}
-                  </p>
+          {reports
+            .filter(report => report.latitude && report.longitude)
+            .map((report) => (
+              <Marker key={report.id} position={[parseFloat(report.latitude), parseFloat(report.longitude)]}>
+                <Tooltip direction="top" offset={[0, -10]} opacity={1}>
+                  <div style={{ padding: '6px', minWidth: '180px', fontFamily: 'sans-serif' }}>
+                    <span style={{
+                      display: 'inline-block', padding: '2px 6px', borderRadius: '3px',
+                      fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase',
+                      color: '#ffffff',
+                      backgroundColor: report.risk_level === 'Critical' || report.risk_level === 'High' ? '#dc2626' : '#ea580c',
+                      marginBottom: '6px'
+                    }}>
+                      {report.hazard_category} ({report.risk_level})
+                    </span>
 
-                  <small style={{ color: '#4b5563', display: 'block', borderTop: '1px solid #e5e7eb', paddingTop: '4px', marginTop: '4px' }}>
-                    <img src="   https://cdn-icons-png.flaticon.com/512/14831/14831599.png " width="30" height="30" alt="" title="" class="img-small" /> {report.address} <br/>
-                    <span style={{ color: '#9ca3af', fontSize: '10px' }}>Landmark: {report.landmark}</span>
-                  </small>
-                </div>
-              </Tooltip>
-            </Marker>
-        ))}
-      </MapContainer>
-</div>
- </div>
-     
+                    <span style={{
+                      display: 'inline-block', padding: '2px 6px', borderRadius: '3px',
+                      fontSize: '10px', fontWeight: 'bold', textTransform: 'uppercase',
+                      color: '#1f2937', backgroundColor: '#e5e7eb',
+                      marginLeft: '5px', marginBottom: '6px'
+                    }}>
+                      {report.status || 'pending'}
+                    </span>
+
+                    <h4 style={{ margin: '0 0 4px 0', fontSize: '14px', color: '#1f2937' }}>
+                      {report.hazard_category} Hazard
+                    </h4>
+
+                    <p style={{ margin: '0 0 6px 0', fontSize: '12px', color: '#4b5563', lineHeight: '1.3' }}>
+                      {report.hazard_description}
+                    </p>
+
+                    <small style={{ color: '#4b5563', display: 'block', borderTop: '1px solid #e5e5e5', paddingTop: '4px', marginTop: '4px' }}>
+                      <img src="https://cdn-icons-png.flaticon.com/512/14831/14831599.png" width="30" height="30" alt="" /> {report.address}<br />
+                      <span style={{ color: '#9ca3af', fontSize: '10px' }}>Landmark: {report.landmark}</span>
+                    </small>
+                  </div>
+                </Tooltip>
+              </Marker>
+            ))}
+        </MapContainer>
+      </div>
+    </div>
   );
 };
 
