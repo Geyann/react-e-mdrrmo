@@ -81,10 +81,10 @@ export default function AdminLogin() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 p-4">
+    <div className="min-h-screen flex items-center justify-center from-slate-900 via-purple-900 to-slate-900 p-4">
       <button
         onClick={() => navigate('/')}
-        className="absolute top-6 left-6 flex items-center gap-2 text-white/70 hover:text-white transition font-semibold z-10"
+        className="absolute top-6 left-6 flex items-center gap-2 text-gray-600 hover:text-purple-600 transition font-semibold z-10"
       >
         <ArrowLeft className="w-5 h-5" />
         Back to Home

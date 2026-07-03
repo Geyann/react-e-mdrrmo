@@ -106,7 +106,7 @@ const CheckUp = () => {
         </div>
 
         <button type="submit" className="w-full mt-8 bg-blue-600 text-white font-bold py-4 rounded-2xl hover:bg-blue-700 transition shadow-lg shadow-blue-200">
-          Submit Check-Up
+          Submit
         </button>
       </form>
     </div>
