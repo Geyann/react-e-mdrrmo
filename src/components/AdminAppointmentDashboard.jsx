@@ -118,7 +118,10 @@ const AdminDashboard = () => {
       setUnavailableDates(updatedUnavailable);
       setDateVolumeLimits(limits);
 
-      // Fetch ALL appointments including user_id
+      // ============================================================
+      // FIXED: Select all appointments directly — no join needed
+      // Uses user_id_from_auth (auth UUID) as the user identifier
+      // ============================================================
       const { data: allApts, error: allAptsError } = await supabase
         .from("appointments")
         .select("*")
@@ -126,17 +129,16 @@ const AdminDashboard = () => {
 
       if (allAptsError) throw allAptsError;
 
-      // Normalize appointments - handle both appointmentId and id as primary key
+      // Normalize appointments
       const processedApts = (allApts || []).map(apt => {
-        // Try to get user_id from various possible column names
-        const userId = apt.user_id || apt.userId || apt.userid || apt.auth_id || apt.user_uuid || "N/A";
-        
         return {
           ...apt,
-          id: apt.appointmentId || apt.id, // fallback if column is "id" not "appointmentId"
-          appointmentId: apt.appointmentId || apt.id, // ensure appointmentId exists
+          id: apt.appointmentId || apt.id,
+          appointmentId: apt.appointmentId || apt.id,
           status: apt.status || "pending",
-          user_id: userId,
+          // Use user_id_from_auth (auth UUID) as primary user ID
+          // Falls back to user_id (text) if null
+          user_id: apt.user_id_from_auth || apt.user_id || "N/A",
         };
       });
 
@@ -693,7 +695,7 @@ const AdminDashboard = () => {
             </div>
           </div>
 
-          {/* Appointments Table — WITH user_id column */}
+          {/* Appointments Table */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full">
@@ -715,7 +717,7 @@ const AdminDashboard = () => {
                         key={apt.id || apt.appointmentId}
                         className="border-b border-slate-200 hover:bg-slate-50 transition"
                       >
-                        {/* USER ID CELL */}
+                        {/* USER ID CELL — shows user_id_from_auth (auth UUID) */}
                         <td className="px-6 py-4">
                           <p className="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-1 rounded truncate max-w-[140px]">
                             {apt.user_id}
@@ -866,7 +868,7 @@ const AdminDashboard = () => {
             </div>
           </div>
 
-          {/* History Table — WITH user_id column */}
+          {/* History Table */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full">
@@ -892,7 +894,7 @@ const AdminDashboard = () => {
                         <td className="px-6 py-4 text-sm text-slate-500 font-mono">
                           {index + 1}
                         </td>
-                        {/* USER ID CELL */}
+                        {/* USER ID CELL — shows user_id_from_auth (auth UUID) */}
                         <td className="px-6 py-4">
                           <p className="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-1 rounded truncate max-w-[140px]">
                             {apt.user_id}

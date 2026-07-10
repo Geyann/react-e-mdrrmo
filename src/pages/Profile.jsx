@@ -218,11 +218,9 @@ const Profile = () => {
   const gradientTo = isStaffOrAdmin ? 'to-indigo-600' : 'to-purple-600';
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 py-10 px-4">
+    <div className="min-h-screen">
       <div className="max-w-3xl mx-auto">
-        <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-gray-600 hover:text-purple-600 transition mb-6 font-semibold">
-          <ArrowLeft className="w-5 h-5" /> Back
-        </button>
+       
 
         <div className="bg-white rounded-3xl shadow-xl overflow-hidden">
           {/* Header Banner */}

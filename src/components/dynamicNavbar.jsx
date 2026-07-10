@@ -22,8 +22,7 @@ export default function DynamicNavbar() {
         path === '/register' ||
         path === '/login' ||
         path === '/login/' ||
-        path === '/auth/callback'||
-        path === '/profile'
+        path === '/auth/callback'
         
       ) {
         setUserRole('none');
