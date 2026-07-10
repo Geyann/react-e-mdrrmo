@@ -95,6 +95,7 @@ export default function Guest() {
     </div>
   </div>
 </section>
+<Link to="/admin">Admin</Link>
                </div>
     )
 }

@@ -6,7 +6,6 @@ import { CalendarDays, AlertCircle, ChevronLeft, ChevronRight, User } from "luci
 
 const AppointmentForm = () => {
   const [currentUser, setCurrentUser] = useState(null);
-  const [userDisplayId, setUserDisplayId] = useState(null);
   const [formData, setFormData] = useState({
     fullName: "",
     purpose: "",
@@ -25,22 +24,37 @@ const AppointmentForm = () => {
   const [success, setSuccess] = useState("");
   const [currentMonth, setCurrentMonth] = useState(new Date());
 
-  // Fetch current user's profile and display ID
+  // Fetch current user from localStorage (regular users) or Supabase Auth (staff/admin)
   useEffect(() => {
     const fetchCurrentUser = async () => {
       try {
+        // 1. Check localStorage first (regular users)
+        const storedUser = localStorage.getItem('currentUser');
+        if (storedUser) {
+          const parsedUser = JSON.parse(storedUser);
+          setCurrentUser(parsedUser);
+          
+          const fullName = parsedUser.full_name || 
+            `${parsedUser.first_name || ''} ${parsedUser.last_name || ''}`.trim();
+          
+          if (fullName) {
+            setFormData(prev => ({ ...prev, fullName }));
+          }
+          return;
+        }
+
+        // 2. Fallback to Supabase Auth (staff/admin)
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
           setCurrentUser(user);
           
           const { data: profile } = await supabase
             .from("pending_registrations")
-            .select("user_id, first_name, last_name")
-            .eq("id", user.id)
-            .single();
+            .select("first_name, last_name")
+            .eq("email", user.email)
+            .maybeSingle();
 
           if (profile) {
-            setUserDisplayId(profile.user_id);
             setFormData(prev => ({
               ...prev,
               fullName: `${profile.first_name || ''} ${profile.last_name || ''}`.trim()
@@ -156,6 +170,11 @@ const AppointmentForm = () => {
       setError("");
       setSuccess("");
 
+      if (!currentUser) {
+        setError("You must be logged in to create an appointment.");
+        return;
+      }
+
       if (!availableDates.includes(formData.date)) {
         setError("This date is no longer available. Please select another date.");
         return;
@@ -167,24 +186,20 @@ const AppointmentForm = () => {
         return;
       }
 
-      // Build the insert object
+      // Get the user ID from localStorage (user_id or id) or from Supabase Auth (id)
+      const userId = currentUser.id || currentUser.user_id || null;
+
+      // Build the insert object - NO email column since it doesn't exist
       const appointmentData = {
         fullName: formData.fullName,
         purpose: formData.purpose,
         date: formData.date,
         time: formData.time,
         reason: formData.reason,
+        userId: userId,  // Only userId column - this matches your original code
       };
 
-      // Include user_id if available (the display ID from pending_registrations)
-      if (userDisplayId) {
-        appointmentData.user_id = userDisplayId;
-      }
-
-      // Also include the auth UUID if your schema has a userId column
-      if (currentUser?.id) {
-        appointmentData.userId = currentUser.id;
-      }
+      console.log("Inserting appointment:", appointmentData);
 
       const { error } = await supabase
         .from("appointments")
@@ -290,34 +305,41 @@ const AppointmentForm = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-b from-blue-50 to-transparent py-10 px-4">
+    <div className="min-h-screen">
+    <div className="bg-gradient-to-r from-blue-600 to-purple-600 max-w-5xl mx-auto bg-white rounded-t-3xl shadow-xl border border-gray-200">
+        <div className="flex flex-col items-center mb-3 pt-5">
+         <CalendarDays className="w-15 h-auto text-white" />
+         <h1 className="text-3xl font-bold text-white text-center">
+            Schedule an Appointment
+          </h1>
+          <p className="text-white text-sm">
+            All fields marked <span className="text-red-500">*</span> are required.
+          </p>
+        </div>
+      </div>
       <form
         onSubmit={createAppointment}
-        className="max-w-5xl mx-auto bg-white p-8 md:p-10 rounded-3xl shadow-xl border border-gray-200"
+        className="max-w-5xl mx-auto bg-white p-8 md:p-10 rounded-b-3xl shadow-xl border border-gray-200"
       >
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
           
           {/* Left Column - Form Fields */}
           <div className="flex flex-col gap-6">
-            <div>
-              <h1 className="text-3xl font-bold text-gray-800 flex items-center gap-3">
-                <CalendarDays className="w-8 h-8 text-blue-600" />
-                Schedule Appointment
-              </h1>
-              <p className="text-gray-500 mt-2 text-sm">
-                Please provide details below. All fields marked{" "}
-                <span className="text-red-500">*</span> are required.
-              </p>
-            </div>
-
             {/* User Info Display */}
-            {userDisplayId && (
+            {currentUser && (
               <div className="bg-blue-50 border border-blue-200 rounded-xl p-3 flex items-center gap-3">
                 <User className="w-5 h-5 text-blue-600 flex-shrink-0" />
                 <div className="text-sm">
-                  <span className="font-semibold text-blue-800">User ID: </span>
-                  <span className="text-blue-700 font-mono">{userDisplayId}</span>
+                  <span className="font-semibold text-blue-800">Logged in as: </span>
+                  <span className="text-blue-700">{formData.fullName || currentUser.email}</span>
                 </div>
+              </div>
+            )}
+
+            {!currentUser && (
+              <div className="bg-red-50 border border-red-200 rounded-xl p-3 flex items-center gap-3">
+                <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
+                <p className="text-red-700 text-sm font-medium">You must be logged in to create an appointment.</p>
               </div>
             )}
 
@@ -416,7 +438,7 @@ const AppointmentForm = () => {
 
             <button
               type="submit"
-              disabled={availableDates.length === 0 || !formData.date || !availableDates.includes(formData.date) || !formData.fullName || !formData.purpose || !formData.time}
+              disabled={!currentUser || availableDates.length === 0 || !formData.date || !availableDates.includes(formData.date) || !formData.fullName || !formData.purpose || !formData.time}
               className="w-full mt-4 bg-blue-600 text-white font-bold py-4 rounded-2xl hover:bg-blue-700 transition shadow-lg disabled:bg-gray-400 disabled:cursor-not-allowed flex items-center justify-center gap-2"
             >
               <CalendarDays className="w-5 h-5" />

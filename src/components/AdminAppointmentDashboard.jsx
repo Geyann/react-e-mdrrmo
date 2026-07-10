@@ -37,7 +37,7 @@ const AdminDashboard = () => {
   const [activeTab, setActiveTab] = useState("calendar");
 
   // History Tab State
-  const [historyFilter, setHistoryFilter] = useState("all"); // all, approved, rejected
+  const [historyFilter, setHistoryFilter] = useState("all");
   const [historySearchTerm, setHistorySearchTerm] = useState("");
 
   // Auto-mark date as unavailable when volume limit is reached
@@ -118,6 +118,7 @@ const AdminDashboard = () => {
       setUnavailableDates(updatedUnavailable);
       setDateVolumeLimits(limits);
 
+      // Fetch ALL appointments including user_id
       const { data: allApts, error: allAptsError } = await supabase
         .from("appointments")
         .select("*")
@@ -125,11 +126,19 @@ const AdminDashboard = () => {
 
       if (allAptsError) throw allAptsError;
 
-      const processedApts = (allApts || []).map(apt => ({
-        ...apt,
-        id: apt.appointmentId,
-        status: apt.status || "pending",
-      }));
+      // Normalize appointments - handle both appointmentId and id as primary key
+      const processedApts = (allApts || []).map(apt => {
+        // Try to get user_id from various possible column names
+        const userId = apt.user_id || apt.userId || apt.userid || apt.auth_id || apt.user_uuid || "N/A";
+        
+        return {
+          ...apt,
+          id: apt.appointmentId || apt.id, // fallback if column is "id" not "appointmentId"
+          appointmentId: apt.appointmentId || apt.id, // ensure appointmentId exists
+          status: apt.status || "pending",
+          user_id: userId,
+        };
+      });
 
       setAllAppointments(processedApts);
 
@@ -159,7 +168,8 @@ const AdminDashboard = () => {
       filtered = filtered.filter(
         (apt) =>
           (apt.fullName || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
-          (apt.purpose || "").toLowerCase().includes(searchTerm.toLowerCase())
+          (apt.purpose || "").toLowerCase().includes(searchTerm.toLowerCase()) ||
+          (apt.user_id || "").toLowerCase().includes(searchTerm.toLowerCase())
       );
     }
 
@@ -170,7 +180,7 @@ const AdminDashboard = () => {
     fetchData();
   }, [startDate, endDate]);
 
-  // Handle making a date unavailable
+  // Toggle date availability
   const toggleDateAvailability = async (date) => {
     try {
       const isCurrentlyUnavailable = unavailableDates.includes(date);
@@ -202,7 +212,7 @@ const AdminDashboard = () => {
     }
   };
 
-  // Handle setting volume limit for a date
+  // Set volume limit for a date
   const setVolumeLimitForDate = async () => {
     if (!selectedDate || !volumeLimit) {
       alert("Please select a date and enter a volume limit");
@@ -289,7 +299,7 @@ const AdminDashboard = () => {
         return;
       }
 
-      // If approving an appointment, check if the date's volume limit is now reached
+      // If approving an appointment, check if the date's volume limit is reached
       if (newStatus === "approved") {
         const updatedAppt = allAppointments.find(a => a.appointmentId === appointmentId);
         if (updatedAppt) {
@@ -373,7 +383,8 @@ const AdminDashboard = () => {
       history = history.filter(
         (apt) =>
           (apt.fullName || "").toLowerCase().includes(historySearchTerm.toLowerCase()) ||
-          (apt.purpose || "").toLowerCase().includes(historySearchTerm.toLowerCase())
+          (apt.purpose || "").toLowerCase().includes(historySearchTerm.toLowerCase()) ||
+          (apt.user_id || "").toLowerCase().includes(historySearchTerm.toLowerCase())
       );
     }
 
@@ -426,7 +437,9 @@ const AdminDashboard = () => {
         </button>
       </div>
 
-      {/* Calendar & Restrictions Tab */}
+      {/* ===================== */}
+      {/* CALENDAR & RESTRICTIONS */}
+      {/* ===================== */}
       {activeTab === "calendar" && (
         <>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
@@ -501,7 +514,7 @@ const AdminDashboard = () => {
             </div>
           </div>
 
-          {/* Volume Limits Table Section */}
+          {/* Volume Limits Table */}
           <div className="p-8 rounded-[25px] bg-white border border-slate-200 shadow-sm">
             <h2 className="text-lg font-black text-slate-800 mb-4">DATE RESTRICTIONS & VOLUME LIMITS</h2>
             <div className="overflow-x-auto">
@@ -589,10 +602,12 @@ const AdminDashboard = () => {
         </>
       )}
 
-      {/* Appointments Management Tab */}
+      {/* ===================== */}
+      {/* APPOINTMENTS TAB        */}
+      {/* ===================== */}
       {activeTab === "appointments" && (
         <>
-          {/* Statistics */}
+          {/* Statistics Cards */}
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 mb-8">
             <StatCard
               icon={Clock}
@@ -620,7 +635,7 @@ const AdminDashboard = () => {
             />
           </div>
 
-          {/* Status Chart */}
+          {/* Status Pie Chart */}
           {statusChartData.some(item => item.value > 0) && (
             <div className="p-8 rounded-[25px] bg-white border border-slate-200 shadow-sm mb-8">
               <h2 className="text-lg font-black text-slate-800 mb-4">APPOINTMENT STATUS OVERVIEW</h2>
@@ -636,8 +651,7 @@ const AdminDashboard = () => {
                       outerRadius={100}
                       fill="#8884d8"
                       dataKey="value"
-                    >
-                    </Pie>
+                    />
                     <Legend />
                   </PieChart>
                 </ResponsiveContainer>
@@ -653,7 +667,7 @@ const AdminDashboard = () => {
                 <Search className="absolute left-3 top-3 w-5 h-5 text-slate-400" />
                 <input
                   type="text"
-                  placeholder="Search by name or purpose..."
+                  placeholder="Search by name, purpose, or user ID..."
                   value={searchTerm}
                   onChange={(e) => setSearchTerm(e.target.value)}
                   className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
@@ -679,12 +693,13 @@ const AdminDashboard = () => {
             </div>
           </div>
 
-          {/* Appointments Table */}
+          {/* Appointments Table — WITH user_id column */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50">
+                    <th className="px-6 py-4 text-left text-sm font-bold text-slate-700">User ID</th>
                     <th className="px-6 py-4 text-left text-sm font-bold text-slate-700">Name</th>
                     <th className="px-6 py-4 text-left text-sm font-bold text-slate-700">Purpose</th>
                     <th className="px-6 py-4 text-left text-sm font-bold text-slate-700">Date & Time</th>
@@ -697,9 +712,15 @@ const AdminDashboard = () => {
                   {filteredAppointments.length > 0 ? (
                     filteredAppointments.map((apt) => (
                       <tr
-                        key={apt.appointmentId}
+                        key={apt.id || apt.appointmentId}
                         className="border-b border-slate-200 hover:bg-slate-50 transition"
                       >
+                        {/* USER ID CELL */}
+                        <td className="px-6 py-4">
+                          <p className="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-1 rounded truncate max-w-[140px]">
+                            {apt.user_id}
+                          </p>
+                        </td>
                         <td className="px-6 py-4">
                           <div>
                             <p className="font-semibold text-slate-800">{apt.fullName}</p>
@@ -765,7 +786,7 @@ const AdminDashboard = () => {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan="6" className="px-6 py-12 text-center">
+                      <td colSpan="7" className="px-6 py-12 text-center">
                         <AlertCircle className="w-12 h-12 text-slate-400 mx-auto mb-3" />
                         <p className="text-slate-600 font-semibold">No appointments found</p>
                       </td>
@@ -783,7 +804,9 @@ const AdminDashboard = () => {
         </>
       )}
 
-      {/* History Tab */}
+      {/* ===================== */}
+      {/* HISTORY TAB             */}
+      {/* ===================== */}
       {activeTab === "history" && (
         <>
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 mb-8">
@@ -801,7 +824,7 @@ const AdminDashboard = () => {
                 <Search className="absolute left-3 top-3 w-5 h-5 text-slate-400" />
                 <input
                   type="text"
-                  placeholder="Search history by name or purpose..."
+                  placeholder="Search history by name, purpose, or user ID..."
                   value={historySearchTerm}
                   onChange={(e) => setHistorySearchTerm(e.target.value)}
                   className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 outline-none"
@@ -843,13 +866,14 @@ const AdminDashboard = () => {
             </div>
           </div>
 
-          {/* History Table */}
+          {/* History Table — WITH user_id column */}
           <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50">
                     <th className="px-6 py-4 text-left text-sm font-bold text-slate-700">#</th>
+                    <th className="px-6 py-4 text-left text-sm font-bold text-slate-700">User ID</th>
                     <th className="px-6 py-4 text-left text-sm font-bold text-slate-700">Name</th>
                     <th className="px-6 py-4 text-left text-sm font-bold text-slate-700">Purpose</th>
                     <th className="px-6 py-4 text-left text-sm font-bold text-slate-700">Date & Time</th>
@@ -862,11 +886,17 @@ const AdminDashboard = () => {
                   {getHistoryAppointments().length > 0 ? (
                     getHistoryAppointments().map((apt, index) => (
                       <tr
-                        key={apt.appointmentId}
+                        key={apt.id || apt.appointmentId}
                         className="border-b border-slate-200 hover:bg-slate-50 transition"
                       >
                         <td className="px-6 py-4 text-sm text-slate-500 font-mono">
                           {index + 1}
+                        </td>
+                        {/* USER ID CELL */}
+                        <td className="px-6 py-4">
+                          <p className="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-1 rounded truncate max-w-[140px]">
+                            {apt.user_id}
+                          </p>
                         </td>
                         <td className="px-6 py-4">
                           <p className="font-semibold text-slate-800">{apt.fullName}</p>
@@ -911,7 +941,7 @@ const AdminDashboard = () => {
                     ))
                   ) : (
                     <tr>
-                      <td colSpan="7" className="px-6 py-12 text-center">
+                      <td colSpan="8" className="px-6 py-12 text-center">
                         <History className="w-12 h-12 text-slate-400 mx-auto mb-3" />
                         <p className="text-slate-600 font-semibold">
                           No approved or rejected appointments yet.
@@ -934,7 +964,7 @@ const AdminDashboard = () => {
         </>
       )}
 
-      {/* Volume Modal */}
+      {/* Volume Limit Modal */}
       {showVolumeModal && (
         <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
           <div className="bg-white rounded-[20px] p-8 w-96 shadow-2xl">

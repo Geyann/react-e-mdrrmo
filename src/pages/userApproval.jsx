@@ -1,7 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { supabase } from '../createClient';
-import { Check, X, Search, AlertCircle, UserCheck, UserX, Clock, Eye, Shield, Mail, IdCard, Camera, ArrowLeft } from 'lucide-react';
-
+import { supabase } from '../createClient';import { Check, X, Search, AlertCircle, UserCheck, UserX, Clock, Eye, Shield, Mail, IdCard, Camera, ArrowLeft, User } from 'lucide-react';
 const AdminApproval = () => {
   const [pendingUsers, setPendingUsers] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -54,12 +52,14 @@ const AdminApproval = () => {
 
         if (updateError) throw updateError;
 
-        // Also upsert into profiles table with the user_id
+        // Insert into profiles table using the pending_registrations.id as profiles.id
+        // Since we dropped the FK constraint, this works fine
         const { error: profileError } = await supabase
           .from('profiles')
-          .upsert({
-            id: user.id,
-            user_id: newUserId,
+          .insert({
+            id: user.id,                    // Use the pending_registrations.id
+            user_id: newUserId,             // The display-friendly ID (e.g., USR-XXX-XXXX)
+            username: user.username || null,
             email: user.email,
             first_name: user.first_name,
             middle_name: user.middle_name,
@@ -69,10 +69,37 @@ const AdminApproval = () => {
             address: user.address,
             mobile_number: user.mobile_number,
             role: user.role || 'user',
-            full_name: `${user.first_name} ${user.middle_name ? user.middle_name + ' ' : ''}${user.last_name}`
-          }, { onConflict: 'id' });
+            full_name: `${user.first_name} ${user.middle_name ? user.middle_name + ' ' : ''}${user.last_name}`,
+            is_active: true
+          });
 
-        if (profileError) throw profileError;
+        if (profileError) {
+          // If profile already exists (duplicate id), update it instead
+          if (profileError.code === '23505') { // Unique violation
+            const { error: upsertError } = await supabase
+              .from('profiles')
+              .upsert({
+                id: user.id,
+                user_id: newUserId,
+                username: user.username || null,
+                email: user.email,
+                first_name: user.first_name,
+                middle_name: user.middle_name,
+                last_name: user.last_name,
+                age: user.age,
+                birthdate: user.birthdate,
+                address: user.address,
+                mobile_number: user.mobile_number,
+                role: user.role || 'user',
+                full_name: `${user.first_name} ${user.middle_name ? user.middle_name + ' ' : ''}${user.last_name}`,
+                is_active: true
+              });
+
+            if (upsertError) throw upsertError;
+          } else {
+            throw profileError;
+          }
+        }
 
         alert(`${user.first_name} ${user.last_name} has been approved! User ID: ${newUserId}`);
       } catch (err) {
@@ -103,6 +130,7 @@ const AdminApproval = () => {
       user.first_name?.toLowerCase().includes(search) ||
       user.last_name?.toLowerCase().includes(search) ||
       user.email?.toLowerCase().includes(search) ||
+      user.username?.toLowerCase().includes(search) ||
       user.id_number?.toLowerCase().includes(search)
     );
   });
@@ -175,7 +203,7 @@ const AdminApproval = () => {
             <Search className="absolute left-3 top-3 w-5 h-5 text-slate-400" />
             <input
               type="text"
-              placeholder="Search by name, email, or ID number..."
+              placeholder="Search by name, username, email, or ID number..."
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none"
@@ -183,6 +211,7 @@ const AdminApproval = () => {
           </div>
         </div>
 
+        {/* Username column added to the table */}
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -192,6 +221,10 @@ const AdminApproval = () => {
                   <th className="px-6 py-4 text-left text-sm font-bold text-slate-700">
                     <UserCheck className="w-4 h-4 inline mr-1" />
                     Name
+                  </th>
+                  <th className="px-6 py-4 text-left text-sm font-bold text-slate-700">
+                    <User className="w-4 h-4 inline mr-1" />
+                    Username
                   </th>
                   <th className="px-6 py-4 text-left text-sm font-bold text-slate-700">
                     <Mail className="w-4 h-4 inline mr-1" />
@@ -211,7 +244,7 @@ const AdminApproval = () => {
               <tbody>
                 {filteredUsers.length === 0 ? (
                   <tr>
-                    <td colSpan="6" className="px-6 py-12 text-center">
+                    <td colSpan="7" className="px-6 py-12 text-center">
                       <AlertCircle className="w-12 h-12 text-slate-400 mx-auto mb-3" />
                       <p className="text-slate-600 font-semibold">
                         {searchTerm ? "No matching applications found." : "No pending applications found."}
@@ -235,6 +268,11 @@ const AdminApproval = () => {
                             <p className="text-xs text-slate-500">Age: {user.age || 'N/A'}</p>
                           </div>
                         </div>
+                      </td>
+                      <td className="px-6 py-4">
+                        <span className="px-3 py-1 bg-purple-100 text-purple-700 rounded-full text-xs font-bold">
+                          {user.username || 'N/A'}
+                        </span>
                       </td>
                       <td className="px-6 py-4">
                         <p className="text-slate-800 font-medium">{user.email}</p>
@@ -311,6 +349,10 @@ const AdminApproval = () => {
                 <div>
                   <p className="text-slate-500 font-semibold">Full Name</p>
                   <p className="font-bold text-slate-800">{selectedUser.first_name} {selectedUser.last_name}</p>
+                </div>
+                <div>
+                  <p className="text-slate-500 font-semibold">Username</p>
+                  <p className="font-bold text-slate-800">{selectedUser.username || 'N/A'}</p>
                 </div>
                 <div>
                   <p className="text-slate-500 font-semibold">ID Number</p>

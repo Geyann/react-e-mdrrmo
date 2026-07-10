@@ -35,23 +35,22 @@ const Report = () => {
   }
 
   return (
-    <div className="min-h-screen bg-transparent py-10 px-4">
-      <form
-        onSubmit={createUser}
-        className="max-w-2xl mx-auto bg-white p-8 md:p-10 rounded-3xl shadow-xl border border-gray-200"
-      >
-        <div className="flex flex-col pt-5 gap-6">
-          <div className="flex justify-center">
-            <Siren className="w-20 h-auto "/>
-          </div>
-          
-          <div className="text-center">
-            <h1 className="text-3xl font-bold text-gray-800">Report an Incident</h1>
-            <p className="text-gray-500 mt-2 text-sm">
+    <div className="min-h-screen">
+      <div className="bg-gradient-to-r from-blue-600 to-purple-600 max-w-2xl mx-auto bg-white rounded-t-4xl shadow-xl border border-b-transparent border-gray-100">
+        <div className="flex flex-col items-center mb-3 pt-5">
+         <Siren className="w-15 h-auto text-slate-200"/>
+       <h1 className="text-3xl font-bold text-white">Report an Incident</h1>
+            <p className="text-white text-sm">
               Please provide details below. All fields marked <span className="text-red-500">*</span> are required.
             </p>
-          </div>
-
+        </div>
+      </div><form
+        onSubmit={createUser}
+        className="max-w-2xl mx-auto bg-white p-8 md:p-10 rounded-b-3xl shadow-b-xl border border-t-transparent border-gray-200"
+      >
+        
+        <div className=" flex flex-col gap-6">
+        
           <div className="grid grid-cols-1 gap-5">
             {[
               { label: "Patient Name", name: "patientName", type: "text", placeholder: "Enter Patient Name" },
@@ -115,7 +114,7 @@ const Report = () => {
 
             <button 
               type="submit" 
-              className="w-full mt-4 bg-blue-600 text-white font-bold py-4 rounded-2xl hover:bg-blue-700 transition shadow-lg"
+              className="w-full mt-4 bg-purple-600 text-white font-bold py-4 rounded-2xl hover:bg-blue-700 transition shadow-lg"
             >
               Submit Incident Report
             </button>

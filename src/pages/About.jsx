@@ -1,5 +1,5 @@
 import React from 'react';
-import imglogo from '../Images/icon.png';
+import imglogo from '../Images/logo1.png';
 import hotImg from '../Images/hotline-h1.png'
 
 const thematicAreas = [

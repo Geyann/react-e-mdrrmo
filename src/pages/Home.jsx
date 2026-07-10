@@ -20,13 +20,13 @@ export default function Guest() {
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link 
                 to="/hazardmap" 
-                className="inline-flex items-center gap-2 px-10 py-3 bg-purple-700 text-white rounded-lg font-medium hover:bg-cyan-700 transition-all shadow-lg hover:shadow-cyan-200"
+                className="inline-flex items-center gap-2 px-10 border border-purple-900 py-3 bg-purple-700 text-white rounded-lg font-medium transition-all shadow-lg hover:bg-purple-900"
               >
                 <Map className="w-5 h-5" /> View Hazard Map
               </Link>
               <Link 
                 to="/yearly-incident-trends" 
-                className="inline-flex items-center gap-2 px-6 py-3 bg-white border border-slate-300 text-slate-700 rounded-lg font-medium hover:bg-gray-500 transition-all"
+                className="inline-flex items-center gap-2 px-6 py-3 bg-gray-300 border border-gray-400 text-slate-700 rounded-lg font-medium hover:bg-gray-400 transition-all"
               >
                 <TrendingUp className="w-5 h-5" /> Yearly Incident Trends
               </Link>
@@ -38,7 +38,7 @@ export default function Guest() {
       {/* Hazards History Section */}
       <section className="py-20">
         <div className="container mx-auto px-4">
-          <h2 id="report-hazard-history" className="text-3xl font-bold text-center mb-12 text-slate-900">
+          <h2 id="report-hazard-history" className="text-4xl font-bold text-center mb-12 text-slate-900">
             Hazards History in Naic
           </h2>
           
@@ -48,7 +48,7 @@ export default function Guest() {
               <div className="">
                 <UserMonthlyIncidentGraph />
               </div>
-              <p className="text-center font-semibold text-slate-700">Incidents Reported</p>
+              <p className="text-center text-xl font-semibold text-black">Incidents Reported</p>
             </div>
 
             {/* Chart 2 */}
@@ -56,7 +56,7 @@ export default function Guest() {
               <div className="">
                 <UserHazardMonthlyGraph />
               </div>
-              <p className="text-center font-semibold text-slate-700">Hazard and Risk Reported</p>
+              <p className="text-center font-semibold text-black text-xl">Hazard and Risk Reported</p>
             </div>
           </div>
         </div>
