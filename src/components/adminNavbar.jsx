@@ -18,7 +18,7 @@ export default function AdminNavbar() {
     <Link 
       to={to} 
       onClick={onClick}
-      className="group relative inline-block py-2 px-1 text-center font-semibold uppercase text-[#262626] transition-colors text-nowrap"
+      className="group relative inline-block py-2 px-1 text-white text-center font-semibold uppercase text-[#262626] transition-colors text-nowrap"
     >
       <span className="relative z-10 transition-colors duration-300 group-hover:text-white">
         {children}
@@ -29,7 +29,7 @@ export default function AdminNavbar() {
   );
 
   return (
-    <header className="absolute inset-x-0 top-0 z-5000 bg-white w-full p-6">
+    <header className="absolute inset-x-0 top-0 z-5000 bg-gradient-to-r from-blue-600 to-purple-600 w-full p-6">
       <div className="flex items-center justify-between">
         {/* Logo */}
         <Link to="/admin/dashboard" className="z-50">
@@ -68,7 +68,7 @@ export default function AdminNavbar() {
         <div className="hidden lg:flex items-center gap-4">
           <button
             onClick={handleLogout}
-            className="group relative inline-block py-2 px-4 text-center font-semibold uppercase text-[#262626] transition-colors"
+            className="group relative inline-block py-2 px-4 text-center text-white font-semibold uppercase text-[#262626] transition-colors"
           >
             <span className="text-nowrap relative z-10 transition-colors duration-300 group-hover:text-white">
               Log out
@@ -76,8 +76,8 @@ export default function AdminNavbar() {
             <span className="absolute inset-0 border-y-2 border-[#262626] opacity-0 transition-all duration-300 scale-y-[2] group-hover:scale-y-100 group-hover:opacity-100" />
             <span className="absolute top-[2px] left-0 h-full w-full origin-top scale-0 bg-[#262626] opacity-0 transition-all duration-300 group-hover:scale-100 group-hover:opacity-100" />
           </button>
-          <Link to="/profile"><User2Icon className="hover:bg-red-100" /></Link>
-          <Link to="/notification"><BellIcon /></Link>
+          <Link to="/profile"><User2Icon className=" text-white" /></Link>
+          <Link to="/notification"><BellIcon className='text-white' /></Link>
         </div>
       </div>
     </header>

@@ -57,20 +57,21 @@ const HazardReport = () => {
   }
 
   return (
-    <div className="min-h-screen bg-transparent py-12 px-4 sm:px-6 lg:px-8 ">
-      <form 
+    <div className="min-h-screen ">
+     <div className="bg-gradient-to-r from-blue-600 to-purple-600 max-w-2xl mx-auto bg-white rounded-t-4xl shadow-xl border border-b-transparent border-gray-100">
+        <div className="flex flex-col items-center mb-3 pt-5">
+         <TriangleAlertIcon className="w-15 h-auto text-slate-200" />
+           <h1 className="text-3xl font-bold text-white">Hazard & Risk Report</h1>
+            <p className="text-white text-sm">Identify risks. Fields marked <span className="text-red-500">*</span> are required.</p>
+         
+        </div>
+      </div>
+           <form 
         onSubmit={createHazardReport}
-        className="max-w-2xl mx-auto bg-white p-8 md:p-10 rounded-3xl shadow-xl border border-gray-100"
+        className="max-w-2xl mx-auto bg-white p-8 md:p-10 rounded-b-3xl shadow-xl border border-t-transparent border-gray-100"
       >
-        <div className="flex flex-col pt-5 gap-6">
-          <div className="flex justify-center">
-            <TriangleAlertIcon className="w-20 h-auto" />
-          </div>
-
-          <div className="text-center">
-            <h1 className="text-3xl font-extrabold text-gray-900">Hazard & Risk Report</h1>
-            <p className="text-gray-500 mt-2 text-sm">Identify risks. Fields marked <span className="text-red-500">*</span> are required.</p>
-          </div>
+        <div className="flex flex-col gap-6">
+         
 
           <div className="space-y-5">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-5">

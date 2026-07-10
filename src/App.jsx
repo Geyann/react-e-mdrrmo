@@ -32,36 +32,23 @@ import AuthCallback from './pages/AuthCallback'
 import CreateUserForOauth from './components/CreateUserForOauth'
 import ProtectedRoute from './components/ProtectedRoute'
 import AdminLoginRedirect from './components/AdminLoginRedirect'
+import StaffNavbar from './components/StaffNavbar'
+import StaffHome from './pages/StaffHome'
+import StaffInventory from './pages/StaffInventory'
+import DynamicNavbar from './components/dynamicNavbar'
+import EditProfile from './pages/editProfile'
 
 function App() {
   const location = useLocation();
   const path = location.pathname;
 
-  // --- EASY NAVBAR LOGIC ---
-  let currentNavbar;
-  if (
-    path === '/admin' ||
-    path === '/admin/' ||
-    path === '/admin/register-admin' ||
-    path === '/register' ||
-    path === '/login' ||
-    path === '/login/' ||
-    path === '/auth/callback'
-  ) {
-    currentNavbar = null;
-  } else if (path.includes('/admin/')) {
-    currentNavbar = <AdminNavbar />;
-  } else if (path.includes('/guest/') || path === '/' || path === '/auth/callback') {
-    currentNavbar = <GuestNavbar />
-  } else {
-    currentNavbar = <Navbar />;
-  }
 
   return (
     <div className="app" style={{ backgroundImage: `url(${background})`, repeat: 'no-repeat', backgroundSize: 'cover', minHeight: '100vh', maxHeight: '100vh', overflowY: 'auto', scrollbarWidth: 'none' }}>
-      {currentNavbar}
+     <DynamicNavbar /> {/* <-- THIS IS ALL YOU NEED */}
       <div className="content p-30">
         <Routes>
+
           {/* ===== PUBLIC ROUTES (no protection needed) ===== */}
           <Route path="/" element={<Guest />} />
           <Route path="/login" element={<LoginPage />} />
@@ -81,6 +68,9 @@ function App() {
           {/* ===== PROTECTED USER ROUTES ===== */}
           <Route path="/home" element={
             <ProtectedRoute><Home /></ProtectedRoute>
+          } />
+          <Route path="/track" element={
+            <ProtectedRoute><TrackAppointment/></ProtectedRoute>
           } />
           <Route path="/about" element={
             <ProtectedRoute><About /></ProtectedRoute>
@@ -103,12 +93,10 @@ function App() {
           <Route path="/hazardmap" element={
             <ProtectedRoute><UserHazardmap /></ProtectedRoute>
           } />
-          <Route path="/settings" element={
-            <ProtectedRoute><Settings /></ProtectedRoute>
-          } />
+          <Route path="/edit-profile" element={<EditProfile/>} />
+        <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
           <Route path="/profile" element={
-            <ProtectedRoute><Profile /></ProtectedRoute>
-          } />
+          <Profile/>} />
           <Route path="/yearly-incident-trends" element={
             <ProtectedRoute><MonthlyIncidentTrends /></ProtectedRoute>
           } />
@@ -116,6 +104,9 @@ function App() {
           {/* ===== PROTECTED ADMIN ROUTES ===== */}
           <Route path="/admin/dashboard" element={
             <ProtectedRoute adminOnly={true}><Admin /></ProtectedRoute>
+          } />
+          <Route path="/admin/register-admin" element={
+            <ProtectedRoute adminOnly={true}><RegisterAdmin /></ProtectedRoute>
           } />
           <Route path="/admin/hazard-map" element={
             <ProtectedRoute adminOnly={true}><AdminHazardMap /></ProtectedRoute>
@@ -135,9 +126,36 @@ function App() {
           <Route path="/admin/checkup" element={
             <ProtectedRoute adminOnly={true}><CheckUpTable /></ProtectedRoute>
           } />
-          
+          {/* ===== PROTECTED STAFF ROUTES ===== */}
+           <Route path="/staff/dashboard" element={
+            <ProtectedRoute staffOnly={true}><StaffHome /></ProtectedRoute>
+          } />
+           <Route path="/staff/borrow" element={
+            <ProtectedRoute staffOnly={true}><Borrow /></ProtectedRoute>
+          } />
+           <Route path="/staff/checkup" element={
+            <ProtectedRoute staffOnly={true}><CheckUp /></ProtectedRoute>
+          } />
+           <Route path="/staff/inventory" element={
+            <ProtectedRoute staffOnly={true}><StaffInventory /></ProtectedRoute>
+          } />
+           <Route path="/staff/borrower-slip" element={
+            <ProtectedRoute staffOnly={true}><StaffHome /></ProtectedRoute>
+          } />
+           <Route path="/staff/settings" element={
+            <ProtectedRoute staffOnly={true}><Settings /></ProtectedRoute>
+          } />
+           <Route path="/staff/profile" element={
+            <ProtectedRoute staffOnly={true}><StaffHome /></ProtectedRoute>
+          } />
+           <Route path="/staff/notification" element={
+            <ProtectedRoute staffOnly={true}><StaffHome /></ProtectedRoute>
+          } />
+
           {/* ===== ADMIN CATCH-ALL (must be LAST after all /admin/* exact routes) ===== */}
           <Route path="/admin/*" element={<Navigate to="/admin" />} />
+          
+         
 
           {/* ===== CATCH-ALL FOR EVERYTHING ELSE ===== */}
           <Route path="*" element={<Navigate to="/" />} />

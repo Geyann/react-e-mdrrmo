@@ -45,20 +45,23 @@ const Borrow = () => {
   }
 
   return (
-    <div className="min-h-screen bg-transparent py-12 px-4 ">
-      <form
-        onSubmit={submitRequest}
-        className="max-w-3xl mx-auto bg-white p-8 md:p-12 rounded-3xl shadow-xl border border-gray-100"
-      >
-        <div className="flex flex-col items-center mb-8 pt-5">
-          <Ambulance className="w-20 h-auto" />
-          <h1 className="text-3xl font-bold text-gray-900 text-center">
+    <div className="min-h-screen ">
+      <div className="bg-gradient-to-r from-blue-600 to-purple-600 max-w-3xl mx-auto   rounded-t-4xl shadow-t-xl border border-b-transparent border-gray-100">
+        <div className="flex flex-col items-center mb-3 pt-5">
+          <Ambulance className="w-15 h-auto text-slate-200" />
+          <h1 className="text-3xl font-bold text-white text-center">
             Emergency Response Vehicle Dispatch
           </h1>
-          <p className="text-gray-500 mt-2 text-sm">
+          <p className="text-white text-sm">
             All fields marked <span className="text-red-500">*</span> are required.
           </p>
         </div>
+      </div>
+      <form
+        onSubmit={submitRequest}
+        className="max-w-3xl mx-auto bg-white px-12 pb-10 pt-5 rounded-b-3xl shadow-b-xl border border-gray-100"
+      >
+        
 
         <h3 className="text-lg font-semibold text-gray-800 mb-4 border-b pb-2">
           Kilometer Reading

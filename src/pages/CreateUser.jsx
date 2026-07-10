@@ -2,7 +2,7 @@ import { useState } from "react";
 import { supabase } from "../createClient";
 import { useNavigate } from "react-router-dom";
 import imlogo from '../Images/icon.png';
-import { UserPlus, Mail, Lock, User, Calendar, Phone, MapPin, IdCard, Camera, AlertCircle, ArrowLeft } from 'lucide-react';
+import { UserPlus, Lock, User, Calendar, Phone, MapPin, IdCard, Camera, AlertCircle, ArrowLeft } from 'lucide-react';
 
 export default function CreateUser() {
   const [loading, setLoading] = useState(false);
@@ -11,7 +11,7 @@ export default function CreateUser() {
   const navigate = useNavigate();
   
   const initialFormState = {
-    email: '', password: '', firstName: '', middleName: '',
+    username: '', password: '', confirmPassword: '', firstName: '', middleName: '',
     lastName: '', age: '', address: '', mobileNumber: '',
     birthdate: '', idNumber: ''
   };
@@ -26,26 +26,58 @@ export default function CreateUser() {
     setIdFile(e.target.files[0]);
   };
 
+  // SHA-256 hash function
+  const hashPassword = async (password) => {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(password + 'hackerai-salt-2024');
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  };
+
   const handleRegister = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError("");
 
+    // Validation
+    if (formData.password !== formData.confirmPassword) {
+      setError("Passwords do not match.");
+      setLoading(false);
+      return;
+    }
+
+    if (formData.password.length < 6) {
+      setError("Password must be at least 6 characters.");
+      setLoading(false);
+      return;
+    }
+
+    if (formData.username.length < 3) {
+      setError("Username must be at least 3 characters.");
+      setLoading(false);
+      return;
+    }
+
     try {
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: formData.email,
-        password: formData.password,
-      });
+      // Check if username already exists
+      const { data: existingUser } = await supabase
+        .from('pending_registrations')
+        .select('username')
+        .eq('username', formData.username)
+        .maybeSingle();
 
-      if (authError) throw new Error(`Auth Error: ${authError.message}`);
+      if (existingUser) {
+        throw new Error("Username is already taken. Please choose another.");
+      }
 
-      const userId = authData.user?.id;
-      if (!userId) throw new Error("Failed to create user account.");
+      // Generate a UUID for the user
+      const tempId = crypto.randomUUID();
 
       let idPublicUrl = '';
       if (idFile) {
         const fileExt = idFile.name.split('.').pop();
-        const fileName = `ids/${userId}-${Date.now()}.${fileExt}`;
+        const fileName = `ids/${tempId}-${Date.now()}.${fileExt}`;
         const filePath = `pending_ids/${fileName}`;
 
         const { error: uploadError } = await supabase.storage
@@ -61,11 +93,15 @@ export default function CreateUser() {
         idPublicUrl = urlData.publicUrl;
       }
 
+      const hashedPassword = await hashPassword(formData.password);
+
       const { error: dbError } = await supabase
         .from('pending_registrations')
         .insert([{
-          id: userId,
-          email: formData.email,
+          id: tempId,
+          username: formData.username,
+          password: hashedPassword,
+          email: `${formData.username}@local.user`,
           first_name: formData.firstName,
           middle_name: formData.middleName,
           last_name: formData.lastName,
@@ -78,9 +114,15 @@ export default function CreateUser() {
           status: 'pending'
         }]);
 
-      if (dbError) throw dbError;
+      if (dbError) {
+        // Check if it's a duplicate username error
+        if (dbError.message?.includes('username')) {
+          throw new Error("Username is already taken. Please choose another.");
+        }
+        throw new Error(dbError.message);
+      }
 
-      alert('Account created! Please check your email for a confirmation link, then wait for admin approval.');
+      alert('Account created successfully! Wait for admin approval to login.');
       setFormData(initialFormState);
       setIdFile(null);
       e.target.reset();
@@ -96,7 +138,7 @@ export default function CreateUser() {
   const labelClass = "text-sm font-bold text-gray-700";
 
   return (
-    <div className="min-h-screen  from-blue-50 to-purple-50 py-10 px-4">
+    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 py-10 px-4">
       <div className="max-w-3xl mx-auto">
         <button
           onClick={() => navigate(-1)}
@@ -125,6 +167,20 @@ export default function CreateUser() {
             )}
 
             <form onSubmit={handleRegister} className="grid grid-cols-1 md:grid-cols-2 gap-5">
+              {/* Username - New primary login field */}
+              <div className="md:col-span-2 flex flex-col gap-1.5">
+                <label className={labelClass}><User className="w-4 h-4 inline mr-1 text-purple-600" />Username</label>
+                <input 
+                  className={inputClass} 
+                  name="username" 
+                  placeholder="Choose a unique username for login" 
+                  value={formData.username} 
+                  onChange={handleChange} 
+                  required 
+                  minLength={3}
+                />
+              </div>
+
               <div className="flex flex-col gap-1.5">
                 <label className={labelClass}><User className="w-4 h-4 inline mr-1 text-purple-600" />First Name</label>
                 <input className={inputClass} name="firstName" placeholder="First Name" value={formData.firstName} onChange={handleChange} required />
@@ -141,13 +197,31 @@ export default function CreateUser() {
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <label className={labelClass}><Mail className="w-4 h-4 inline mr-1 text-purple-600" />Email</label>
-                <input className={inputClass} name="email" type="email" placeholder="your@email.com" value={formData.email} onChange={handleChange} required />
+                <label className={labelClass}><Lock className="w-4 h-4 inline mr-1 text-purple-600" />Password</label>
+                <input 
+                  className={inputClass} 
+                  name="password" 
+                  type="password" 
+                  placeholder="Min 6 characters" 
+                  value={formData.password} 
+                  onChange={handleChange} 
+                  required 
+                  minLength={6}
+                />
               </div>
 
-              <div className="md:col-span-2 flex flex-col gap-1.5">
-                <label className={labelClass}><Lock className="w-4 h-4 inline mr-1 text-purple-600" />Password</label>
-                <input className={inputClass} name="password" type="password" placeholder="Create a strong password" value={formData.password} onChange={handleChange} required />
+              <div className="flex flex-col gap-1.5">
+                <label className={labelClass}><Lock className="w-4 h-4 inline mr-1 text-purple-600" />Confirm Password</label>
+                <input 
+                  className={inputClass} 
+                  name="confirmPassword" 
+                  type="password" 
+                  placeholder="Repeat password" 
+                  value={formData.confirmPassword} 
+                  onChange={handleChange} 
+                  required 
+                  minLength={6}
+                />
               </div>
 
               <div className="flex flex-col gap-1.5">

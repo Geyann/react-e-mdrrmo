@@ -2,6 +2,7 @@
 
 import React, { useState } from 'react';
 import { supabase } from '../createClient';
+import { HeartPlus } from 'lucide-react';
 
 const CheckUp = () => {
   const [checkUp, setCheckUp] = useState({
@@ -46,18 +47,24 @@ const CheckUp = () => {
   }
 
   return (
-    <div className="min-h-screen bg-transparent py-12 px-4 ">
-      <form
-        onSubmit={handleSubmit}
-        className="max-w-2xl mx-auto bg-white p-8 md:p-10 rounded-3xl shadow-xl border border-gray-100"
-      >
-        <div className="flex flex-col items-center mb-8 pt-5">
-          <img src="https://cdn-icons-png.flaticon.com/128/1429/1429246.png" alt="Medical" className="w-16 h-16 mb-4" />
-          <h1 className="text-3xl font-extrabold text-gray-900">Out Patient Check Up</h1>
-          <p className="text-gray-500 mt-2 text-sm text-center">
+    <div className="min-h-screen ">
+   
+
+       <div className="bg-gradient-to-r from-blue-600 to-purple-600 max-w-2xl mx-auto bg-white rounded-t-4xl shadow-xl border border-b-transparent border-gray-100">
+        <div className="flex flex-col items-center mb-3 pt-5">
+        <HeartPlus className='h-15 w-auto text-white'/>
+            <h1 className="text-4xl font-bold text-white">Out Patient Check Up</h1>
+          <p className="text-white text-sm text-center">
             Fields marked <span className="text-red-500">*</span> are required for assessment.
           </p>
         </div>
+        </div>
+     
+      <form
+        onSubmit={handleSubmit}
+        className="max-w-2xl mx-auto bg-white px-10 pb-10 pt-5 rounded-b-3xl shadow-xl border border-gray-100"
+      >
+        
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           {[
@@ -110,6 +117,7 @@ const CheckUp = () => {
         </button>
       </form>
     </div>
+    
   );
 };
 

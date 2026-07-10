@@ -4,14 +4,14 @@ import imgLogo from '../Images/icon.png';
 import { supabase } from '../createClient';
 import { BellIcon, User2Icon } from 'lucide-react';
 
-export default function Navbar() {
+export default function StaffNavbar() {
   const [isOpen, setIsOpen] = useState(false);
   const navigate = useNavigate();
 
   const handleLogout = async () => {
     await supabase.auth.signOut();
     localStorage.clear();
-    navigate('/');
+    navigate('/admin');
   };
 
   const NavLink = ({ to, children, onClick }) => (
@@ -43,14 +43,11 @@ export default function Navbar() {
         </button>
 
         <nav className={`${isOpen ? 'flex' : 'hidden'} lg:flex flex-col lg:flex-row absolute lg:static top-full left-0 w-full lg:w-auto bg-white/95  lg:bg-transparent p-6 lg:p-0 gap-2 items-center`}>
-          <NavLink to="/hazard-report" onClick={() => setIsOpen(false)}>Hazard Report</NavLink>
-          <NavLink to="/report" onClick={() => setIsOpen(false)}>Report Incident</NavLink>
-          <NavLink to="/borrow" onClick={() => setIsOpen(false)}>Borrow Vehicle</NavLink>
-          <NavLink to="/appointment" onClick={() => setIsOpen(false)}>Book an Appointment</NavLink>
-          <NavLink to="/track" onClick={() => setIsOpen(false)}>Track Appointment/s</NavLink>
-          <NavLink to="/checkup" onClick={() => setIsOpen(false)}>Out Patient Check-up</NavLink>
-          <NavLink to="/about" onClick={() => setIsOpen(false)}>About</NavLink>
-          <NavLink to="/settings" onClick={() => setIsOpen(false)}>Settings</NavLink>
+          <NavLink to="/staff/borrow" onClick={() => setIsOpen(false)}>Borrow Vehicle</NavLink>
+          <NavLink to="/staff/checkup" onClick={() => setIsOpen(false)}>OPD Check Up Form</NavLink>
+          <NavLink to="/staff/inventory" onClick={() => setIsOpen(false)}>Inventory Management</NavLink>
+          <NavLink to="/staff/borrower-slip" onClick={() => setIsOpen(false)}>Borrower Slip </NavLink>
+          <NavLink to="/staff/settings" onClick={() => setIsOpen(false)}>Settings</NavLink>
           
           {/* Mobile logout button */}
           <button 
@@ -73,7 +70,7 @@ export default function Navbar() {
           </button>
           
           <Link to="/profile" title='View Profile Picture.'><User2Icon className="text-white hover:bg-white hover:text-gray-700 rounded-xl" /></Link>
-          <Link to="/notification" title='Notifications.'><BellIcon className='text-white hover:bg-white hover:text-gray-700 rounded-xl' /></Link>
+          <Link to="  /notification" title='Notifications.'><BellIcon className='text-white hover:bg-white hover:text-gray-700 rounded-xl' /></Link>
         </div>
       </div>
     </header>
