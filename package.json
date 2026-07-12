@@ -26,9 +26,11 @@
     "react-dom": "^19.0.0-rc.1",
     "react-hook-form": "^7.71.2",
     "react-leaflet": "^5.0.0",
+    "react-leaflet-heat-layer": "^1.1.1",
     "react-leaflet-markercluster": "^5.0.0-rc.0",
     "react-router-dom": "^7.13.1",
     "recharts": "^3.8.1",
+    "simpleheat": "^0.4.0",
     "supabase": "^2.98.2",
     "tailwindcss": "^4.3.1"
   },

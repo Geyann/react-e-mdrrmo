@@ -69,8 +69,8 @@ export default function StaffNavbar() {
             <span className="absolute rounded-md top-[2px] left-0 h-full w-full origin-top scale-0 bg-white opacity-0 transition-all duration-300 group-hover:scale-100 group-hover:opacity-100" />
           </button>
           
-          <Link to="/profile" title='View Profile Picture.'><User2Icon className="text-white hover:bg-white hover:text-gray-700 rounded-xl" /></Link>
-          <Link to="  /notification" title='Notifications.'><BellIcon className='text-white hover:bg-white hover:text-gray-700 rounded-xl' /></Link>
+          <Link to="/staff/profile" title='View Profile Picture.'><User2Icon className="text-white hover:bg-white hover:text-gray-700 rounded-xl" /></Link>
+          <Link to="/staff/notification" title='Notifications.'><BellIcon className='text-white hover:bg-white hover:text-gray-700 rounded-xl' /></Link>
         </div>
       </div>
     </header>

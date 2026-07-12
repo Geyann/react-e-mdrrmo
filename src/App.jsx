@@ -146,7 +146,7 @@ function App() {
             <ProtectedRoute staffOnly={true}><Settings /></ProtectedRoute>
           } />
            <Route path="/staff/profile" element={
-            <ProtectedRoute staffOnly={true}><StaffHome /></ProtectedRoute>
+            <ProtectedRoute staffOnly={true}><Profile /></ProtectedRoute>
           } />
            <Route path="/staff/notification" element={
             <ProtectedRoute staffOnly={true}><StaffHome /></ProtectedRoute>

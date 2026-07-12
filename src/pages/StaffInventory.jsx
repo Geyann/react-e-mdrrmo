@@ -21,11 +21,6 @@ export default function StaffInventory() {
   const [medicalSupplies, setMedicalSupplies] = useState([]);
   const [reports, setReports] = useState([]);
 
-  // Modal states
-  const [showModal, setShowModal] = useState(false);
-  const [modalType, setModalType] = useState('');
-  const [selectedItem, setSelectedItem] = useState(null);
-
   // Search & filter
   const [searchTerm, setSearchTerm] = useState('');
   const [categoryFilter, setCategoryFilter] = useState('all');
@@ -38,20 +33,21 @@ export default function StaffInventory() {
     loadData();
   }, []);
 
-  const loadStaffProfile = async () => {
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      navigate('/admin');
+  const loadStaffProfile = () => {
+    // ✅ FIX: Read from localStorage instead of supabase.auth
+    const storedStaff = localStorage.getItem('currentStaff');
+    
+    if (!storedStaff) {
+      navigate('/admin/login');
       return;
     }
 
-    const { data } = await supabase
-      .from('staff_users')
-      .select('*')
-      .eq('user_id', user.id)
-      .single();
-
-    setStaffProfile(data);
+    try {
+      const parsed = JSON.parse(storedStaff);
+      setStaffProfile(parsed);
+    } catch {
+      navigate('/admin/login');
+    }
   };
 
   const loadData = async () => {
@@ -76,7 +72,9 @@ export default function StaffInventory() {
     }
   };
 
-  // ================= DASHBOARD STATS =================
+  // ... rest of your component (stats, tabs, etc.) remains exactly the same ...
+  // Just replace the loadStaffProfile function above
+
   const stats = {
     totalAmbulances: ambulances.length,
     availableAmbulances: ambulances.filter(a => a.status === 'available').length,
@@ -94,6 +92,7 @@ export default function StaffInventory() {
     );
   }
 
+  // ===== RENDER (keep your entire return block exactly as-is) =====
   return (
     <div className="min-h-screen bg-gray-50">
       {/* Top Navigation */}
