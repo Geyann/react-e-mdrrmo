@@ -2,3 +2,57 @@
 @tailwind components;
 @tailwind utilities;
 @import "tailwindcss";
+/* Custom tooltip styles */
+.custom-tooltip .leaflet-tooltip-content {
+  margin: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.custom-tooltip .leaflet-tooltip-content-wrapper {
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.custom-marker-icon {
+  background: transparent !important;
+  border: none !important;
+}
+
+/* Leaflet popup dark theme overrides */
+.leaflet-popup-content-wrapper {
+  background: transparent !important;
+  box-shadow: none !important;
+  border-radius: 8px !important;
+  padding: 0 !important;
+}
+
+.leaflet-popup-content {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.leaflet-popup-tip {
+  background: #1e293b !important;
+  box-shadow: none !important;
+}
+
+.leaflet-popup-close-button {
+  color: #94a3b8 !important;
+  top: 8px !important;
+  right: 8px !important;
+  z-index: 10 !important;
+}
+@layer utilities {
+      /* Hide scrollbar for Chrome, Safari and Opera */
+      .no-scrollbar::-webkit-scrollbar {
+          display: hidden;
+      }
+     /* Hide scrollbar for IE, Edge and Firefox */
+      .no-scrollbar {
+          -ms-overflow-style: none;  /* IE and Edge */
+          scrollbar-width: none;  /* Firefox */
+    }
+  }
+ 

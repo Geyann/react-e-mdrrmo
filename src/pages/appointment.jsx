@@ -186,17 +186,38 @@ const AppointmentForm = () => {
         return;
       }
 
-      // Get the user ID from localStorage (user_id or id) or from Supabase Auth (id)
-      const userId = currentUser.id || currentUser.user_id || null;
+      // ============================================================
+      // FIX: Get the auth UUID — this is critical for tracking
+      // ============================================================
+      // Try to get the auth UUID (user_id_from_auth) from multiple sources
+      let authUserId = null;
 
-      // Build the insert object - NO email column since it doesn't exist
+      // Source 1: Supabase Auth session
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user?.id) {
+        authUserId = user.id;
+      }
+
+      // Source 2: localStorage currentUser might have an id that's the auth UUID
+      if (!authUserId && currentUser.id) {
+        authUserId = currentUser.id;
+      }
+
+      // Source 3: currentUser.user_id
+      if (!authUserId && currentUser.user_id) {
+        authUserId = currentUser.user_id;
+      }
+
+      // Build the insert object
       const appointmentData = {
         fullName: formData.fullName,
         purpose: formData.purpose,
         date: formData.date,
         time: formData.time,
         reason: formData.reason,
-        userId: userId,  // Only userId column - this matches your original code
+        userId: authUserId,  // Keep this for backwards compatibility
+        user_id_from_auth: authUserId,  // NEW: Store the auth UUID for tracking
+        user_id: authUserId,  // Also store in user_id (text) for good measure
       };
 
       console.log("Inserting appointment:", appointmentData);
@@ -305,7 +326,7 @@ const AppointmentForm = () => {
   }
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen p-10">
     <div className="bg-gradient-to-r from-blue-600 to-purple-600 max-w-5xl mx-auto bg-white rounded-t-3xl shadow-xl border border-gray-200">
         <div className="flex flex-col items-center mb-3 pt-5">
          <CalendarDays className="w-15 h-auto text-white" />

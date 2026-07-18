@@ -20,89 +20,32 @@ const Profile = () => {
       try {
         setLoading(true);
 
-        // 1. Check Supabase Auth session (for staff/admin)
-        const { data: { session } } = await supabase.auth.getSession();
-
-        if (session) {
-          const userId = session.user.id;
-
-          // Check staff_users table
-          const { data: staffData } = await supabase
-            .from('staff_users')
-            .select('*')
-            .eq('user_id', userId)
-            .maybeSingle();
-
-          if (staffData) {
-            setUserType(staffData.role === 'admin' ? 'admin' : 'staff');
-            setProfile({
-              type: staffData.role === 'admin' ? 'admin' : 'staff',
-              id: staffData.id,
-              user_id: staffData.user_id,
-              email: staffData.email,
-              full_name: staffData.full_name,
-              role: staffData.role,
-              department: staffData.department,
-              is_active: staffData.is_active,
-              created_at: staffData.created_at,
-            });
-            return;
-          }
-
-          // Check admin_users table
-          const { data: adminData } = await supabase
-            .from('admin_users')
-            .select('*')
-            .eq('email', session.user.email)
-            .maybeSingle();
-
-          if (adminData) {
-            setUserType('admin');
-            setProfile({
-              type: 'admin',
-              id: adminData.id,
-              user_id: adminData.user_id || session.user.id,
-              email: adminData.email,
-              full_name: adminData.full_name || session.user.email?.split('@')[0],
-              role: 'admin',
-              department: adminData.department || 'Administration',
-              is_active: adminData.is_active ?? true,
-              created_at: adminData.created_at || session.user.created_at,
-            });
-            return;
-          }
-
-          // Fallback: check profiles for staff/admin role
-          const { data: profileData } = await supabase
-            .from('profiles')
-            .select('*')
-            .eq('id', userId)
-            .in('role', ['staff', 'admin'])
-            .maybeSingle();
-
-          if (profileData) {
-            setUserType(profileData.role);
-            setProfile({
-              type: profileData.role,
-              id: profileData.id,
-              user_id: userId,
-              email: profileData.email || session.user.email,
-              full_name: profileData.full_name || profileData.first_name + ' ' + profileData.last_name,
-              role: profileData.role,
-              department: profileData.department || '',
-              is_active: profileData.is_active ?? true,
-              created_at: profileData.created_at || session.user.created_at,
-            });
-            return;
-          }
+        // ===== 1. Check localStorage for STAFF/ADMIN (highest priority) =====
+        const storedStaff = localStorage.getItem('currentStaff');
+        if (storedStaff) {
+          const parsed = JSON.parse(storedStaff);
+          setUserType(parsed.role); // 'staff' or 'admin'
+          setProfile({
+            type: parsed.role,
+            id: parsed.id,
+            user_id: parsed.user_id,
+            email: parsed.email,
+            full_name: parsed.full_name,
+            role: parsed.role,
+            department: parsed.department,
+            is_active: parsed.is_active,
+            created_at: parsed.created_at,
+          });
+          return;
         }
 
-        // 2. Check localStorage for regular user
+        // ===== 2. Check localStorage for REGULAR USER =====
         const storedUser = localStorage.getItem('currentUser');
         if (storedUser) {
           const parsedUser = JSON.parse(storedUser);
           setUserType('user');
 
+          // Get additional details from pending_registrations or profiles
           const { data: pendingData } = await supabase
             .from("pending_registrations")
             .select("*")
@@ -137,7 +80,7 @@ const Profile = () => {
           return;
         }
 
-        // 3. No authentication found
+        // ===== 3. No authentication found =====
         navigate('/login');
 
       } catch (err) {
@@ -151,11 +94,14 @@ const Profile = () => {
     fetchProfile();
   }, [navigate]);
 
-  const handleLogout = async () => {
+  const handleLogout = () => {
+    // Clear both possible sessions
     localStorage.removeItem('currentUser');
-    await supabase.auth.signOut().catch(() => {});
+    localStorage.removeItem('currentStaff');
     navigate('/login');
   };
+
+  // ... rest of your component (getStatusBadge, loading/error renders, return JSX) stays exactly the same ...
 
   const getStatusBadge = (status) => {
     switch (status) {
@@ -218,12 +164,8 @@ const Profile = () => {
   const gradientTo = isStaffOrAdmin ? 'to-indigo-600' : 'to-purple-600';
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 py-10 px-4">
+    <div className="min-h-screen pt-10">
       <div className="max-w-3xl mx-auto">
-        <button onClick={() => navigate(-1)} className="flex items-center gap-2 text-gray-600 hover:text-purple-600 transition mb-6 font-semibold">
-          <ArrowLeft className="w-5 h-5" /> Back
-        </button>
-
         <div className="bg-white rounded-3xl shadow-xl overflow-hidden">
           {/* Header Banner */}
           <div className={`bg-gradient-to-r ${gradientFrom} ${gradientTo} p-8 text-white`}>
@@ -263,7 +205,7 @@ const Profile = () => {
                 <div className="p-4 bg-purple-50 border border-purple-200 rounded-xl">
                   <div className="flex items-center gap-2">
                     <BadgeCheck className="w-5 h-5 text-purple-600" />
-                    <span className="text-sm font-semibold text-purple-700">Staff Role:</span>
+                    <span className="text-sm font-semibold text-purple-700">Role:</span>
                     <span className="text-sm font-bold text-purple-900 bg-purple-100 px-3 py-1 rounded-lg capitalize">{profile?.role}</span>
                   </div>
                 </div>

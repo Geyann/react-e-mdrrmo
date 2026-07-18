@@ -1,28 +1,45 @@
-import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
+import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../createClient';
 import imgLogo from '../Images/logo.png';
-import { Shield, Mail, Lock, User, Eye, EyeOff, AlertCircle, ArrowLeft, Check } from 'lucide-react';
+import { Shield, Mail, Lock, User, Eye, EyeOff, AlertCircle, ArrowLeft, Users } from 'lucide-react';
 
 const StaffRegister = () => {
   const navigate = useNavigate();
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [confirmPassword, setConfirmPassword] = useState('');
-  const [firstName, setFirstName] = useState('');
-  const [lastName, setLastName] = useState('');
-  const [department, setDepartment] = useState('');
-  const [role, setRole] = useState('staff');
+  const [formData, setFormData] = useState({
+    user_id: '',
+    email: '',
+    password: '',
+    confirmPassword: '',
+    fullName: '',
+    department: '',
+    role: 'staff',
+  });
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
+  const handleChange = (e) => {
+    setFormData({ ...formData, [e.target.name]: e.target.value });
+  };
+
+  // SHA-256 hash function (must match login)
+  const hashPassword = async (password) => {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(password + 'hackerai-salt-2024');
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  };
+
   const handleRegister = async (e) => {
     e.preventDefault();
     setError('');
 
-    if (!email || !password || !confirmPassword || !firstName || !lastName) {
+    const { user_id, email, password, confirmPassword, fullName, department, role } = formData;
+
+    if (!user_id || !email || !password || !confirmPassword || !fullName) {
       setError('Please fill in all required fields.');
       return;
     }
@@ -37,67 +54,60 @@ const StaffRegister = () => {
       return;
     }
 
+    if (user_id.length < 3) {
+      setError('Work ID must be at least 3 characters.');
+      return;
+    }
+
     setLoading(true);
 
     try {
-      const { data: authData, error: authError } = await supabase.auth.signUp({
-        email: email,
-        password: password,
-        options: {
-          data: {
-            first_name: firstName,
-            last_name: lastName,
-            role: role,
-            department: department,
-          },
-        },
-      });
+      // Check if user_id or email already exists
+      const { data: existingUserId } = await supabase
+        .from('staff_users')
+        .select('user_id')
+        .eq('user_id', user_id)
+        .maybeSingle();
 
-      if (authError) throw authError;
-
-      if (!authData?.user) {
-        throw new Error('Failed to create user account.');
+      if (existingUserId) {
+        throw new Error('Work ID is already registered. Please use a different ID.');
       }
 
-      // Insert into staff_users
-      const { error: staffInsertError } = await supabase
+      const { data: existingEmail } = await supabase
+        .from('staff_users')
+        .select('email')
+        .eq('email', email)
+        .maybeSingle();
+
+      if (existingEmail) {
+        throw new Error('Email is already registered. Please use a different email.');
+      }
+
+      const hashedPassword = await hashPassword(password);
+
+      const { error: insertError } = await supabase
         .from('staff_users')
         .insert([{
-          user_id: authData.user.id,
+          user_id: user_id,
           email: email,
-          full_name: `${firstName} ${lastName}`,
+          password: hashedPassword,
+          full_name: fullName,
           role: role,
           department: department,
           is_active: true,
         }]);
 
-      if (staffInsertError) {
-        console.warn('staff_users insert failed, trying profiles:', staffInsertError.message);
-        
-        const { error: profileInsertError } = await supabase
-          .from('profiles')
-          .insert([{
-            id: authData.user.id,
-            email: email,
-            full_name: `${firstName} ${lastName}`,
-            role: role,
-            department: department,
-            is_active: true,
-          }]);
-
-        if (profileInsertError) {
-          console.error('Profile insert also failed:', profileInsertError);
+      if (insertError) {
+        if (insertError.message?.includes('user_id')) {
+          throw new Error('Work ID is already taken. Please choose another.');
         }
+        if (insertError.message?.includes('email')) {
+          throw new Error('Email is already registered.');
+        }
+        throw new Error(insertError.message);
       }
 
-      const needsConfirmation = authData.session === null;
-
-      if (needsConfirmation) {
-        alert(`Registration initiated! Please check ${email} to confirm your account before logging in.`);
-      } else {
-        alert(`${role.charAt(0).toUpperCase() + role.slice(1)} account created successfully! You can now log in.`);
-      }
-
+      alert(`${role.charAt(0).toUpperCase() + role.slice(1)} account created successfully! You can now log in with your Work ID.`);
       navigate('/admin/login');
     } catch (err) {
       setError(err.message || 'An unexpected error occurred.');
@@ -105,6 +115,9 @@ const StaffRegister = () => {
       setLoading(false);
     }
   };
+
+  const inputClass = "w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none transition bg-gray-50";
+  const labelClass = "text-sm font-bold text-gray-700";
 
   return (
     <div className="min-h-screen flex items-center justify-center p-4">
@@ -119,8 +132,11 @@ const StaffRegister = () => {
       <div className="bg-white rounded-3xl shadow-2xl overflow-hidden max-w-md w-full">
         {/* Header */}
         <div className="bg-gradient-to-r from-purple-600 to-indigo-600 p-6 text-center">
-          <img src={imgLogo} className="w-22 h-20 mx-auto text-white mb-2" />
-          <h2 className="text-2xl font-bold text-white">Staff &amp; Admin Registration</h2>
+          <img src={imgLogo} className="w-22 h-20 mx-auto text-white mb-2" alt="logo" />
+          <h2 className="text-2xl font-bold text-white flex items-center justify-center gap-2">
+            <Shield className="w-6 h-6" />
+            Staff &amp; Admin Registration
+          </h2>
           <p className="text-purple-200 text-sm mt-1">Create a new account</p>
         </div>
 
@@ -134,83 +150,85 @@ const StaffRegister = () => {
             </div>
           )}
 
-          {/* First & Last Name */}
-          <div className="grid grid-cols-2 gap-4">
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-bold text-gray-700">
-                <User className="w-4 h-4 inline mr-1 text-purple-600" />
-                First Name
-              </label>
-              <input
-                type="text"
-                placeholder="John"
-                value={firstName}
-                onChange={(e) => setFirstName(e.target.value)}
-                required
-                disabled={loading}
-                className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none transition bg-gray-50"
-              />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className="text-sm font-bold text-gray-700">
-                <User className="w-4 h-4 inline mr-1 text-purple-600" />
-                Last Name
-              </label>
-              <input
-                type="text"
-                placeholder="Doe"
-                value={lastName}
-                onChange={(e) => setLastName(e.target.value)}
-                required
-                disabled={loading}
-                className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none transition bg-gray-50"
-              />
-            </div>
+          {/* Work ID (user_id) - Primary login field */}
+          <div className="flex flex-col gap-1.5">
+            <label className={labelClass}>
+              <Users className="w-4 h-4 inline mr-1 text-purple-600" />
+              Work ID Number
+            </label>
+            <input
+              className={inputClass}
+              name="user_id"
+              type="text"
+              placeholder="Enter your assigned Work ID (used for login)"
+              value={formData.user_id}
+              onChange={handleChange}
+              required
+              minLength={3}
+            />
+            <p className="text-xs text-gray-400 mt-1">
+              This will be your <span className="font-semibold">primary login identifier</span>
+            </p>
+          </div>
+
+          {/* Full Name */}
+          <div className="flex flex-col gap-1.5">
+            <label className={labelClass}>
+              <User className="w-4 h-4 inline mr-1 text-purple-600" />
+              Full Name
+            </label>
+            <input
+              className={inputClass}
+              name="fullName"
+              type="text"
+              placeholder="e.g. Juan Dela Cruz"
+              value={formData.fullName}
+              onChange={handleChange}
+              required
+            />
           </div>
 
           {/* Email */}
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-bold text-gray-700">
+            <label className={labelClass}>
               <Mail className="w-4 h-4 inline mr-1 text-purple-600" />
               Email Address
             </label>
             <input
+              className={inputClass}
+              name="email"
               type="email"
               placeholder="you@emdrrmo.gov"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              value={formData.email}
+              onChange={handleChange}
               required
-              disabled={loading}
-              className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none transition bg-gray-50"
             />
           </div>
 
           {/* Department */}
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-bold text-gray-700">
-              Department
-            </label>
+            <label className={labelClass}>Department</label>
             <input
+              className={inputClass}
+              name="department"
               type="text"
               placeholder="e.g. IT, Operations, Admin"
-              value={department}
-              onChange={(e) => setDepartment(e.target.value)}
-              disabled={loading}
-              className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none transition bg-gray-50"
+              value={formData.department}
+              onChange={handleChange}
             />
           </div>
 
           {/* Role Selection */}
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-bold text-gray-700">
+            <label className={labelClass}>
               <Shield className="w-4 h-4 inline mr-1 text-purple-600" />
               Role
             </label>
             <select
-              value={role}
-              onChange={(e) => setRole(e.target.value)}
-              disabled={loading}
-              className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none transition bg-gray-50"
+              className={inputClass}
+              name="role"
+              value={formData.role}
+              onChange={handleChange}
             >
               <option value="staff">Staff</option>
               <option value="admin">Admin</option>
@@ -219,19 +237,20 @@ const StaffRegister = () => {
 
           {/* Password */}
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-bold text-gray-700">
+            <label className={labelClass}>
               <Lock className="w-4 h-4 inline mr-1 text-purple-600" />
               Password
             </label>
             <div className="relative">
               <input
+                className={`${inputClass} pr-12`}
+                name="password"
                 type={showPassword ? 'text' : 'password'}
-                placeholder="••••••••"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                placeholder="Min 6 characters"
+                value={formData.password}
+                onChange={handleChange}
                 required
-                disabled={loading}
-                className="w-full p-3 pr-12 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none transition bg-gray-50"
+                minLength={6}
               />
               <button
                 type="button"
@@ -246,19 +265,20 @@ const StaffRegister = () => {
 
           {/* Confirm Password */}
           <div className="flex flex-col gap-1.5">
-            <label className="text-sm font-bold text-gray-700">
+            <label className={labelClass}>
               <Lock className="w-4 h-4 inline mr-1 text-purple-600" />
               Confirm Password
             </label>
             <div className="relative">
               <input
+                className={`${inputClass} pr-12`}
+                name="confirmPassword"
                 type={showConfirm ? 'text' : 'password'}
-                placeholder="••••••••"
-                value={confirmPassword}
-                onChange={(e) => setConfirmPassword(e.target.value)}
+                placeholder="Repeat password"
+                value={formData.confirmPassword}
+                onChange={handleChange}
                 required
-                disabled={loading}
-                className="w-full p-3 pr-12 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none transition bg-gray-50"
+                minLength={6}
               />
               <button
                 type="button"
@@ -272,8 +292,8 @@ const StaffRegister = () => {
           </div>
 
           {/* Submit Button */}
-          <button 
-            type="submit" 
+          <button
+            type="submit"
             disabled={loading}
             className="w-full mt-2 bg-gradient-to-r from-purple-600 to-indigo-600 text-white font-bold py-3.5 rounded-xl hover:from-purple-700 hover:to-indigo-700 transition shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
@@ -287,8 +307,8 @@ const StaffRegister = () => {
               </>
             ) : (
               <>
-                
-                Register {role.charAt(0).toUpperCase() + role.slice(1)}
+                <Shield className="w-5 h-5" />
+                Register {formData.role.charAt(0).toUpperCase() + formData.role.slice(1)}
               </>
             )}
           </button>

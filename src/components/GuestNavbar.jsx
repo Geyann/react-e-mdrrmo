@@ -12,7 +12,7 @@ export default function GuestNavbar() {
   };
 
   return (
-    <header className="absolute bg-gradient-to-r from-blue-600 to-purple-600 inset-x-0 top-0 z-5000 w-full p-6 border-b-1 border-gray-500">
+    <header className="absolute bg-gradient-to-r from-blue-600 to-purple-600 inset-x-0 top-0 z-5000 w-full p-4 border-b-1 border-gray-500">
       <div className="flex items-center justify-between">
         {/* Logo */}
         <Link to="/" className="z-50">

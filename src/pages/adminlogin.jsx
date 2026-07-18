@@ -1,16 +1,25 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { supabase } from '../createClient';
-import { useNavigate } from 'react-router-dom'; 
 import imlogo from '../Images/icon.png';
 import { Shield, Mail, Lock, AlertCircle, ArrowLeft, Eye, EyeOff, Users } from 'lucide-react';
 
 export default function AdminLogin() {
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
+
+  // SHA-256 hash function (must match registration)
+  const hashPassword = async (password) => {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(password + 'hackerai-salt-2024');
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  };
 
   const handleSignIn = async (e) => {
     e.preventDefault();
@@ -18,91 +27,79 @@ export default function AdminLogin() {
     setLoading(true);
 
     try {
-      // 1. Authenticate with Supabase Auth
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email,
-        password,
-      });
+      const hashedPassword = await hashPassword(password);
 
-      if (authError) {
-        setError(authError.message);
-        return;
-      }
+      const isEmail = identifier.includes('@');
+      let user = null;
 
-      let userRole = null;
-      let isActive = true;
-
-      // 2. Check admin_users table (for pure admin accounts)
-      const { data: adminData } = await supabase
-        .from('admin_users')
-        .select('*')
-        .eq('email', email)
-        .single();
-
-      if (adminData) {
-        userRole = 'admin';
-        isActive = adminData.is_active ?? true;
-      }
-
-      // 3. Check staff_users table (for staff/moderator/admin)
-      if (!userRole) {
-        const { data: staffData } = await supabase
+      // Look up in staff_users by email or user_id (work ID)
+      if (isEmail) {
+        const { data, error: lookupError } = await supabase
           .from('staff_users')
           .select('*')
-          .eq('user_id', authData.user.id)
-          .single();
+          .eq('email', identifier)
+          .maybeSingle();
 
-        if (staffData) {
-          userRole = staffData.role;
-          isActive = staffData.is_active;
-        }
-      }
-
-      // 4. Fallback: check profiles table with role = 'staff', 'moderator', or 'admin'
-      if (!userRole) {
-        const { data: profileData } = await supabase
-          .from('profiles')
+        if (lookupError) throw new Error(lookupError.message);
+        user = data;
+      } else {
+        // Identifier is their user_id (work ID number)
+        const { data, error: lookupError } = await supabase
+          .from('staff_users')
           .select('*')
-          .eq('id', authData.user.id)
-          .in('role', ['staff', 'moderator', 'admin'])
-          .single();
+          .eq('user_id', identifier)
+          .maybeSingle();
 
-        if (profileData) {
-          userRole = profileData.role;
-          isActive = profileData.is_active ?? true;
-        }
+        if (lookupError) throw new Error(lookupError.message);
+        user = data;
       }
 
-      // 5. Fallback: check pending_registrations (legacy)
-      if (!userRole) {
-        const { data: regData } = await supabase
-          .from('pending_registrations')
-          .select('role')
-          .eq('id', authData.user.id)
-          .single();
-
-        if (regData && regData.role === 'admin') {
-          userRole = 'admin';
-        }
-      }
-
-      // 6. Authorization checks
-      if (!userRole) {
-        await supabase.auth.signOut();
-        setError('Access Denied: You are not an authorized staff or admin member. Contact your administrator.');
+      if (!user) {
+        setError(
+          isEmail
+            ? 'Email not found. Please check your email or contact admin.'
+            : 'Work ID not found. Please check your ID or contact admin.'
+        );
         return;
       }
 
-      if (!isActive) {
-        await supabase.auth.signOut();
+      // Verify password hash
+      if (user.password !== hashedPassword) {
+        // Fallback: try without salt
+        const encoder = new TextEncoder();
+        const dataNoSalt = encoder.encode(password);
+        const hashBufferNoSalt = await crypto.subtle.digest('SHA-256', dataNoSalt);
+        const hashNoSalt = Array.from(new Uint8Array(hashBufferNoSalt))
+          .map(b => b.toString(16).padStart(2, '0')).join('');
+
+        if (user.password !== hashNoSalt) {
+          setError('Incorrect password. Please try again.');
+          return;
+        }
+      }
+
+      // Check if account is active
+      if (!user.is_active) {
         setError('Access Denied: Your account has been deactivated. Contact your administrator.');
         return;
       }
 
-      // 7. Success — route based on role
-      if (userRole === 'admin') {
+      // Store session in localStorage (same pattern as reference LoginPage)
+      localStorage.setItem('currentStaff', JSON.stringify({
+        id: user.id,
+        user_id: user.user_id,
+        email: user.email,
+        full_name: user.full_name,
+        role: user.role,
+        department: user.department,
+        is_active: user.is_active,
+        created_at: user.created_at,
+      }));
+
+      // Route based on role
+      if (user.role === 'admin') {
         navigate('/admin/dashboard');
-      } else if (userRole === 'moderator') {
+      } else if (user.role === 'moderator') {
         navigate('/moderator/dashboard');
       } else {
         navigate('/staff/dashboard');
@@ -110,14 +107,15 @@ export default function AdminLogin() {
     } catch (err) {
       console.error('Login error:', err);
       setError('An unexpected error occurred. Please try again.');
-      await supabase.auth.signOut().catch(() => {});
     } finally {
       setLoading(false);
     }
   };
 
+  const isEmailInput = identifier.includes('@');
+
   return (
-    <div className="min-h-screen flex items-center justify-center  p-4">
+    <div className="min-h-screen flex items-center justify-center p-4">
       <button
         onClick={() => navigate('/')}
         className="absolute top-6 left-6 flex items-center gap-2 text-gray-400 hover:text-purple-400 transition font-semibold z-10"
@@ -130,10 +128,10 @@ export default function AdminLogin() {
         <div className="bg-white rounded-3xl shadow-2xl overflow-hidden">
           {/* Header */}
           <div className="bg-gradient-to-r from-purple-600 to-indigo-600 p-8 text-center">
-            <img 
-              src={imlogo} 
-              alt="logo" 
-              className="w-24 h-24 object-contain mx-auto mb-4 bg-indigo-600 rounded-full p-2 shadow-lg" 
+            <img
+              src={imlogo}
+              alt="logo"
+              className="w-24 h-24 object-contain mx-auto mb-4 bg-indigo-600 rounded-full p-2 shadow-lg"
             />
             <h2 className="text-2xl font-bold text-white flex items-center justify-center gap-2">
               <Shield className="w-6 h-6" />
@@ -154,22 +152,29 @@ export default function AdminLogin() {
 
             {/* Form */}
             <form onSubmit={handleSignIn} className="flex flex-col gap-5">
-              {/* Email Field */}
+              {/* Identifier Field (Work ID or Email) */}
               <div className="flex flex-col gap-1.5">
-                <label htmlFor="email" className="text-sm font-bold text-gray-700">
-                  <Mail className="w-4 h-4 inline mr-1 text-purple-600" />
-                  Email Address
+                <label htmlFor="identifier" className="text-sm font-bold text-gray-700">
+                  {isEmailInput ? (
+                    <Mail className="w-4 h-4 inline mr-1 text-purple-600" />
+                  ) : (
+                    <Users className="w-4 h-4 inline mr-1 text-purple-600" />
+                  )}
+                  Work ID or Email
                 </label>
-                <input 
-                  id="email"
+                <input
+                  id="identifier"
                   className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none transition bg-gray-50"
-                  type="email" 
-                  placeholder="you@company.com" 
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)} 
+                  type="text"
+                  placeholder="Enter your Work ID or email address"
+                  value={identifier}
+                  onChange={(e) => setIdentifier(e.target.value)}
                   required
-                  autoComplete="email"
+                  autoComplete="username"
                 />
+                <p className="text-xs text-gray-400 mt-1">
+                  Use your <span className="font-semibold">Work ID number</span> or <span className="font-semibold">email address</span>
+                </p>
               </div>
 
               {/* Password Field */}
@@ -179,13 +184,13 @@ export default function AdminLogin() {
                   Password
                 </label>
                 <div className="relative">
-                  <input 
+                  <input
                     id="password"
                     className="w-full p-3 pr-12 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none transition bg-gray-50"
-                    type={showPassword ? 'text' : 'password'} 
-                    placeholder="Enter your password" 
+                    type={showPassword ? 'text' : 'password'}
+                    placeholder="Enter your password"
                     value={password}
-                    onChange={(e) => setPassword(e.target.value)} 
+                    onChange={(e) => setPassword(e.target.value)}
                     required
                     autoComplete="current-password"
                   />
@@ -201,8 +206,8 @@ export default function AdminLogin() {
               </div>
 
               {/* Submit Button */}
-              <button 
-                type="submit" 
+              <button
+                type="submit"
                 className="w-full mt-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white font-bold py-3.5 rounded-xl hover:from-purple-700 hover:to-blue-700 transition shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
                 disabled={loading}
               >
@@ -232,6 +237,15 @@ export default function AdminLogin() {
                   className="text-purple-600 font-bold hover:text-purple-700 hover:underline transition"
                 >
                   User Login
+                </button>
+              </p>
+              <p className="text-sm text-gray-500 mt-1">
+                No account yet?{' '}
+                <button
+                  onClick={() => navigate('/admin/register')}
+                  className="text-purple-600 font-bold hover:text-purple-700 hover:underline transition"
+                >
+                  Register here
                 </button>
               </p>
             </div>

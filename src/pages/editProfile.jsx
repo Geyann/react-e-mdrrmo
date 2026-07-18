@@ -191,7 +191,7 @@ const EditProfile = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 py-10 px-4">
+    <div className="min-h-screen">
       <div className="max-w-lg mx-auto">
         <button onClick={() => navigate('/profile')} className="flex items-center gap-2 text-gray-600 hover:text-purple-600 transition mb-6 font-semibold">
           <ArrowLeft className="w-5 h-5" /> Back to Profile

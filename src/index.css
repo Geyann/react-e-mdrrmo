@@ -2,3 +2,9 @@
 @tailwind components;
 @tailwind utilities;
 @import "tailwindcss";
+
+@layer base {
+  .leaflet-control-container {
+    @apply hidden ;
+  }
+}

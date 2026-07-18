@@ -11,7 +11,7 @@ export default function ProtectedRoute({ children, adminOnly = false, staffOnly 
   useEffect(() => {
     const checkAuth = async () => {
       try {
-        // 1. Check localStorage for regular user login (YOUR MANUAL LOGIN)
+        // 1. Check localStorage for regular user login
         const storedUser = localStorage.getItem('currentUser');
         let parsedUser = null;
         
@@ -23,11 +23,20 @@ export default function ProtectedRoute({ children, adminOnly = false, staffOnly 
           }
         }
 
-        // 2. Check Supabase Auth session (for staff/admin login)
-        const { data: { session } } = await supabase.auth.getSession();
+        // 2. Check localStorage for staff/admin login (manual auth with hashed password)
+        const storedStaff = localStorage.getItem('currentStaff');
+        let parsedStaff = null;
+
+        if (storedStaff) {
+          try {
+            parsedStaff = JSON.parse(storedStaff);
+          } catch {
+            parsedStaff = storedStaff;
+          }
+        }
 
         // 3. No authentication found at all
-        if (!session && !parsedUser) {
+        if (!parsedUser && !parsedStaff) {
           setAuthorized(false);
           setLoading(false);
           
@@ -45,8 +54,10 @@ export default function ProtectedRoute({ children, adminOnly = false, staffOnly 
           return;
         }
 
-        // 4. REGULAR USER FLOW (manual login via localStorage)
-        if (parsedUser && !session) {
+        // ==================================================================
+        // REGULAR USER FLOW (manual login via localStorage 'currentUser')
+        // ==================================================================
+        if (parsedUser && !parsedStaff) {
           // Regular user trying to access admin/staff routes? Block them.
           if (adminOnly || staffOnly) {
             localStorage.removeItem('currentUser');
@@ -65,211 +76,103 @@ export default function ProtectedRoute({ children, adminOnly = false, staffOnly 
           return;
         }
 
-        // 5. SUPABASE SESSION EXISTS (staff or admin logged in via Supabase Auth)
-        if (session) {
-          const userId = session.user.id;
-          const userEmail = session.user.email;
-          let userRole = null;
+        // ==================================================================
+        // STAFF/ADMIN FLOW (manual login via localStorage 'currentStaff')
+        // ==================================================================
+        if (parsedStaff) {
+          const staffRole = parsedStaff.role;
+          const isActive = parsedStaff.is_active;
 
-          // Check staff_users table
-          const { data: staffData } = await supabase
-            .from('staff_users')
-            .select('role, is_active')
-            .eq('user_id', userId)
-            .maybeSingle();
+          // Check if account is deactivated
+          if (isActive === false) {
+            localStorage.removeItem('currentStaff');
+            setAuthorized(false);
+            setLoading(false);
+            navigate('/admin/login', { 
+              replace: true,
+              state: { error: 'Your account has been deactivated.' }
+            });
+            return;
+          }
 
-          if (staffData) {
-            userRole = staffData.role;
-            
-            if (!staffData.is_active) {
+          // ACCESS CHECK: For admin-only routes
+          if (adminOnly) {
+            if (staffRole !== 'admin') {
               setAuthorized(false);
               setLoading(false);
-              await supabase.auth.signOut();
-              navigate('/admin/login', { 
-                replace: true,
-                state: { error: 'Your account has been deactivated.' }
-              });
-              return;
-            }
-          }
-
-          // Check admin_users table
-          if (!userRole) {
-            const { data: adminData } = await supabase
-              .from('admin_users')
-              .select('id')
-              .eq('email', userEmail)
-              .maybeSingle();
-
-            if (adminData) userRole = 'admin';
-          }
-
-          // Check profiles table
-          if (!userRole) {
-            const { data: profileData } = await supabase
-              .from('profiles')
-              .select('role')
-              .eq('id', userId)
-              .in('role', ['staff', 'admin'])
-              .maybeSingle();
-
-            if (profileData) userRole = profileData.role;
-          }
-
-          // Check pending_registrations
-          if (!userRole) {
-            const { data: regData } = await supabase
-              .from('pending_registrations')
-              .select('role, status')
-              .eq('id', userId)
-              .maybeSingle();
-
-            if (regData) {
-              if (regData.status === 'pending') {
-                setAuthorized(false);
-                setLoading(false);
-                await supabase.auth.signOut();
-                navigate('/admin/login', { 
-                  replace: true,
-                  state: { error: 'Your account is pending admin approval.' }
-                });
-                return;
-              }
-
-              if (regData.status === 'rejected') {
-                setAuthorized(false);
-                setLoading(false);
-                await supabase.auth.signOut();
-                navigate('/admin/login', { 
-                  replace: true,
-                  state: { error: 'Your registration was rejected.' }
-                });
-                return;
-              }
-
-              if (regData.role === 'admin') userRole = 'admin';
-            }
-          }
-
-          // --- ROLE-BASED ACCESS CONTROL ---
-
-          // For staff/admin routes
-          if (adminOnly || staffOnly) {
-            if (!userRole) {
-              setAuthorized(false);
-              setLoading(false);
-              await supabase.auth.signOut();
-              navigate('/admin/login', { 
-                replace: true,
-                state: { error: 'Access denied. Staff/Admin only.' }
-              });
-              return;
-            }
-
-            if (adminOnly && userRole !== 'admin') {
-              setAuthorized(false);
-              setLoading(false);
-              await supabase.auth.signOut();
               navigate('/admin/login', { 
                 replace: true,
                 state: { error: 'Access denied. Admins only.' }
               });
               return;
             }
+            // ✅ Admin accessing admin route
+            setAuthorized(true);
+            setLoading(false);
+            return;
+          }
 
-            if (staffOnly && userRole !== 'staff' && userRole !== 'admin') {
+          // ACCESS CHECK: For staff-only routes (admins can also access staff routes)
+          if (staffOnly) {
+            if (staffRole !== 'staff' && staffRole !== 'admin') {
               setAuthorized(false);
               setLoading(false);
-              await supabase.auth.signOut();
               navigate('/admin/login', { 
                 replace: true,
                 state: { error: 'Access denied. Staff area only.' }
               });
               return;
             }
-
-            // ✅ Staff/Admin accessing their route — ALLOW
+            // ✅ Staff/Admin accessing staff route
             setAuthorized(true);
             setLoading(false);
             return;
           }
 
-          // For REGULAR USER routes with a Supabase session
-          // If they have a staff/admin role, redirect them to their dashboard
-          if (userRole === 'admin') {
-            setAuthorized(false);
-            setLoading(false);
-            navigate('/admin/dashboard', { replace: true });
-            return;
-          }
-
-          if (userRole === 'staff') {
-            setAuthorized(false);
-            setLoading(false);
-            navigate('/staff/dashboard', { replace: true });
-            return;
-          }
-
-          // Regular Supabase user (no staff/admin role) accessing user routes
-          // Check if they exist in profiles or pending_registrations
-          const { data: userProfile } = await supabase
-            .from('profiles')
-            .select('id')
-            .eq('id', userId)
-            .maybeSingle();
-
-          const { data: userReg } = await supabase
-            .from('pending_registrations')
-            .select('id')
-            .eq('id', userId)
-            .maybeSingle();
-
-          if (userProfile || userReg) {
-            setAuthorized(true);
-            setLoading(false);
-            return;
-          }
-
-          // No matching record found — but they're authenticated via Supabase
-          // Allow them to user routes anyway (they exist in auth.users)
+          // ✅ Staff/Admin accessing a route that accepts both staff AND admin
+          // (Like a generic protected route with no specific role requirement)
           setAuthorized(true);
           setLoading(false);
           return;
         }
 
-        // 6. EDGE CASE: localStorage user AND Supabase session both exist
-        // This can happen if someone used both login methods
-        // For user routes, prefer localStorage user
-        if (parsedUser && session) {
+        // ==================================================================
+        // BOTH exist — edge case (regular user AND staff logged in)
+        // For user routes, prefer the regular user
+        // ==================================================================
+        if (parsedUser && parsedStaff) {
           if (!adminOnly && !staffOnly) {
+            // User route — prefer regular user
             setAuthorized(true);
             setLoading(false);
             return;
           }
           
-          // For staff/admin routes, use Supabase session roles
-          const userId = session.user.id;
-          const { data: staffData } = await supabase
-            .from('staff_users')
-            .select('role')
-            .eq('user_id', userId)
-            .maybeSingle();
-
-          if (staffData && (staffData.role === 'admin' || staffData.role === 'staff')) {
-            if (adminOnly && staffData.role !== 'admin') {
-              setAuthorized(false);
-              setLoading(false);
-              navigate('/admin/login', { replace: true, state: { error: 'Access denied.' } });
-              return;
-            }
-            setAuthorized(true);
+          // Staff/Admin route — use staff role
+          const staffRole = parsedStaff.role;
+          
+          if (adminOnly && staffRole !== 'admin') {
+            setAuthorized(false);
             setLoading(false);
+            navigate('/admin/login', { 
+              replace: true,
+              state: { error: 'Access denied. Admins only.' }
+            });
             return;
           }
 
-          setAuthorized(false);
+          if (staffOnly && staffRole !== 'staff' && staffRole !== 'admin') {
+            setAuthorized(false);
+            setLoading(false);
+            navigate('/admin/login', { 
+              replace: true,
+              state: { error: 'Access denied.' }
+            });
+            return;
+          }
+
+          setAuthorized(true);
           setLoading(false);
-          navigate('/login', { replace: true, state: { error: 'Please login through the correct portal.' } });
           return;
         }
 
