@@ -12,21 +12,21 @@ export default function Guest() {
                <section className="w-full py-20 lg:py-32">
         <div className="container mx-auto px-4 text-center">
           <div className="flex flex-col items-center gap-8">
-            <h1 className="text-5xl md:text-7xl tracking-tighter font-bold text-slate-900 max-w-3xl pt-20 ">
+            <h1 className="text-5xl md:text-7xl tracking-tighter font-bold text-slate-800 max-w-3xl pt-20 ">
               Report Hazards. Keep <br /> 
-              <span className="text-purple-700">Your Community Safe.</span>
+              <span className="text-purple-600">Your Community Safe.</span>
             </h1>
             
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link 
-                to="/hazardmap" 
-                className="inline-flex items-center gap-2 px-10 border border-purple-900 py-3 bg-purple-700 text-white rounded-lg font-medium transition-all shadow-lg hover:bg-purple-900"
+                to="/guest/hazardmap" 
+                className="inline-flex items-center gap-2 px-10 py-3 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-800 transition-all shadow-lg hover:shadow-purple-200"
               >
                 <Map className="w-5 h-5" /> View Hazard Map
               </Link>
               <Link 
-                to="/yearly-incident-trends" 
-                className="inline-flex items-center gap-2 px-6 py-3 bg-gray-300 border border-gray-400 text-slate-700 rounded-lg font-medium hover:bg-gray-400 transition-all"
+                to="/guest/yearly-incident-trends" 
+                className="inline-flex items-center gap-2 px-10 py-3 bg-slate-600 text-white rounded-lg font-medium hover:bg-slate-800 transition-all shadow-lg hover:shadow-slate-200"
               >
                 <TrendingUp className="w-5 h-5" /> Yearly Incident Trends
               </Link>
@@ -35,7 +35,7 @@ export default function Guest() {
         </div>
       </section>
 
-      {/* Hazards History Section */}
+       {/* Hazards History Section */}
       <section className="py-20">
         <div className="container mx-auto px-4">
           <h2 id="report-hazard-history" className="text-4xl font-bold text-center mb-12 text-slate-900">
@@ -62,39 +62,39 @@ export default function Guest() {
         </div>
       </section>
 
-             <section className="bg-red-50 border-t-4 m-20 border-red-600 p-1 md:p-8 rounded-t-3xl rounded-b-3xl shadow-lg">
-  {/* Header */}
-  <div className="flex items-center gap-3 mb-6">
-    <div className="bg-red-100 p-2 rounded-full">
-      <img src={hotImg} alt="hazard icon" className="size-6" />
-    </div>
-    <h2 className="text-2xl font-bold text-red-900">Emergency Contact Information</h2>
-  </div>
-
-  {/* Body */}
-  <div className="bg-white p-20 rounded-2xl border border-red-100 shadow-sm">
-    <h3 className="text-lg font-bold text-gray-900 mb-4 pb-2 border-b border-gray-500">
-      MDRRMO Command Center (24/7)
-    </h3>
-    
-    <div className="grid gap-4 md:grid-cols-3">
-      <div>
-        <p className="text-sm text-gray-500 uppercase tracking-wider font-medium">Emergency Hotline</p>
-        <p className="text-red-600 font-bold text-lg">0917-123-4567</p>
-      </div>
-      
-      <div>
-        <p className="text-sm text-gray-500 uppercase tracking-wider font-medium">Email</p>
-        <p className="text-gray-800 font-medium">mdrrmo@naic.cavite.gov.ph</p>
-      </div>
-      
-      <div>
-        <p className="text-sm text-gray-500 uppercase tracking-wider font-medium">Address</p>
-        <p className="text-gray-800 font-medium">Municipal Compound, J. P. Rizal St., Naic, Cavite</p>
-      </div>
-    </div>
-  </div>
-</section>
+            <section className="w-full mx-auto px-4 pb-10">
+                           {/* Header */}
+                           <div className="flex items-center gap-3 mb-6">
+                             <div className="bg-red-100 p-2 rounded-full">
+                               <img src={hotImg} alt="hazard icon" className="size-6" />
+                             </div>
+                             <h2 className="text-2xl font-bold text-red-900">Emergency Contact Information</h2>
+                           </div>
+                         
+                           {/* Body */}
+                           <div className="bg-white p-20 rounded-2xl border border-red-100 shadow-sm">
+                             <h3 className="text-lg font-bold text-gray-900 mb-4 pb-2 border-b border-gray-500">
+                               MDRRMO Command Center (24/7)
+                             </h3>
+                             
+                             <div className="grid gap-4 md:grid-cols-3">
+                               <div>
+                                 <p className="text-sm text-gray-500 uppercase tracking-wider font-medium">Emergency Hotline</p>
+                                 <p className="text-red-600 font-bold text-lg"> 0917-812-8187</p>
+                               </div>
+                               
+                               <div>
+                                 <p className="text-sm text-gray-500 uppercase tracking-wider font-medium">Email</p>
+                                 <p className="text-gray-800 font-medium">naicmdrrmo768@gmail.com </p>
+                               </div>
+                               
+                               <div>
+                                 <p className="text-sm text-gray-500 uppercase tracking-wider font-medium">Address</p>
+                                 <p className="text-gray-800 font-medium">Antero Soriano Hwy, Naic, 4110 Cavite, Philippines</p>
+                               </div>
+                             </div>
+                           </div>
+                         </section>
                </div>
     )
 }

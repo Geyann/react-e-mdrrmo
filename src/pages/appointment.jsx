@@ -326,7 +326,7 @@ const AppointmentForm = () => {
   }
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen p-10">
     <div className="bg-gradient-to-r from-blue-600 to-purple-600 max-w-5xl mx-auto bg-white rounded-t-3xl shadow-xl border border-gray-200">
         <div className="flex flex-col items-center mb-3 pt-5">
          <CalendarDays className="w-15 h-auto text-white" />

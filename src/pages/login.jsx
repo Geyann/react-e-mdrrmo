@@ -130,7 +130,7 @@ export default function LoginPage() {
   const isEmailInput = identifier.includes('@');
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4">
+    <div className="min-h-screen min-w-screen flex items-center justify-center p-4">
       <button
         onClick={() => navigate('/')}
         className="absolute top-6 left-6 flex items-center gap-2 text-gray-600 hover:text-purple-600 transition font-semibold z-10"

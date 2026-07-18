@@ -164,7 +164,7 @@ const Profile = () => {
   const gradientTo = isStaffOrAdmin ? 'to-indigo-600' : 'to-purple-600';
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen pt-10">
       <div className="max-w-3xl mx-auto">
         <div className="bg-white rounded-3xl shadow-xl overflow-hidden">
           {/* Header Banner */}

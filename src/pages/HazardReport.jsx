@@ -211,9 +211,9 @@ async function createHazardReport(event) {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50">
+    <div className="min-h-screen pt-10">
       <div className="bg-gradient-to-r from-blue-600 to-purple-600 max-w-2xl mx-auto bg-white rounded-t-4xl shadow-xl border-b-0">
-        <div className="flex flex-col items-center mb-3 pt-5">
+        <div className="flex flex-col items-center pt-5">
           <TriangleAlertIcon className="w-15 h-auto text-slate-200" />
           <h1 className="text-3xl font-bold text-white">Hazard & Risk Report</h1>
           <p className="text-white text-sm">Identify risks. Fields marked <span className="text-red-300">*</span> are required.</p>

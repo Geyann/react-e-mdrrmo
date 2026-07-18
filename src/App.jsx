@@ -46,7 +46,7 @@ function App() {
   return (
     <div className="app" style={{ backgroundImage: `url(${background})`, repeat: 'no-repeat', backgroundSize: 'cover', minHeight: '100vh', maxHeight: '100vh', overflowY: 'auto', scrollbarWidth: 'none' }}>
      <DynamicNavbar /> {/* <-- THIS IS ALL YOU NEED */}
-      <div className="content p-30">
+      <div className="content pt-20">
         <Routes>
 
           {/* ===== PUBLIC ROUTES (no protection needed) ===== */}

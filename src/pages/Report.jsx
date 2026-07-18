@@ -35,7 +35,7 @@ const Report = () => {
   }
 
   return (
-    <div className="min-h-screen">
+    <div className="min-h-screen pt-10">
       <div className="bg-gradient-to-r from-blue-600 to-purple-600 max-w-2xl mx-auto bg-white rounded-t-4xl shadow-xl border border-b-transparent border-gray-100">
         <div className="flex flex-col items-center mb-3 pt-5">
          <Siren className="w-15 h-auto text-slate-200"/>

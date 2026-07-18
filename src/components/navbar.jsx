@@ -18,7 +18,7 @@ export default function Navbar() {
     <Link 
       to={to} 
       onClick={onClick}
-      className="group relative inline-block py-2 my-2 px-2 text-white text-center font-semibold uppercase text-[#262626] transition-colors text-nowrap"
+      className="group relative inline-block py-2 my-2 px-2 text-gray-800 lg:text-white text-center font-semibold uppercase text-[#262626] transition-colors text-nowrap"
     >
       <span className="relative z-10 transition-colors duration-300 group-hover:text-gray-600">
         {children}
@@ -42,7 +42,7 @@ export default function Navbar() {
           {isOpen ? '✖' : '☰'}
         </button>
 
-        <nav className={`${isOpen ? 'flex' : 'hidden'} lg:flex flex-col lg:flex-row absolute lg:static top-full left-0 w-full lg:w-auto bg-white/95  lg:bg-transparent p-6 lg:p-0 gap-2 items-center`}>
+        <nav className={`${isOpen ? `flex` : `hidden`} lg:flex flex-col lg:flex-row absolute lg:static top-full left-0 w-full lg:w-auto bg-white lg:bg-transparent p-6 lg:p-0 gap-2 items-center`}>
           <NavLink to="/hazard-report" onClick={() => setIsOpen(false)}>Hazard Report</NavLink>
           <NavLink to="/report" onClick={() => setIsOpen(false)}>Report Incident</NavLink>
           <NavLink to="/borrow" onClick={() => setIsOpen(false)}>Borrow Vehicle</NavLink>

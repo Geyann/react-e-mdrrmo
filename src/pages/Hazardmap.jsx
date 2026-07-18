@@ -185,28 +185,27 @@ const naicBoundaryRaw = [
 //  CATEGORY ICONS & COLORS
 // ════════════════════════════════════════════════════════════════════════════
 const CATEGORY_CONFIG = {
-  'flood':             { icon: '🌊', color: '#3b82f6', label: 'Flood' },
-  'fire':              { icon: '🔥', color: '#ef4444', label: 'Fire' },
-  'earthquake':        { icon: '🏚️', color: '#f97316', label: 'Earthquake' },
-  'landslide':         { icon: '⛰️', color: '#a16207', label: 'Landslide' },
-  'typhoon':           { icon: '🌀', color: '#06b6d4', label: 'Typhoon' },
-  'volcanic':          { icon: '🌋', color: '#dc2626', label: 'Volcanic' },
-  'industrial':        { icon: '🏭', color: '#8b5cf6', label: 'Industrial' },
-  'traffic':           { icon: '🚗', color: '#eab308', label: 'Traffic' },
-  'health':            { icon: '🏥', color: '#ec4899', label: 'Health' },
-  'infrastructure':    { icon: '🔌', color: '#6366f1', label: 'Infrastructure' },
-  'others':            { icon: '⚠️', color: '#64748b', label: 'Others' },
+  'flood':             { label: 'Flood' },
+  'fire':              { label: 'Fire' },
+  'earthquake':        { label: 'Earthquake' },
+  'landslide':         { label: 'Landslide' },
+  'typhoon':           { label: 'Typhoon' },
+  'volcanic':          { label: 'Volcanic' },
+  'industrial':        { label: 'Industrial' },
+  'traffic':           { label: 'Traffic' },
+  'health':            { label: 'Health' },
+  'infrastructure':    { label: 'Infrastructure' },
+  'others':            { label: 'Others' },
 };
 
 const CATEGORY_LIST = Object.entries(CATEGORY_CONFIG).map(([key, val]) => ({
   key,
   ...val,
 }));
-
 // ════════════════════════════════════════════════════════════════════════════
-//  CUSTOM CANVAS HEATMAP LAYER (uses simpleheat)
+//  CUSTOM CANVAS HEATMAP LAYER — Properly anchored to map
 // ════════════════════════════════════════════════════════════════════════════
-const SimpleHeatLayer = ({ points, radius = 30, blur = 20, maxIntensity = 1.0 }) => {
+const SimpleHeatLayer = ({ points, radius = 8, blur = 6, maxIntensity = 1.0 }) => {
   const map = useMap();
   const canvasRef = useRef(null);
   const heatRef = useRef(null);
@@ -223,12 +222,7 @@ const SimpleHeatLayer = ({ points, radius = 30, blur = 20, maxIntensity = 1.0 })
     if (!heatRef.current || !canvasRef.current || !map || !points || points.length === 0) return;
 
     try {
-      const size = map.getSize();
-      const canvas = canvasRef.current;
-
-      canvas.width = size.x;
-      canvas.height = size.y;
-
+      // Project all points from lat/lng to pixel coords relative to the map container
       const data = points.map(p => {
         const pt = map.latLngToContainerPoint(L.latLng(p.lat, p.lng));
         return [Math.round(pt.x), Math.round(pt.y), p.intensity];
@@ -236,13 +230,11 @@ const SimpleHeatLayer = ({ points, radius = 30, blur = 20, maxIntensity = 1.0 })
 
       const heat = heatRef.current;
       heat.data(data);
-      heat.radius(radius, blur);
-      heat.max(maxIntensity);
       heat.draw();
     } catch (err) {
       console.error('❌ Redraw error:', err);
     }
-  }, [map, points, radius, blur, maxIntensity]);
+  }, [map, points]);
 
   useEffect(() => {
     if (!map || !points || points.length === 0) return;
@@ -259,50 +251,92 @@ const SimpleHeatLayer = ({ points, radius = 30, blur = 20, maxIntensity = 1.0 })
 
         const size = map.getSize();
 
+        // Create canvas element
         const canvas = L.DomUtil.create('canvas', 'leaflet-heatmap-layer');
-        canvas.style.position = 'absolute';
-        canvas.style.top = '0';
-        canvas.style.left = '0';
-        canvas.style.pointerEvents = 'none';
-        canvas.style.width = size.x + 'px';
-        canvas.style.height = size.y + 'px';
         canvas.width = size.x;
         canvas.height = size.y;
+        canvas.style.width = size.x + 'px';
+        canvas.style.height = size.y + 'px';
+        canvas.style.pointerEvents = 'none';
+        canvas.style.position = 'absolute';
+        // CRITICAL: Position at top-left of the map container
+        canvas.style.top = '0';
+        canvas.style.left = '0';
         canvas.style.zIndex = '400';
+
+        // ════════════════════════════════════════════════════════════════
+        // FIX: Set willReadFrequently on the 2D context BEFORE simpleheat
+        // uses it. simpleheat calls getImageData internally, and this
+        // attribute tells the browser to optimize for repeated readback.
+        // ════════════════════════════════════════════════════════════════
+        const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
         canvasRef.current = canvas;
 
-        const pane = map.getPanes().overlayPane;
-        pane.appendChild(canvas);
+        // Add canvas to the map container directly (not overlay pane)
+        // This avoids Leaflet's transform system which was causing the disappearing
+        const mapContainer = map.getContainer();
+        mapContainer.style.position = 'relative';
+        mapContainer.appendChild(canvas);
 
+        // Initialize simpleheat with the pre-configured canvas
         const heat = new SimpleHeatConstructor(canvas);
         heat.gradient(gradient);
+        heat.radius(radius, blur);
+        heat.max(maxIntensity);
         heatRef.current = heat;
 
+        // Draw initial data
         redraw();
 
-        const handleMoveEnd = () => {
+        // ── Event Handlers ──
+
+        // Resize handler
+        const handleResize = () => {
+          if (!canvasRef.current || !heatRef.current) return;
           const newSize = map.getSize();
-          if (canvasRef.current) {
-            canvasRef.current.style.width = newSize.x + 'px';
-            canvasRef.current.style.height = newSize.y + 'px';
-            canvasRef.current.width = newSize.x;
-            canvasRef.current.height = newSize.y;
-          }
+          canvasRef.current.width = newSize.x;
+          canvasRef.current.height = newSize.y;
+          canvasRef.current.style.width = newSize.x + 'px';
+          canvasRef.current.style.height = newSize.y + 'px';
+          // Re-get context with willReadFrequently after resize
+          canvasRef.current.getContext('2d', { willReadFrequently: true });
           redraw();
         };
 
-        map.on('moveend', handleMoveEnd);
-        map.on('zoomend', handleMoveEnd);
-        map.on('resize', handleMoveEnd);
-
-        heatRef.current._cleanup = () => {
-          map.off('moveend', handleMoveEnd);
-          map.off('zoomend', handleMoveEnd);
-          map.off('resize', handleMoveEnd);
+        // Redraw on any map movement (pan/zoom)
+        // latLngToContainerPoint changes when the map moves, so we must redraw
+        const handleMoveEnd = () => {
+          redraw();
         };
 
-        console.log('✅ SimpleHeat rendered:', points.length, 'points on canvas');
+        // While actively panning, redraw continuously
+        const handleMove = () => {
+          redraw();
+        };
+
+        // While zooming, redraw continuously
+        const handleZoom = () => {
+          redraw();
+        };
+
+        // Bind events
+        map.on('resize', handleResize);
+        map.on('moveend', handleMoveEnd);
+        map.on('move', handleMove);
+        map.on('zoom', handleZoom);
+        map.on('zoomend', handleMoveEnd);
+
+        // Store cleanup
+        heatRef.current._cleanup = () => {
+          map.off('resize', handleResize);
+          map.off('moveend', handleMoveEnd);
+          map.off('move', handleMove);
+          map.off('zoom', handleZoom);
+          map.off('zoomend', handleMoveEnd);
+        };
+
+        console.log('✅ SimpleHeat rendered:', points.length, 'points');
       } catch (err) {
         console.error('❌ SimpleHeat init error:', err);
       }
@@ -321,7 +355,7 @@ const SimpleHeatLayer = ({ points, radius = 30, blur = 20, maxIntensity = 1.0 })
       heatRef.current = null;
       canvasRef.current = null;
     };
-  }, [map, points, radius, blur, maxIntensity, redraw, gradient]);
+  }, [map, points, radius, blur, maxIntensity, redraw]);
 
   return null;
 };
@@ -333,28 +367,26 @@ const CategoryFilter = ({ categories, selected, onChange, uniqueCounts }) => {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
-    <div className="relative">
+    <div className="relative ">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 px-3 py-1.5 bg-slate-700/80 hover:bg-slate-600/80 border border-slate-600/60 rounded-lg text-[10px] font-bold uppercase tracking-wider text-slate-300 transition"
+        className="flex items-center gap-2 px-3 py-1.5 bg-purple-600 hover:bg-purple-600/80 border border-purple-600/60 rounded-lg text-[10px] font-bold uppercase tracking-wider text-slate-100 transition"
       >
-        <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg className="w-3.5 h-3.5 text-slate-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/>
         </svg>
         {selected.length === 0 || selected.length === categories.length
           ? 'All Categories'
           : `${selected.length} Selected`}
-        <span className="text-[8px] text-slate-500">▼</span>
+        <span className="text-[8px] text-slate-100">▼</span>
       </button>
 
       {isOpen && (
         <>
-          {/* Backdrop to close on outside click */}
           <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
 
-          <div className="absolute right-0 top-full mt-1 z-1000 bg-slate-800/95 border border-slate-700/80 rounded-xl shadow-2xl backdrop-blur-md p-2 w-56 max-h-72 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-600/50 scrollbar-track-slate-800/50">
-            {/* Select All / Deselect All */}
-            <div className="flex gap-1 px-2 pb-2 border-b border-slate-700/60 mb-2">
+          <div className="absolute right-0 top-full mt-1 z-1000 bg-purple-600 border border-purple-700/80 rounded-xl shadow-2xl backdrop-blur-md p-4 w-70 max-h-72 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-600/50 scrollbar-track-purple-600/50">
+            <div className="flex gap-2 px-3 pb-2 border-b border-purple-700/60 mb-2">
               <button
                 onClick={() => onChange(categories.map(c => c.key))}
                 className="flex-1 text-[9px] uppercase font-bold text-slate-400 hover:text-white bg-slate-700/50 hover:bg-slate-600/50 rounded-md py-1 transition"
@@ -388,7 +420,6 @@ const CategoryFilter = ({ categories, selected, onChange, uniqueCounts }) => {
                       : 'text-slate-400 hover:bg-slate-700/40 hover:text-slate-200'
                   }`}
                 >
-                  {/* Checkbox */}
                   <div className={`w-3.5 h-3.5 rounded border flex items-center justify-center transition ${
                     isSelected
                       ? 'bg-blue-500 border-blue-500'
@@ -401,13 +432,10 @@ const CategoryFilter = ({ categories, selected, onChange, uniqueCounts }) => {
                     )}
                   </div>
 
-                  {/* Color dot */}
                   <span className="w-2.5 h-2.5 rounded-full flex-shrink-0" style={{ backgroundColor: cat.color }}></span>
 
-                  {/* Icon + Label */}
                   <span className="mr-auto">{cat.icon} {cat.label}</span>
 
-                  {/* Count badge */}
                   <span className="text-[9px] text-slate-500 bg-slate-700/50 px-1.5 py-0.5 rounded-md">{count}</span>
                 </button>
               );
@@ -461,7 +489,7 @@ const UserHazardMap = () => {
         setReports([]);
       } else {
         setFetchStatus(`Loaded ${data.length} reports`);
-        setReports(data);
+        setReports(data);  
       }
       setLastUpdated(new Date().toLocaleTimeString());
     } catch (err) {
@@ -505,7 +533,7 @@ const UserHazardMap = () => {
     low: filteredReports.filter(r => r.risk_level?.toLowerCase() === 'low').length,
   }), [filteredReports]);
 
-  // ── Heatmap points ──
+  // ── Heatmap points — each report gets its own intensity based on risk_level ──
   const heatPoints = useMemo(() => {
     return filteredReports.map(r => ({
       lat: parseFloat(r.latitude),
@@ -536,38 +564,20 @@ const UserHazardMap = () => {
   //  RENDER
   // ═════════════════════════════════════════════════════════════════════════
   return (
-    <div className="min-h-screen bg-slate-900 font-mono">
+    <div className="min-h-[calc(screen-20px)] bg-slate-900 font-mono">
       
       {/* Header */}
-      <div className="bg-gradient-to-r from-slate-800 to-slate-900 border-b border-slate-700/80 px-5 py-3 flex items-center justify-between">
+      <div className="bg-slate-100 px-5 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-9 h-9 bg-red-600/20 border border-red-500/40 rounded-lg flex items-center justify-center">
-            <svg className="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
-            </svg>
-          </div>
+          
           <div>
-            <h1 className="text-lg font-bold text-white tracking-wider uppercase leading-tight">Hazard Heatmap</h1>
-            <p className="text-[9px] text-slate-500 tracking-widest uppercase">NAIC Area • Real-time hazard density</p>
+            <h1 className="text-lg font-bold text-gray-700 tracking-wider uppercase leading-tight">Hazard Heatmap</h1>
+            <p className="text-[9px] text-slate-600 tracking-widest uppercase">NAIC Area • Pinpoint hazard locations</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2">
-          <div className="px-3 py-1.5 bg-blue-500/10 border border-blue-500/30 rounded-md">
-            <span className="text-[11px] font-bold text-blue-300">{stats.total}</span>
-            <span className="text-[8px] text-slate-500 ml-1 uppercase">Reports</span>
-          </div>
-          <div className="px-3 py-1.5 bg-red-500/10 border border-red-500/30 rounded-md">
-            <span className="text-[11px] font-bold text-red-300">{stats.critical}</span>
-            <span className="text-[8px] text-slate-500 ml-1 uppercase">Critical</span>
-          </div>
-          <div className="px-3 py-1.5 bg-orange-500/10 border border-orange-500/30 rounded-md">
-            <span className="text-[11px] font-bold text-orange-300">{stats.high}</span>
-            <span className="text-[8px] text-slate-500 ml-1 uppercase">High</span>
-          </div>
-
-          {/* ── Category Filter ── */}
+        <div className="flex items-center gap-2 ">
+          
           <CategoryFilter
             categories={CATEGORY_LIST}
             selected={selectedCategories}
@@ -576,20 +586,20 @@ const UserHazardMap = () => {
           />
 
           <button onClick={fetchApprovedReports}
-            className="ml-1 p-2 bg-slate-700 hover:bg-slate-600 rounded-md border border-slate-600 transition" title="Refresh">
+            className="ml-1 p-2 bg-purple-600 hover:bg-purple-700 rounded-md border border-purple-600 transition" title="Refresh">
             <svg className={`w-3.5 h-3.5 text-slate-300 ${loading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
             </svg>
           </button>
           <button onClick={() => setIsRealistic(!isRealistic)}
-            className="ml-1 px-3 py-1.5 text-[9px] font-bold uppercase rounded-lg border bg-slate-700/50 border-slate-600 text-slate-300 hover:bg-slate-600 transition">
+            className="ml-1 px-3 py-1.5 text-[9px] font-bold uppercase rounded-lg border bg-purple-600 border-purple-600 text-slate-300 hover:bg-purple-700 transition">
             {isRealistic ? 'Map' : 'Satellite'}
           </button>
         </div>
       </div>
 
       {/* Map Container */}
-      <div className="relative h-[calc(100vh-54px)]">
+      <div className="relative h-[82vh]">
         
         {/* Loading */}
         {loading && (
@@ -609,82 +619,52 @@ const UserHazardMap = () => {
           </div>
         )}
 
-        {/* Status */}
-        {fetchStatus && !loading && !error && (
-          <div className="absolute top-4 right-4 z-[1000] bg-slate-800/80 border border-slate-700/60 rounded-lg px-3 py-1.5 text-[9px] text-slate-400">
-            {fetchStatus}
-          </div>
-        )}
-
         {/* ─── Legend ─── */}
-        <div className="absolute bottom-6 left-4 z-[1000] bg-slate-800/90 border border-slate-700/60 rounded-xl p-4 backdrop-blur-md shadow-2xl w-56">
-          <h3 className="text-[9px] uppercase text-red-400 font-bold tracking-wider mb-3 flex items-center gap-1.5">
+        <div className="absolute bottom-6 left-4 z-[1000] bg-slate-200 border border-slate-700/60 rounded-xl p-4 backdrop-blur-md shadow-2xl w-56">
+          <h3 className="text-[15px] uppercase text-slate-900 font-bold tracking-wider mb-3 flex items-center gap-1.5">
             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z"/>
             </svg>
-            Hazard Density
+            Hazard Intensity
           </h3>
 
           <div className="relative mb-3">
             <div className="w-full h-5 rounded-md" style={{
               background: 'linear-gradient(to right, #22c55e, #84cc16, #eab308, #ea580c, #dc2626)'
             }}></div>
-            <div className="flex justify-between text-[8px] text-slate-400 mt-0.5">
-              <span>Safe</span>
+            <div className="flex justify-between text-[8px] text-slate-900 mt-0.5">
+              <span>Low</span>
               <span>Moderate</span>
-              <span>Dangerous</span>
+              <span>Critical</span>
             </div>
           </div>
 
           <div className="space-y-1.5 mb-3">
             {[
-              { color: '#22c55e', label: 'Low density / Safe area' },
-              { color: '#eab308', label: 'Medium density / Caution' },
-              { color: '#ea580c', label: 'High density / Watch area' },
-              { color: '#dc2626', label: 'Critical density / Danger zone' },
+              { color: '#22c55e', label: 'Low risk' },
+              { color: '#84cc16', label: 'Low-Medium risk' },
+              { color: '#eab308', label: 'Medium risk' },
+              { color: '#ea580c', label: 'High risk' },
+              { color: '#dc2626', label: 'Critical risk' },
             ].map(item => (
               <div key={item.label} className="flex items-center gap-2">
                 <div className="w-3 h-3 rounded-sm" style={{backgroundColor: item.color}}></div>
-                <span className="text-[9px] text-slate-300">{item.label}</span>
+                <span className="text-[9px] text-slate-900">{item.label}</span>
               </div>
             ))}
           </div>
 
           <div className="border-t border-slate-700/60 pt-2.5 space-y-1">
             <div className="flex items-center gap-2">
-              <span className="w-3 h-3 rounded-full border-2 border-purple-500 bg-purple-500/30"></span>
-              <span className="text-[8px] text-slate-400">NAIC Boundary</span>
+              <span className="w-3 h-3 rounded-full border-2 border-slate-500 bg-slate-500/30"></span>
+              <span className="text-[8px] text-slate-900">NAIC Boundary</span>
             </div>
           </div>
 
-          {clusterInfo.totalClusters > 0 && (
-            <div className="border-t border-slate-700/60 pt-2 mt-2 text-[8px] text-slate-500">
-              <p>{stats.total} reports across {clusterInfo.totalClusters} zones</p>
-              <p>Hotspot max: <span className="text-red-400 font-bold">{clusterInfo.maxCluster}</span> reports/cell</p>
-            </div>
-          )}
+         
         </div>
 
-        {/* Top info */}
-        <div className="absolute top-4 left-4 z-[1000] bg-slate-800/85 border border-slate-700/60 rounded-xl px-4 py-2 backdrop-blur-md shadow-xl">
-          <div className="flex items-center gap-3 text-[10px]">
-            <span className="text-slate-400">
-              Heatmap: <strong className="text-white">{filteredReports.length}</strong> approved reports
-              {selectedCategories.length < CATEGORY_LIST.length && (
-                <span className="text-amber-400 ml-1">(filtered)</span>
-              )}
-            </span>
-            <span className="text-slate-600">|</span>
-            <span className="text-red-400">Critical: <strong>{stats.critical}</strong></span>
-            <span className="text-orange-300">High: <strong>{stats.high}</strong></span>
-            {lastUpdated && (
-              <>
-                <span className="text-slate-600">|</span>
-                <span className="text-slate-500 text-[8px]">Updated: {lastUpdated}</span>
-              </>
-            )}
-          </div>
-        </div>
+       
 
         {/* ─── Leaflet Map ─── */}
         <MapContainer
@@ -719,20 +699,13 @@ const UserHazardMap = () => {
           {heatPoints.length > 0 && (
             <SimpleHeatLayer
               points={heatPoints}
-              radius={30}
-              blur={20}
+              radius={11}
+              blur={6}
               maxIntensity={1.0}
             />
           )}
         </MapContainer>
 
-        {/* Bottom status */}
-        <div className="absolute bottom-4 right-4 z-[1000] bg-slate-800/80 border border-slate-700/60 rounded-lg px-3 py-1.5 backdrop-blur-sm flex items-center gap-2">
-          <span className={`inline-block w-1.5 h-1.5 rounded-full ${loading ? 'bg-amber-400 animate-pulse' : error ? 'bg-red-500' : 'bg-emerald-500'}`}></span>
-          <span className="text-[8px] text-slate-500">
-            {loading ? 'Loading...' : error ? 'Error' : `Live • ${stats.total} reports`}
-          </span>
-        </div>
       </div>
     </div>
   );
