@@ -146,41 +146,41 @@ const DetailPanel = ({ report, onClose, onUpdateStatus, onToggleHeatmap, onDelet
   const riskColor = HAZARD_COLORS[report.risk_level?.toLowerCase()] || '#3b82f6';
 
   return (
-    <div className="w-[420px] bg-slate-800 border-l border-slate-700/80 overflow-y-auto flex flex-col h-full">
+    <div className="w-[420px] bg-slate-100 border-l border-slate-700 overflow-y-auto flex flex-col h-full">
       
       {/* ── Panel Header ── */}
-      <div className="bg-gradient-to-r from-slate-800 to-slate-900 px-5 py-4 border-b border-slate-700/60 flex items-center justify-between sticky top-0 z-10">
+      <div className="bg-slate-100 px-5 py-4 border-b border-slate-700 flex items-center justify-between sticky top-0 z-10">
         <div className="flex items-center gap-3">
           <button onClick={onClose} className="p-1.5 hover:bg-slate-700 rounded-lg transition">
-            <svg className="w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 text-slate-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
             </svg>
           </button>
           <div>
-            <h2 className="text-sm font-bold text-white tracking-wide flex items-center gap-2">
+            <h2 className="text-sm font-bold text-slate-900 tracking-wide flex items-center gap-2">
               {CATEGORY_ICONS[report.hazard_category?.toLowerCase()] || '⚠️'}
               {report.hazard_category} Hazard
             </h2>
-            <p className="text-[9px] text-slate-500">Report #{report.id?.toString().slice(0, 8)}</p>
+            <p className="text-[11px] text-slate-900">Report #{report.id?.toString().slice(0, 8)}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <span className="px-2 py-0.5 text-[9px] font-bold uppercase rounded"
-            style={{ backgroundColor: riskColor + '30', color: riskColor }}>
+          <span className="px-2 py-0.5 text-[10px] font-bold uppercase rounded"
+            style={{ backgroundColor: riskColor + '70', color: riskColor  }}>
             {report.risk_level || 'N/A'}
           </span>
-          <span className={`px-2 py-0.5 text-[9px] font-bold uppercase rounded border ${
-            isPending ? 'bg-amber-500/20 text-amber-300 border-amber-500/40' :
-            displayStatus === 'approved' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' :
-            'bg-red-500/20 text-red-300 border-red-500/40'
+          <span className={`px-2 py-0.5 text-[10px] font-bold uppercase rounded border ${
+            isPending ? 'bg-amber-500 text-amber-100 border-amber-500/70' :
+            displayStatus === 'approved' ? 'bg-emerald-500 text-emerald-100 border-emerald-500/90' :
+            'bg-red-500/70 text-red-200 border-red-500/90'
           }`}>{displayStatus}</span>
         </div>
       </div>
 
       {/* ── Photo Gallery ── */}
       {photos.length > 0 && (
-        <div className="px-5 pt-4 pb-2 border-b border-slate-700/40">
-          <p className="text-[9px] uppercase text-slate-400 font-bold mb-2.5 tracking-wider flex items-center gap-1.5">
+        <div className="px-5 pt-4 pb-2 border-b border-slate-700">
+          <p className="text-[9px] uppercase text-slate-900 font-bold mb-2.5 tracking-wider flex items-center gap-1.5">
             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
             </svg>
@@ -197,41 +197,41 @@ const DetailPanel = ({ report, onClose, onUpdateStatus, onToggleHeatmap, onDelet
       )}
 
       {/* ── Report Details ── */}
-      <div className="px-5 py-4 space-y-3 flex-1">
+      <div className="px-5 py-4 space-y-4 flex-1  ">
         {/* Description */}
         <div>
-          <p className="text-[9px] uppercase text-slate-500 font-bold tracking-wider mb-1">Description</p>
-          <p className="text-xs text-slate-200 leading-relaxed">{report.hazard_description || 'No description provided.'}</p>
+          <p className="text-[10px] uppercase text-slate-900 font-bold tracking-wider mb-1">Description</p>
+          <p className="text-xs text-slate-700 leading-relaxed">{report.hazard_description || 'No description provided.'}</p>
         </div>
 
         {/* Details Grid */}
         <div className="grid grid-cols-2 gap-3">
           <div>
-            <p className="text-[9px] uppercase text-slate-500 font-bold tracking-wider mb-1">Reporter</p>
-            <p className="text-[11px] text-slate-200">{report.reporter_name || 'Anonymous'}</p>
+            <p className="text-[9px] uppercase text-slate-900 font-bold tracking-wider mb-1">Reporter</p>
+            <p className="text-[11px] text-slate-700">{report.reporter_name || 'Anonymous'}</p>
           </div>
           <div>
-            <p className="text-[9px] uppercase text-slate-500 font-bold tracking-wider mb-1">Contact</p>
-            <p className="text-[11px] text-slate-200">{report.reporter_contact || 'N/A'}</p>
+            <p className="text-[10px] uppercase text-slate-900 font-bold tracking-wider mb-1">Contact</p>
+            <p className="text-[11 px] text-slate-700">{report.reporter_contact || 'N/A'}</p>
           </div>
           <div>
-            <p className="text-[9px] uppercase text-slate-500 font-bold tracking-wider mb-1">Date Observed</p>
-            <p className="text-[11px] text-slate-200">{report.date_observed || 'N/A'}</p>
+            <p className="text-[10px] uppercase text-slate-900 font-bold tracking-wider mb-1">Date Observed</p>
+            <p className="text-[11px] text-slate-700">{report.date_observed || 'N/A'}</p>
           </div>
           <div>
-            <p className="text-[9px] uppercase text-slate-500 font-bold tracking-wider mb-1">Time Observed</p>
-            <p className="text-[11px] text-slate-200">{report.time_observed || 'N/A'}</p>
+            <p className="text-[9px] uppercase text-slate-900 font-bold tracking-wider mb-1">Time Observed</p>
+            <p className="text-[11px] text-slate-700">{report.time_observed || 'N/A'}</p>
           </div>
         </div>
 
         {/* Location */}
         <div>
-          <p className="text-[9px] uppercase text-slate-500 font-bold tracking-wider mb-1">Location</p>
-          <p className="text-[11px] text-slate-200">{report.address || 'No address'}</p>
+          <p className="text-[10px] uppercase text-slate-900 font-bold tracking-wider mb-1">Location</p>
+          <p className="text-[11px] text-slate-700">{report.address || 'No address'}</p>
           {report.landmark && (
-            <p className="text-[10px] text-slate-400 mt-0.5">Near: {report.landmark}</p>
+            <p className="text-[10px] text-slate-600 mt-0.5">Near: {report.landmark}</p>
           )}
-          <p className="text-[9px] text-slate-500 mt-0.5">
+          <p className="text-[10px] text-slate-900 mt-0.5">
             {parseFloat(report.latitude)?.toFixed(5)}, {parseFloat(report.longitude)?.toFixed(5)}
           </p>
         </div>
@@ -239,47 +239,47 @@ const DetailPanel = ({ report, onClose, onUpdateStatus, onToggleHeatmap, onDelet
         {/* Recommended Action */}
         {report.recommended_action && (
           <div>
-            <p className="text-[9px] uppercase text-slate-500 font-bold tracking-wider mb-1">Recommended Action</p>
-            <p className="text-[11px] text-slate-300 italic">{report.recommended_action}</p>
+            <p className="text-[10px] uppercase text-slate-900 font-bold tracking-wider mb-1">Recommended Action</p>
+            <p className="text-[11px] text-slate-700 italic">{report.recommended_action}</p>
           </div>
         )}
 
         {/* Created */}
-        <div className="pt-2 border-t border-slate-700/40">
-          <p className="text-[8px] text-slate-600">Submitted {timeAgo(report.created_at) || formatDate(report.created_at)}</p>
+        <div className="pt-2 border-t border-slate-700">
+          <p className="text-[9px] text-slate-700">Submitted {timeAgo(report.created_at) || formatDate(report.created_at)}</p>
         </div>
       </div>
 
       {/* ── Action Buttons ── */}
-      <div className="px-5 py-3 border-t border-slate-700/60 bg-slate-800/80 space-y-2">
+      <div className="px-5 py-3 border-t border-slate-700 bg-slate-100 space-y-2">
         {/* Status actions */}
         <div className="flex gap-2">
           {isPending && (
             <>
               <button onClick={() => onUpdateStatus(report, 'approved')}
-                className="flex-1 px-3 py-2 text-[10px] font-bold uppercase rounded-lg bg-emerald-600/20 border border-emerald-500/50 text-emerald-300 hover:bg-emerald-600/30 transition">Approve</button>
+                className="flex-1 px-3 py-2 text-[10px] font-bold uppercase rounded-lg bg-emerald-600 border border-emerald-500/90 text-emerald-100 hover:bg-emerald-600/80 transition">Approve</button>
               <button onClick={() => onUpdateStatus(report, 'rejected')}
-                className="flex-1 px-3 py-2 text-[10px] font-bold uppercase rounded-lg bg-red-600/20 border border-red-500/50 text-red-300 hover:bg-red-600/30 transition">Reject</button>
+                className="flex-1 px-3 py-2 text-[10px] font-bold uppercase rounded-lg bg-red-600 border border-red-500/90 text-red-100 hover:bg-red-600/80 transition">Reject</button>
             </>
           )}
           {!isPending && (
             <button onClick={() => onUpdateStatus(report, 'pending')}
-              className="flex-1 px-3 py-2 text-[10px] font-bold uppercase rounded-lg bg-amber-600/20 border border-amber-500/50 text-amber-300 hover:bg-amber-600/30 transition">Reset to Pending</button>
+              className="flex-1 px-3 py-2 text-[11px] font-bold uppercase rounded-lg bg-amber-600 border border-amber-500/50 text-amber-100 hover:bg-amber-600/80 transition">Reset to Pending</button>
           )}
         </div>
 
         {/* Toggle heatmap + Delete */}
         <div className="flex gap-2">
           <button onClick={() => onToggleHeatmap(report)}
-            className={`flex-1 px-3 py-2 text-[10px] font-bold uppercase rounded-lg border transition ${
+            className={`flex-1 px-3 py-2 text-[11px] font-bold uppercase rounded-lg border transition ${
               heatmapVisible
-                ? 'bg-violet-600/20 border-violet-500/50 text-violet-300 hover:bg-violet-600/30'
+                ? 'bg-violet-600 border-violet-500/50 text-violet-100 hover:bg-violet-600/30'
                 : 'bg-slate-700/50 border-slate-600 text-slate-400 hover:bg-slate-600'
             }`}>
             {heatmapVisible ? 'Hide from Heatmap' : 'Show on Heatmap'}
           </button>
           <button onClick={() => onDelete(report)}
-            className="px-3 py-2 text-[10px] font-bold uppercase rounded-lg bg-red-600/20 border border-red-500/50 text-red-300 hover:bg-red-600/30 transition">Delete</button>
+            className="px-3 py-2 text-[11px] font-bold uppercase rounded-lg bg-red-600 border border-red-500/70 text-red-100 hover:bg-red-600/90 transition">Delete</button>
         </div>
       </div>
     </div>
@@ -634,7 +634,7 @@ const AdminHazardMap = () => {
   //  RENDER
   // ═════════════════════════════════════════════════════════════════════════
   return (
-    <div className="min-h-screen bg-slate-900 font-mono">
+    <div className="min-h-[83vh] bg-white font-mono">
       
       {/* ─── Snackbar ─── */}
       {snackbar.show && (
@@ -650,10 +650,10 @@ const AdminHazardMap = () => {
       {confirmAction && (
         <div className="fixed inset-0 z-[9998] bg-black/70 flex items-center justify-center p-4 backdrop-blur-sm"
           onClick={() => setConfirmAction(null)}>
-          <div className="bg-slate-800 border border-slate-600 rounded-xl p-6 max-w-md w-full shadow-2xl"
+          <div className="bg-slate-300 border border-slate-600 rounded-xl p-6 max-w-md w-full shadow-2xl"
             onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-white font-bold text-sm mb-2">{confirmAction.title}</h3>
-            <p className="text-slate-300 text-xs mb-5 leading-relaxed">{confirmAction.message}</p>
+            <h3 className="text-slate-900 font-bold text-sm mb-2">{confirmAction.title}</h3>
+            <p className="text-slate-800 text-xs mb-5 leading-relaxed">{confirmAction.message}</p>
             <div className="flex gap-3 justify-end">
               <button onClick={() => setConfirmAction(null)}
                 className="px-4 py-2 text-xs font-bold text-slate-300 bg-slate-700 rounded-lg hover:bg-slate-600 border border-slate-500 transition">Cancel</button>
@@ -678,34 +678,30 @@ const AdminHazardMap = () => {
       )}
 
       {/* ─── Top Navigation Bar ─── */}
-      <div className="bg-gradient-to-r from-slate-800 to-slate-900 border-b border-slate-700/80 px-5 py-2.5 flex items-center justify-between">
+      <div className="bg-slate-100 p-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 bg-purple-600/20 border border-purple-500/40 rounded-lg flex items-center justify-center">
-            <svg className="w-4 h-4 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z"/>
-            </svg>
-          </div>
+          
           <div>
-            <h1 className="text-base font-bold text-white tracking-wider uppercase leading-tight">Admin Hazard Map</h1>
-            <p className="text-[8px] text-slate-500 tracking-widest uppercase">NAIC Area • Click a pin to view details</p>
+            <h1 className="text-base font-bold text-slate-900 tracking-wider uppercase leading-tight">Admin Hazard Map</h1>
+            <p className="text-[8px] text-slate-900 tracking-widest uppercase">NAIC Area • Click a pin to view details</p>
           </div>
         </div>
         
         {/* Stats */}
         <div className="flex items-center gap-1.5">
           {[
-            { label: 'Total', value: stats.total, color: 'text-blue-300', bg: 'bg-blue-500/10 border-blue-500/30' },
-            { label: 'Pending', value: stats.pending, color: 'text-amber-300', bg: 'bg-amber-500/10 border-amber-500/30' },
-            { label: 'Approved', value: stats.approved, color: 'text-emerald-300', bg: 'bg-emerald-500/10 border-emerald-500/30' },
-            { label: 'Critical', value: stats.critical, color: 'text-red-300', bg: 'bg-red-500/10 border-red-500/30' },
+            { label: 'Total', value: stats.total, color: 'text-blue-300', bg: 'bg-blue-700/90 border-blue-500/30' },
+            { label: 'Pending', value: stats.pending, color: 'text-amber-300', bg: 'bg-amber-700/90 border-amber-500/30' },
+            { label: 'Approved', value: stats.approved, color: 'text-emerald-300', bg: 'bg-emerald-700/90 border-emerald-500/30' },
+            { label: 'Critical', value: stats.critical, color: 'text-red-300', bg: 'bg-red-700/90 border-red-500/30' },
           ].map(s => (
             <div key={s.label} className={`px-2.5 py-1 rounded-md border ${s.bg} flex items-center gap-1.5`}>
               <span className={`text-[11px] font-bold ${s.color}`}>{s.value}</span>
-              <span className="text-[8px] text-slate-500 uppercase">{s.label}</span>
+              <span className="text-[8px] text-white uppercase">{s.label}</span>
             </div>
           ))}
           <button onClick={fetchReports}
-            className="ml-1 p-2 bg-slate-700 hover:bg-slate-600 rounded-md border border-slate-600 transition" title="Refresh">
+            className="ml-1 p-2 bg-slate-600 hover:bg-slate-800 rounded-md border border-slate-600 transition" title="Refresh">
             <svg className={`w-3.5 h-3.5 text-slate-300 ${loading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
             </svg>
@@ -714,18 +710,18 @@ const AdminHazardMap = () => {
       </div>
 
       {/* ─── Main Layout ─── */}
-      <div className="flex h-[calc(100vh-50px)]">
+      <div className="flex h-[83vh]">
 
         {/* ══════ LEFT SIDEBAR ══════ */}
-        <div className="w-72 bg-slate-800/80 border-r border-slate-700/80 overflow-y-auto flex flex-col shrink-0">
+        <div className="w-72 bg-slate-100 border-r border-slate-500 overflow-y-auto flex flex-col shrink-0">
           
           {/* Quick Actions */}
           <div className="p-3 border-b border-slate-700/60">
-            <h2 className="text-[9px] uppercase tracking-[0.15em] text-purple-400 font-bold mb-2.5">Quick Actions</h2>
+            <h2 className="text-[12px] uppercase tracking-[0.15em] text-purple-600 font-bold mb-2.5">Quick Actions</h2>
             <div className="grid grid-cols-2 gap-1.5">
               <button onClick={() => setShowPendingOnly(!showPendingOnly)}
-                className={`px-2.5 py-2 text-[10px] font-bold uppercase rounded-lg border transition flex items-center justify-center gap-1 ${
-                  showPendingOnly ? 'bg-amber-600/20 border-amber-500/50 text-amber-300' : 'bg-slate-700/50 border-slate-600 text-slate-300 hover:bg-slate-600'
+                className={`px-2.5 py-2 text-[12px] font-bold uppercase rounded-lg border transition flex items-center justify-center gap-1 ${
+                  showPendingOnly ? 'bg-amber-600 border-amber-400 text-amber-100' : 'bg-slate-800 border-slate-600 text-slate-200 hover:bg-slate-600'
                 }`}>
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
@@ -738,7 +734,7 @@ const AdminHazardMap = () => {
                 action: `Approve ${stats.pending}`,
                 onConfirm: batchApprove
               })}
-                className="px-2.5 py-2 text-[10px] font-bold uppercase rounded-lg border bg-emerald-600/20 border-emerald-500/50 text-emerald-300 hover:bg-emerald-600/30 transition flex items-center justify-center gap-1">
+                className="px-2.5 py-2 text-[12px] font-bold uppercase rounded-lg border bg-emerald-600 border-emerald-200/40 text-emerald-100 hover:bg-emerald-600/90 transition flex items-center justify-center gap-1">
                 <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7"/>
                 </svg>
@@ -750,41 +746,41 @@ const AdminHazardMap = () => {
           {/* Search */}
           <div className="p-3 border-b border-slate-700/60">
             <div className="relative">
-              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-500" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-slate-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
               </svg>
               <input type="text" placeholder="Search reports..."
                 value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-8 pr-2.5 py-1.5 bg-slate-700/60 border border-slate-600/60 rounded-lg text-xs text-white placeholder-slate-500 focus:outline-none focus:border-purple-500/60" />
+                className="w-full pl-8 pr-2.5 py-1.5 bg-purple-600 border border-slate-600/60 rounded-lg text-xs text-white placeholder-slate-200 focus:outline-none focus:border-purple-500/60" />
             </div>
           </div>
 
           {/* Filters */}
-          <div className="p-3 border-b border-slate-700/60 space-y-2">
-            <h2 className="text-[9px] uppercase tracking-[0.15em] text-purple-400 font-bold">Filters</h2>
+          <div className="p-3 border-b border-slate-600 space-y-2">
+            <h2 className="text-[12px] uppercase tracking-[0.15em] text-purple-600 font-bold">Filters</h2>
             <select value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)}
-              className="w-full px-2 py-1.5 bg-slate-700/60 border border-slate-600/60 rounded-lg text-[10px] text-white focus:outline-none focus:border-purple-500/60">
-              {CATEGORIES.map(c => <option key={c.id} value={c.id}>{CATEGORY_ICONS[c.id] || ''} {c.label}</option>)}
+              className="w-full px-2 py-1.5 bg-purple-600 border border-slate-600/60 rounded-lg text-[10px] text-white focus:outline-none focus:border-purple-500/60">
+              {CATEGORIES.map(c => <option key={c.id}  value={c.id}>{CATEGORY_ICONS[c.id] || ''} {c.label}</option>)}
             </select>
             <div className="grid grid-cols-2 gap-2">
               <select value={selectedRisk} onChange={(e) => setSelectedRisk(e.target.value)}
-                className="px-2 py-1.5 bg-slate-700/60 border border-slate-600/60 rounded-lg text-[10px] text-white focus:outline-none focus:border-purple-500/60">
+                className="px-2 py-1.5 bg-purple-600 border border-slate-600/60 rounded-lg text-[12px] text-slate-100 focus:outline-none focus:border-purple-500/60">
                 {RISK_LEVELS.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
               </select>
               <select value={selectedStatus} onChange={(e) => setSelectedStatus(e.target.value)}
-                className="px-2 py-1.5 bg-slate-700/60 border border-slate-600/60 rounded-lg text-[10px] text-white focus:outline-none focus:border-purple-500/60">
+                className="px-2 py-1.5 bg-purple-600 border border-slate-600/60 rounded-lg text-[12px] text-slate-100 focus:outline-none focus:border-purple-500/60">
                 {STATUSES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
               </select>
             </div>
             <button onClick={() => setIsRealistic(!isRealistic)}
-              className="w-full px-2.5 py-1.5 text-[9px] font-bold uppercase rounded-lg border bg-slate-700/50 border-slate-600 text-slate-300 hover:bg-slate-600 transition">
+              className="w-full px-2.5 py-1.5 text-[12px] font-bold uppercase rounded-lg border bg-purple-600 border-slate-600 text-slate-100 hover:bg-purple-600 transition">
               {isRealistic ? 'Standard Map' : 'Satellite View'}
             </button>
           </div>
 
           {/* Reports List */}
           <div className="flex-1 overflow-y-auto p-3">
-            <p className="text-[9px] uppercase text-slate-500 mb-2 font-bold tracking-wider">
+            <p className="text-[12px] uppercase text-purple-600 mb-2 font-bold tracking-wider">
               Reports ({filteredReports.length}/{stats.total})
             </p>
             {filteredReports.length === 0 ? (
@@ -803,26 +799,27 @@ const AdminHazardMap = () => {
                   const isActive = activeReport?.id === report.id;
                   const photos = getPhotoUrls(report.hazard_photos);
                   return (
-                    <div key={report.id}
+                    <div key={report.id}hc
+                    
                       onClick={() => setActiveReport(report)}
                       className={`p-2.5 rounded-lg border cursor-pointer transition-all ${
                         isActive ? 'bg-slate-700/80 border-purple-500/60 shadow-lg shadow-purple-500/5' :
-                        'bg-slate-700/30 border-slate-700/50 hover:bg-slate-700/50 hover:border-slate-600'
+                        'bg-slate-700/30 border-slate-700/50 hover:bg-slate-700/40 hover:border-slate-600'
                       }`}>
                       <div className="flex items-center gap-1.5 mb-1 flex-wrap">
-                        <span className="px-1.5 py-0.5 text-[8px] font-bold uppercase rounded" 
-                          style={{ backgroundColor: hc + '30', color: hc }}>{report.risk_level || '?'}</span>
-                        <span className={`px-1.5 py-0.5 text-[8px] font-bold uppercase rounded border ${
-                          isPending ? 'bg-amber-500/20 text-amber-300 border-amber-500/40' :
-                          rptStatus === 'approved' ? 'bg-emerald-500/20 text-emerald-300 border-emerald-500/40' :
-                          'bg-red-500/20 text-red-300 border-red-500/40'
+                        <span className="px-1.5 py-0.5 text-[10px] font-bold uppercase rounded" 
+                          style={{ backgroundColor: hc + '70', color: hc }}>{report.risk_level || '?'}</span>
+                        <span className={`px-1.5 py-0.5 text-[10px] font-bold uppercase rounded border ${
+                          isPending ? 'bg-amber-500/70 text-amber-200 border-amber-500/40' :
+                          rptStatus === 'approved' ? 'bg-emerald-500/70 text-emerald-200 border-emerald-500/70' :
+                          'bg-red-500/70 text-red-300 border-red-500/70'
                         }`}>{rptStatus}</span>
-                        <span className="px-1.5 py-0.5 text-[8px] rounded bg-slate-700 text-slate-400">{report.hazard_category}</span>
+                        <span className="px-1.5 py-0.5 text-[10px] rounded bg-slate-700 text-slate-200">{report.hazard_category}</span>
                         {photos.length > 0 && <span className="text-[7px] text-sky-400">📸{photos.length}</span>}
                       </div>
-                      <p className="text-[10px] text-slate-300 line-clamp-1">{report.hazard_description || 'No description'}</p>
-                      <p className="text-[8px] text-slate-500 truncate mt-0.5">{report.address || ''}</p>
-                      <p className="text-[7px] text-slate-600 mt-0.5">
+                      <p className="text-[12px] text-slate-900 line-clamp-1">{report.hazard_description || 'No description'}</p>
+                      <p className="text-[10px] text-slate-700 truncate mt-0.5">{report.address || ''}</p>
+                      <p className="text-[9px] text-slate-800 mt-0.5">
                         {report.reporter_name || 'Anonymous'} • {report.date_observed || ''}
                       </p>
                     </div>
@@ -845,8 +842,8 @@ const AdminHazardMap = () => {
           )}
 
           {/* Map Legend */}
-          <div className="absolute bottom-5 left-4 z-[1000] bg-slate-800/90 border border-slate-700/60 rounded-xl p-3 backdrop-blur-md shadow-2xl">
-            <p className="text-[7px] uppercase text-purple-400 font-bold tracking-wider mb-2">Risk</p>
+          <div className="absolute bottom-5 left-4 z-[1000] bg-slate-200 border border-slate-700/60 rounded-xl p-4 backdrop-blur-md shadow-2xl">
+            <p className="text-[12px] uppercase text-slate-900 font-bold tracking-wider mb-2">Risk</p>
             {[
               { label: 'Critical', color: '#dc2626' },
               { label: 'High', color: '#ea580c' },
@@ -855,11 +852,11 @@ const AdminHazardMap = () => {
             ].map(item => (
               <div key={item.label} className="flex items-center gap-1.5 py-0.5">
                 <div className="w-2 h-2 rounded-full" style={{ backgroundColor: item.color }}></div>
-                <span className="text-[8px] text-slate-300">{item.label}</span>
+                <span className="text-[10px] text-slate-900">{item.label}</span>
               </div>
             ))}
-            <div className="border-t border-slate-700/60 mt-2 pt-2">
-              <p className="text-[7px] uppercase text-purple-400 font-bold tracking-wider mb-1.5">Status</p>
+            <div className="border-t border-slate-900/60 mt-2 pt-2">
+              <p className="text-[12px] uppercase text-slate-900 font-bold tracking-wider mb-1.5">Status</p>
               {[
                 { label: 'Pending', color: '#f59e0b' },
                 { label: 'Approved', color: '#10b981' },
@@ -867,23 +864,23 @@ const AdminHazardMap = () => {
               ].map(item => (
                 <div key={item.label} className="flex items-center gap-1.5 py-0.5">
                   <div className="w-2 h-2 rounded-sm" style={{ backgroundColor: item.color }}></div>
-                  <span className="text-[8px] text-slate-300">{item.label}</span>
+                  <span className="text-[10px] text-slate-900">{item.label}</span>
                 </div>
               ))}
             </div>
-            <div className="border-t border-slate-700/60 mt-2 pt-2 text-[8px] text-slate-500">
+            <div className="border-t border-slate-900/60 mt-2 pt-2 text-[9px] text-slate-800">
               Click a pin → details panel
             </div>
           </div>
 
           {/* Info overlay */}
-          <div className="absolute top-4 left-4 z-[1000] bg-slate-800/85 border border-slate-700/60 rounded-xl px-3.5 py-2 backdrop-blur-md shadow-xl">
-            <div className="flex items-center gap-3 text-[9px]">
-              <span className="text-slate-400">Showing: <strong className="text-white">{filteredReports.length}</strong></span>
-              <span className="text-slate-600">|</span>
-              <span className="text-amber-300">Pending: <strong>{stats.pending}</strong></span>
-              <span className="text-red-300">Critical: <strong>{stats.critical}</strong></span>
-              <span className="text-orange-300">High: <strong>{stats.high}</strong></span>
+          <div className="absolute top-4 left-4 z-[1000] bg-slate-100 border border-slate-700/60 rounded-xl px-3.5 py-2 backdrop-blur-md shadow-xl">
+            <div className="flex items-center gap-3 text-[10px]">
+              <span className="text-slate-800">Showing: <strong className="text-white">{filteredReports.length}</strong></span>
+              <span className="text-slate-900">|</span>
+              <span className="text-amber-600">Pending: <strong>{stats.pending}</strong></span>
+              <span className="text-red-600">Critical: <strong>{stats.critical}</strong></span>
+              <span className="text-orange-600">High: <strong>{stats.high}</strong></span>
             </div>
           </div>
 
