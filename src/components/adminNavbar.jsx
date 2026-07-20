@@ -29,7 +29,7 @@ export default function AdminNavbar() {
   );
 
   return (
-    <header className="absolute inset-x-0 top-0 z-5000 bg-gradient-to-r from-blue-600 to-purple-600 w-full p-6">
+    <header className="absolute inset-x-0 top-0 z-5000 bg-gradient-to-r from-blue-600 to-purple-600 w-full p-5">
       <div className="flex items-center justify-between">
         {/* Logo */}
         <Link to="/admin/dashboard" className="z-50">
