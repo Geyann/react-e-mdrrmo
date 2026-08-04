@@ -228,7 +228,6 @@ async function createHazardReport(event) {
             <div className="flex items-center justify-between">
               <div>
                 <p className="font-semibold">Reporting as: <span className="text-blue-900">{userProfile?.full_name || user?.email || 'User'}</span></p>
-                {user?.id && <p className="text-xs text-blue-500 mt-0.5 font-mono">ID: {user.id.substring(0, 12)}...</p>}
               </div>
               <div className="w-8 h-8 bg-blue-200 rounded-full flex items-center justify-center text-blue-700 font-bold text-sm">
                 {(userProfile?.full_name || user?.email || 'U')[0].toUpperCase()}
