@@ -9,58 +9,66 @@ export default function AuthCallback() {
   useEffect(() => {
     const handleAuthCallback = async () => {
       const { data, error: sessionError } = await supabase.auth.getSession();
-      
-      if (sessionError) {
-        setError('Failed to complete authentication.');
-        return;
-      }
+      if (sessionError) { setError('Failed to complete authentication.'); return; }
 
       const session = data?.session;
-      if (!session) {
-        setError('No session found.');
-        return;
-      }
+      if (!session) { setError('No session found.'); return; }
 
       const userId = session.user.id;
 
-      // Check if this user has a pending_registrations record
-      const { data: registration, error: regError } = await supabase
+      // Lookup by user_id FIRST (how OAuth rows are linked), fall back to id.
+      let registration = null;
+      const { data: byUserId } = await supabase
         .from('pending_registrations')
-        .select('id, status')
-        .eq('id', userId)
+        .select('*')
+        .eq('user_id', userId)
         .maybeSingle();
 
-      if (regError) {
-        console.error('Error checking registration:', regError);
+      if (byUserId) {
+        registration = byUserId;
+      } else {
+        const { data: byId } = await supabase
+          .from('pending_registrations')
+          .select('*')
+          .eq('id', userId)
+          .maybeSingle();
+        registration = byId;
       }
 
       if (!registration) {
-        // OAuth user with no registration — send to OAuth-specific form
-        navigate('/register/oauth', { 
-          state: { 
-            message: 'Please complete your profile to verify your account.' 
-          } 
+        // Brand-new OAuth user -> pre-filled profile form
+        navigate('/register/oauth', {
+          state: { message: 'Please complete your profile to verify your account.' }
         });
         return;
       }
 
       if (registration.status === 'pending') {
         await supabase.auth.signOut();
-        navigate('/login', { 
-          state: { error: 'Your account is pending admin approval.' } 
-        });
+        navigate('/login', { state: { message: 'Your registration is still pending admin approval.' } });
         return;
       }
 
       if (registration.status === 'rejected') {
         await supabase.auth.signOut();
-        navigate('/login', { 
-          state: { error: 'Your registration was rejected.' } 
-        });
+        navigate('/login', { state: { error: 'Your registration was rejected by the admin.' } });
         return;
       }
 
-      // Approved — go to home
+      // Approved -> write localStorage session so ProtectedRoute/Home accept it
+      localStorage.setItem('currentUser', JSON.stringify({
+        id: registration.id,
+        username: registration.username,
+        email: registration.email,
+        full_name: `${registration.first_name} ${registration.middle_name || ''} ${registration.last_name}`,
+        first_name: registration.first_name,
+        middle_name: registration.middle_name,
+        last_name: registration.last_name,
+        role: registration.role || 'user',
+        status: registration.status,
+        user_id: registration.user_id || userId
+      }));
+
       navigate('/home');
     };
 

@@ -9,7 +9,7 @@ export default function CreateUser() {
   const [idFile, setIdFile] = useState(null);
   const [error, setError] = useState("");
   const navigate = useNavigate();
-  
+
   const initialFormState = {
     username: '', password: '', confirmPassword: '', firstName: '', middleName: '',
     lastName: '', age: '', address: '', mobileNumber: '',
@@ -78,18 +78,18 @@ export default function CreateUser() {
       if (idFile) {
         const fileExt = idFile.name.split('.').pop();
         const fileName = `ids/${tempId}-${Date.now()}.${fileExt}`;
-        const filePath = `pending_ids/${fileName}`;
 
+        // ===== FIXED: upload to your REAL bucket (pending_ids), not 'id-previews' =====
         const { error: uploadError } = await supabase.storage
-          .from('id-previews')
-          .upload(filePath, idFile);
+          .from('pending_ids')
+          .upload(fileName, idFile);
 
         if (uploadError) throw new Error(`Upload Failed: ${uploadError.message}`);
 
         const { data: urlData } = supabase.storage
-          .from('id-previews')
-          .getPublicUrl(filePath);
-        
+          .from('pending_ids')
+          .getPublicUrl(fileName);
+
         idPublicUrl = urlData.publicUrl;
       }
 
@@ -115,7 +115,6 @@ export default function CreateUser() {
         }]);
 
       if (dbError) {
-        // Check if it's a duplicate username error
         if (dbError.message?.includes('username')) {
           throw new Error("Username is already taken. Please choose another.");
         }
@@ -167,16 +166,16 @@ export default function CreateUser() {
             )}
 
             <form onSubmit={handleRegister} className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              {/* Username - New primary login field */}
+              {/* Username */}
               <div className="md:col-span-2 flex flex-col gap-1.5">
                 <label className={labelClass}><User className="w-4 h-4 inline mr-1 text-purple-600" />Username</label>
-                <input 
-                  className={inputClass} 
-                  name="username" 
-                  placeholder="Choose a unique username for login" 
-                  value={formData.username} 
-                  onChange={handleChange} 
-                  required 
+                <input
+                  className={inputClass}
+                  name="username"
+                  placeholder="Choose a unique username for login"
+                  value={formData.username}
+                  onChange={handleChange}
+                  required
                   minLength={3}
                 />
               </div>
@@ -198,28 +197,28 @@ export default function CreateUser() {
 
               <div className="flex flex-col gap-1.5">
                 <label className={labelClass}><Lock className="w-4 h-4 inline mr-1 text-purple-600" />Password</label>
-                <input 
-                  className={inputClass} 
-                  name="password" 
-                  type="password" 
-                  placeholder="Min 6 characters" 
-                  value={formData.password} 
-                  onChange={handleChange} 
-                  required 
+                <input
+                  className={inputClass}
+                  name="password"
+                  type="password"
+                  placeholder="Min 6 characters"
+                  value={formData.password}
+                  onChange={handleChange}
+                  required
                   minLength={6}
                 />
               </div>
 
               <div className="flex flex-col gap-1.5">
                 <label className={labelClass}><Lock className="w-4 h-4 inline mr-1 text-purple-600" />Confirm Password</label>
-                <input 
-                  className={inputClass} 
-                  name="confirmPassword" 
-                  type="password" 
-                  placeholder="Repeat password" 
-                  value={formData.confirmPassword} 
-                  onChange={handleChange} 
-                  required 
+                <input
+                  className={inputClass}
+                  name="confirmPassword"
+                  type="password"
+                  placeholder="Repeat password"
+                  value={formData.confirmPassword}
+                  onChange={handleChange}
+                  required
                   minLength={6}
                 />
               </div>
@@ -263,8 +262,8 @@ export default function CreateUser() {
                 <textarea className={`${inputClass} h-24 resize-none`} name="address" placeholder="House No., Street, Barangay, City, Province" value={formData.address} onChange={handleChange} required />
               </div>
 
-              <button 
-                type="submit" 
+              <button
+                type="submit"
                 className="md:col-span-2 bg-gradient-to-r from-purple-600 to-blue-600 text-white font-bold py-4 rounded-xl hover:from-purple-700 hover:to-blue-700 transition shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-2"
                 disabled={loading}
               >

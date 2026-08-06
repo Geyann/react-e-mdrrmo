@@ -1,5 +1,7 @@
-import React from 'react'
-import { Route, Routes, useLocation, Navigate } from 'react-router-dom'
+import { useEffect } from 'react'
+import { Route, Routes, useLocation, useNavigate, Navigate } from 'react-router-dom'
+import { supabase } from './createClient'   // <-- ADDED: supabase import (fix path if needed)
+
 import AdminAppointmentDashboard from './components/AdminAppointmentDashboard'
 import Home from './pages/Home'
 import About from './pages/About'
@@ -40,124 +42,88 @@ import EditProfile from './pages/editProfile'
 
 function App() {
   const location = useLocation();
+  const navigate = useNavigate();          // <-- ADDED: was used but never created
   const path = location.pathname;
 
+  useEffect(() => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      if (event === 'SIGNED_IN' && session) {
+        const path = location.pathname;
+        if (!path.startsWith('/auth/callback') && !path.startsWith('/register/oauth')) {
+          navigate('/auth/callback', { replace: true });
+        }
+      }
+    });
+    return () => subscription.unsubscribe();
+  }, [location.pathname, navigate]);
+
+  // Which navbars are allowed per path group
+  const isAdminPath = path.startsWith('/admin/') || path === '/admin';
+  const isStaffPath = path.startsWith('/staff/');
+  const isGuestNavbarPath = path === '/';
+  const isAuthPath = path.startsWith('/login') || path.startsWith('/register') || path.startsWith('/auth/callback');
 
   return (
     <div className="app" style={{ backgroundImage: `url(${background})`, repeat: 'no-repeat', backgroundSize: 'cover', minHeight: '100vh', maxHeight: '100vh', overflowY: 'auto', scrollbarWidth: 'none' }}>
-     <DynamicNavbar /> {/* <-- THIS IS ALL YOU NEED */}
+      
+     {isGuestNavbarPath ? <GuestNavbar /> : (
+  !isAuthPath && !isAdminPath && !isStaffPath && <DynamicNavbar />
+)}
+
       <div className="content pt-20">
         <Routes>
-
-          {/* ===== PUBLIC ROUTES (no protection needed) ===== */}
+          {/* ===== PUBLIC ROUTES ===== */}
           <Route path="/" element={<Guest />} />
           <Route path="/login" element={<LoginPage />} />
           <Route path="/register" element={<CreateUser />} />
           <Route path="/register/oauth" element={<CreateUserForOauth />} />
           <Route path="/auth/callback" element={<AuthCallback />} />
           
-          {/* ===== ADMIN LOGIN ROUTES (exact paths, must be BEFORE /admin/*) ===== */}
+          {/* ===== ADMIN LOGIN ROUTES ===== */}
           <Route path="/admin" element={<AdminLoginRedirect />} />
           <Route path="/admin/" element={<AdminLoginRedirect />} />
           <Route path="/admin/register-admin" element={<RegisterAdmin />} />
 
-          {/* ===== GUEST ROUTES (no login needed) ===== */}
+          {/* ===== GUEST ROUTES ===== */}
           <Route path="/guest/hazardmap" element={<UserHazardmap />} />
           <Route path="/guest/yearly-incident-trends" element={<MonthlyIncidentTrends />} />
 
           {/* ===== PROTECTED USER ROUTES ===== */}
-          <Route path="/home" element={
-            <ProtectedRoute><Home /></ProtectedRoute>
-          } />
-          <Route path="/track" element={
-            <ProtectedRoute><TrackAppointment/></ProtectedRoute>
-          } />
-          <Route path="/about" element={
-            <ProtectedRoute><About /></ProtectedRoute>
-          } />
-          <Route path="/report" element={
-            <ProtectedRoute><Report /></ProtectedRoute>
-          } />
-          <Route path="/hazard-report" element={
-            <ProtectedRoute><HazardReport /></ProtectedRoute>
-          } />
-          <Route path="/borrow" element={
-            <ProtectedRoute><Borrow /></ProtectedRoute>
-          } />
-          <Route path="/appointment" element={
-            <ProtectedRoute><Appointment /></ProtectedRoute>
-          } />
-          <Route path="/checkup" element={
-            <ProtectedRoute><CheckUp /></ProtectedRoute>
-          } />
-          <Route path="/hazardmap" element={
-            <ProtectedRoute><UserHazardmap /></ProtectedRoute>
-          } />
+          <Route path="/home" element={<ProtectedRoute><Home /></ProtectedRoute>} />
+          <Route path="/track" element={<ProtectedRoute><TrackAppointment/></ProtectedRoute>} />
+          <Route path="/about" element={<ProtectedRoute><About /></ProtectedRoute>} />
+          <Route path="/report" element={<ProtectedRoute><Report /></ProtectedRoute>} />
+          <Route path="/hazard-report" element={<ProtectedRoute><HazardReport /></ProtectedRoute>} />
+          <Route path="/borrow" element={<ProtectedRoute><Borrow /></ProtectedRoute>} />
+          <Route path="/appointment" element={<ProtectedRoute><Appointment /></ProtectedRoute>} />
+          <Route path="/checkup" element={<ProtectedRoute><CheckUp /></ProtectedRoute>} />
+          <Route path="/hazardmap" element={<ProtectedRoute><UserHazardmap /></ProtectedRoute>} />
           <Route path="/edit-profile" element={<EditProfile/>} />
-        <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
-          <Route path="/profile" element={
-          <Profile/>} />
-          <Route path="/yearly-incident-trends" element={
-            <ProtectedRoute><MonthlyIncidentTrends /></ProtectedRoute>
-          } />
+          <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
+          <Route path="/profile" element={<Profile/>} />
+          <Route path="/yearly-incident-trends" element={<ProtectedRoute><MonthlyIncidentTrends /></ProtectedRoute>} />
 
           {/* ===== PROTECTED ADMIN ROUTES ===== */}
-          <Route path="/admin/dashboard" element={
-            <ProtectedRoute adminOnly={true}><Admin /></ProtectedRoute>
-          } />
-          <Route path="/admin/register-admin" element={
-            <ProtectedRoute adminOnly={true}><RegisterAdmin /></ProtectedRoute>
-          } />
-          <Route path="/admin/hazard-map" element={
-            <ProtectedRoute adminOnly={true}><AdminHazardMap /></ProtectedRoute>
-          } />
-          <Route path="/admin/pending-account" element={
-            <ProtectedRoute adminOnly={true}><UserApproval /></ProtectedRoute>
-          } />
-          <Route path="/admin/report" element={
-            <ProtectedRoute adminOnly={true}><ReportedIncident /></ProtectedRoute>
-          } />
-          <Route path="/admin/borrow" element={
-            <ProtectedRoute adminOnly={true}><BorrowedVehicles /></ProtectedRoute>
-          } />
-          <Route path="/admin/appointment" element={
-            <ProtectedRoute adminOnly={true}><AdminAppointmentDashboard /></ProtectedRoute>
-          } />
-          <Route path="/admin/checkup" element={
-            <ProtectedRoute adminOnly={true}><CheckUpTable /></ProtectedRoute>
-          } />
+          <Route path="/admin/dashboard" element={<ProtectedRoute adminOnly={true}><Admin /></ProtectedRoute>} />
+          <Route path="/admin/hazard-map" element={<ProtectedRoute adminOnly={true}><AdminHazardMap /></ProtectedRoute>} />
+          <Route path="/admin/pending-account" element={<ProtectedRoute adminOnly={true}><UserApproval /></ProtectedRoute>} />
+          <Route path="/admin/report" element={<ProtectedRoute adminOnly={true}><ReportedIncident /></ProtectedRoute>} />
+          <Route path="/admin/borrow" element={<ProtectedRoute adminOnly={true}><BorrowedVehicles /></ProtectedRoute>} />
+          <Route path="/admin/appointment" element={<ProtectedRoute adminOnly={true}><AdminAppointmentDashboard /></ProtectedRoute>} />
+          <Route path="/admin/checkup" element={<ProtectedRoute adminOnly={true}><CheckUpTable /></ProtectedRoute>} />
+
           {/* ===== PROTECTED STAFF ROUTES ===== */}
-           <Route path="/staff/dashboard" element={
-            <ProtectedRoute staffOnly={true}><StaffHome /></ProtectedRoute>
-          } />
-           <Route path="/staff/borrow" element={
-            <ProtectedRoute staffOnly={true}><Borrow /></ProtectedRoute>
-          } />
-           <Route path="/staff/checkup" element={
-            <ProtectedRoute staffOnly={true}><CheckUp /></ProtectedRoute>
-          } />
-           <Route path="/staff/inventory" element={
-            <ProtectedRoute staffOnly={true}><StaffInventory /></ProtectedRoute>
-          } />
-           <Route path="/staff/borrower-slip" element={
-            <ProtectedRoute staffOnly={true}><StaffHome /></ProtectedRoute>
-          } />
-           <Route path="/staff/settings" element={
-            <ProtectedRoute staffOnly={true}><Settings /></ProtectedRoute>
-          } />
-           <Route path="/staff/profile" element={
-            <ProtectedRoute staffOnly={true}><Profile /></ProtectedRoute>
-          } />
-           <Route path="/staff/notification" element={
-            <ProtectedRoute staffOnly={true}><StaffHome /></ProtectedRoute>
-          } />
+          <Route path="/staff/dashboard" element={<ProtectedRoute staffOnly={true}><StaffHome /></ProtectedRoute>} />
+          <Route path="/staff/borrow" element={<ProtectedRoute staffOnly={true}><Borrow /></ProtectedRoute>} />
+          <Route path="/staff/checkup" element={<ProtectedRoute staffOnly={true}><CheckUp /></ProtectedRoute>} />
+          <Route path="/staff/inventory" element={<ProtectedRoute staffOnly={true}><StaffInventory /></ProtectedRoute>} />
+          <Route path="/staff/borrower-slip" element={<ProtectedRoute staffOnly={true}><StaffHome /></ProtectedRoute>} />
+          <Route path="/staff/settings" element={<ProtectedRoute staffOnly={true}><Settings /></ProtectedRoute>} />
+          <Route path="/staff/profile" element={<ProtectedRoute staffOnly={true}><Profile /></ProtectedRoute>} />
+          <Route path="/staff/notification" element={<ProtectedRoute staffOnly={true}><StaffHome /></ProtectedRoute>} />
 
-          {/* ===== ADMIN CATCH-ALL (must be LAST after all /admin/* exact routes) ===== */}
+          {/* ===== CATCH-ALLS ===== */}
           <Route path="/admin/*" element={<Navigate to="/admin" />} />
-          
-         
-
-          {/* ===== CATCH-ALL FOR EVERYTHING ELSE ===== */}
           <Route path="*" element={<Navigate to="/" />} />
         </Routes>
       </div>

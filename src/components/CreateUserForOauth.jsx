@@ -4,122 +4,136 @@ import { useNavigate, useLocation } from "react-router-dom";
 import imlogo from '../Images/icon.png';
 import { UserPlus, Mail, User, Calendar, Phone, MapPin, IdCard, Camera, AlertCircle, ArrowLeft, CheckCircle } from 'lucide-react';
 
+// Normalizes profile fields coming from Google / Facebook / any OAuth provider
+function extractProfile(user) {
+  const meta = user?.user_metadata || {};
+  const fullName = meta.full_name || meta.name || '';
+  const given = meta.given_name || meta.first_name || fullName.split(' ')[0] || '';
+  const family = meta.family_name || meta.last_name || fullName.split(' ').slice(1).join(' ') || '';
+  const email = user?.email || meta.email || '';
+  return {
+    email,
+    provider: user?.app_metadata?.provider || 'OAuth',
+    firstName: given,
+    lastName: family,
+    username: (email.split('@')[0] || '').replace(/[^a-zA-Z0-9_.-]/g, '').toLowerCase(),
+    avatar: meta.avatar_url || meta.picture || '',
+  };
+}
+
 export default function CreateUserForOauth() {
   const [loading, setLoading] = useState(false);
   const [idFile, setIdFile] = useState(null);
   const [error, setError] = useState("");
-  const [userEmail, setUserEmail] = useState("");
-  const [userProvider, setUserProvider] = useState("");
+  const [notice, setNotice] = useState("");
   const [sessionReady, setSessionReady] = useState(false);
+  const [profile, setProfile] = useState(null);
   const navigate = useNavigate();
   const location = useLocation();
 
   const initialFormState = {
-    firstName: '', middleName: '',
-    lastName: '', age: '', address: '', mobileNumber: '',
-    birthdate: '', idNumber: ''
+    username: '', firstName: '', middleName: '', lastName: '',
+    age: '', address: '', mobileNumber: '', birthdate: '', idNumber: ''
   };
-
   const [formData, setFormData] = useState(initialFormState);
 
   useEffect(() => {
     const checkSession = async () => {
       try {
         const { data: { session }, error: sessionError } = await supabase.auth.getSession();
-
         if (sessionError) throw sessionError;
-
         if (!session) {
-          navigate('/login', { 
-            state: { error: 'Session expired. Please sign in with Google or Facebook again.' } 
-          });
+          navigate('/login', { state: { error: 'Session expired. Please sign in with Google or Facebook again.' } });
           return;
         }
 
-        const user = session.user;
+        const userId = session.user.id;
 
-        // Check if already has registration
-        const { data: existingReg } = await supabase
-          .from('pending_registrations')
-          .select('id, status')
-          .eq('id', user.id)
-          .maybeSingle();
+        // Already registered? (look up by user_id, fall back to id)
+        let existing = null;
+        const { data: byUserId } = await supabase
+          .from('pending_registrations').select('id, status').eq('user_id', userId).maybeSingle();
+        if (byUserId) existing = byUserId;
+        else {
+          const { data: byId } = await supabase
+            .from('pending_registrations').select('id, status').eq('id', userId).maybeSingle();
+          existing = byId;
+        }
 
-        if (existingReg) {
+        if (existing) {
           await supabase.auth.signOut();
-          navigate('/login', { 
-            state: { 
-              message: existingReg.status === 'approved' 
-                ? 'Your account is already approved. Please login.' 
-                : 'Your registration is already submitted. Please wait for admin approval.' 
-            } 
+          navigate('/login', {
+            state: existing.status === 'approved'
+              ? { error: 'Your account is already approved. Please sign in with Google/Facebook again to continue.' }
+              : existing.status === 'rejected'
+                ? { error: 'Your registration was rejected by the admin.' }
+                : { message: 'Your registration is already submitted. Please wait for admin approval.' }
           });
           return;
         }
 
-        const provider = user.app_metadata?.provider || 'oauth';
-        setUserProvider(provider);
-        setUserEmail(user.email || '');
+        // Auto-fill from the OAuth provider
+        const p = extractProfile(session.user);
+        setProfile(p);
+        setFormData(prev => ({
+          ...prev,
+          username: p.username || prev.username,
+          firstName: p.firstName,
+          lastName: p.lastName,
+        }));
         setSessionReady(true);
-
-        if (location.state?.message) {
-          setError(location.state.message);
-        }
       } catch (err) {
-        console.error('Session check error:', err);
-        setError('Failed to verify your session. Please try logging in again.');
+        console.error(err);
+        setError(err.message);
+        setSessionReady(true);
       }
     };
-
     checkSession();
-  }, [navigate, location.state]);
+  }, [navigate]);
 
-  const handleChange = (e) => {
-    setFormData({ ...formData, [e.target.name]: e.target.value });
-  };
-
-  const handleFileChange = (e) => {
-    setIdFile(e.target.files[0]);
-  };
+  const handleChange = (e) => setFormData({ ...formData, [e.target.name]: e.target.value });
+  const handleFileChange = (e) => setIdFile(e.target.files[0]);
 
   const handleRegister = async (e) => {
     e.preventDefault();
     setLoading(true);
     setError("");
+    setNotice("");
+
+    if (!profile) { setError("Session expired. Please sign in again."); setLoading(false); return; }
 
     try {
       const { data: { session } } = await supabase.auth.getSession();
-
-      if (!session) {
-        throw new Error("Session expired. Please sign in again with your OAuth account.");
-      }
-
+      if (!session) throw new Error("No active session. Please sign in again.");
       const userId = session.user.id;
+
+      // Username uniqueness
+      const { data: existingUser } = await supabase
+        .from('pending_registrations').select('username').eq('username', formData.username).maybeSingle();
+      if (existingUser) throw new Error("Username is already taken. Please choose another.");
+
+      // Email uniqueness (OAuth email must not collide with an existing row)
+      const { data: existingEmail } = await supabase
+        .from('pending_registrations').select('email').eq('email', profile.email).maybeSingle();
+      if (existingEmail) throw new Error("This email is already registered.");
 
       let idPublicUrl = '';
       if (idFile) {
         const fileExt = idFile.name.split('.').pop();
         const fileName = `ids/${userId}-${Date.now()}.${fileExt}`;
-        const filePath = `pending_ids/${fileName}`;
-
         const { error: uploadError } = await supabase.storage
-          .from('id-previews')
-          .upload(filePath, idFile);
-
+          .from('pending_ids').upload(fileName, idFile);
         if (uploadError) throw new Error(`Upload Failed: ${uploadError.message}`);
-
-        const { data: urlData } = supabase.storage
-          .from('id-previews')
-          .getPublicUrl(filePath);
-
-        idPublicUrl = urlData.publicUrl;
+        idPublicUrl = supabase.storage.from('pending_ids').getPublicUrl(fileName).data.publicUrl;
       }
 
       const { error: dbError } = await supabase
         .from('pending_registrations')
         .insert([{
-          id: userId,
-          email: userEmail,
+          id: userId,                    // = the OAuth auth UUID so AuthCallback can find it
+          user_id: userId,
+          username: formData.username,
+          email: profile.email,          // real email from provider
           first_name: formData.firstName,
           middle_name: formData.middleName,
           last_name: formData.lastName,
@@ -130,22 +144,18 @@ export default function CreateUserForOauth() {
           id_number: formData.idNumber,
           id_image_url: idPublicUrl,
           status: 'pending',
-          role: 'user'
+          role: 'user',
         }]);
 
-      if (dbError) throw dbError;
+      if (dbError) {
+        if (dbError.message?.includes('username')) throw new Error("Username is already taken.");
+        if (dbError.message?.includes('email')) throw new Error("This email is already registered.");
+        throw new Error(dbError.message);
+      }
 
+      // Submitted -> sign out so the admin-approval gate applies
       await supabase.auth.signOut();
-
-      setFormData(initialFormState);
-      setIdFile(null);
-      if (e.target) e.target.reset();
-
-      alert('Registration submitted successfully! Please wait for admin approval.');
-
-      navigate('/login', {
-        state: { message: 'Your OAuth registration has been submitted for admin approval.' }
-      });
+      navigate('/login', { state: { message: 'Account submitted! Wait for admin approval, then sign in with Google/Facebook.' } });
     } catch (err) {
       setError(err.message);
     } finally {
@@ -153,224 +163,126 @@ export default function CreateUserForOauth() {
     }
   };
 
-  const inputClass = "w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none transition bg-gray-50";
+  const inputClass = "w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition bg-gray-50";
   const labelClass = "text-sm font-bold text-gray-700";
 
   if (!sessionReady) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 flex items-center justify-center">
-        <div className="text-center bg-white p-8 rounded-2xl shadow-xl">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600 font-semibold">Verifying your OAuth session...</p>
-        </div>
+      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto"></div>
+        <p className="mt-4 text-gray-600 font-semibold ml-3">Loading your profile...</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 py-10 px-4">
+    <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 py-10 px-4">
       <div className="max-w-3xl mx-auto">
         <button
           onClick={() => navigate('/login')}
-          className="flex items-center gap-2 text-gray-600 hover:text-purple-600 transition mb-4 font-semibold"
+          className="flex items-center gap-2 text-gray-600 hover:text-green-600 transition mb-4 font-semibold"
         >
-          <ArrowLeft className="w-5 h-5" />
-          Back to Login
+          <ArrowLeft className="w-5 h-5" /> Back to Login
         </button>
 
         <div className="bg-white rounded-3xl shadow-xl border border-gray-200 overflow-hidden">
           <div className="bg-gradient-to-r from-green-600 to-blue-600 p-8 text-center">
             <img src={imlogo} alt="Logo" className="w-24 h-24 object-contain mx-auto mb-4 bg-white rounded-full p-2 shadow-lg" />
             <h2 className="text-2xl font-bold text-white flex items-center justify-center gap-2">
-              <UserPlus className="w-6 h-6" />
-              Complete Your Registration
+              <UserPlus className="w-6 h-6" /> Complete Your Profile
             </h2>
-            <p className="text-green-200 text-sm mt-1">Final step — provide your details for account verification</p>
+            <p className="text-green-200 text-sm mt-1">
+              Signed in with <span className="font-semibold capitalize">{profile?.provider}</span> — finish verification to continue
+            </p>
           </div>
 
           <div className="p-8">
-            <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-6">
-              <div className="flex items-start gap-3">
-                <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-green-800 text-sm font-bold">OAuth Authentication Verified</p>
-                  <p className="text-green-700 text-sm mt-1">
-                    You are signed in with <strong className="capitalize">{userProvider}</strong>.
-                  </p>
-                  <div className="mt-2 flex items-center gap-2 text-sm">
-                    <Mail className="w-4 h-4 text-green-600" />
-                    <span className="text-green-800">{userEmail}</span>
-                  </div>
-                  <p className="text-green-600 text-xs mt-2">
-                    Your email and authentication are already handled by {userProvider}. 
-                    Just fill in the form below for identity verification.
-                  </p>
-                </div>
-              </div>
-            </div>
-
             {error && (
-              <div className="flex items-start gap-3 bg-yellow-50 border border-yellow-200 rounded-xl p-4 mb-6">
-                <AlertCircle className="w-5 h-5 text-yellow-600 flex-shrink-0 mt-0.5" />
-                <p className="text-yellow-700 text-sm font-medium">{error}</p>
+              <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
+                <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
+                <p className="text-red-700 text-sm font-medium">{error}</p>
+              </div>
+            )}
+            {notice && (
+              <div className="flex items-start gap-3 bg-green-50 border border-green-200 rounded-xl p-4 mb-6">
+                <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
+                <p className="text-green-700 text-sm font-medium">{notice}</p>
               </div>
             )}
 
             <form onSubmit={handleRegister} className="grid grid-cols-1 md:grid-cols-2 gap-5">
-              <div className="flex flex-col gap-1.5">
-                <label className={labelClass}>
-                  <User className="w-4 h-4 inline mr-1 text-green-600" />
-                  First Name <span className="text-red-500">*</span>
-                </label>
-                <input 
-                  className={inputClass} 
-                  name="firstName" 
-                  placeholder="Enter your first name" 
-                  value={formData.firstName} 
-                  onChange={handleChange} 
-                  required 
-                />
+              {/* Auto-filled username */}
+              <div className="md:col-span-2 flex flex-col gap-1.5">
+                <label className={labelClass}><User className="w-4 h-4 inline mr-1 text-green-600" />Username <span className="text-red-500">*</span></label>
+                <input className={inputClass} name="username" placeholder="Choose a unique username"
+                  value={formData.username} onChange={handleChange} required minLength={3} />
               </div>
 
+              {/* Auto-filled from OAuth */}
+              <div className="flex flex-col gap-1.5">
+                <label className={labelClass}><User className="w-4 h-4 inline mr-1 text-green-600" />First Name <span className="text-red-500">*</span></label>
+                <input className={inputClass} name="firstName" placeholder="First Name"
+                  value={formData.firstName} onChange={handleChange} required />
+              </div>
               <div className="flex flex-col gap-1.5">
                 <label className={labelClass}>Middle Name</label>
-                <input 
-                  className={inputClass} 
-                  name="middleName" 
-                  placeholder="Enter your middle name (optional)" 
-                  value={formData.middleName} 
-                  onChange={handleChange} 
-                />
+                <input className={inputClass} name="middleName" placeholder="Middle Name"
+                  value={formData.middleName} onChange={handleChange} />
+              </div>
+              <div className="flex flex-col gap-1.5">
+                <label className={labelClass}><User className="w-4 h-4 inline mr-1 text-green-600" />Last Name <span className="text-red-500">*</span></label>
+                <input className={inputClass} name="lastName" placeholder="Last Name"
+                  value={formData.lastName} onChange={handleChange} required />
               </div>
 
+              {/* Auto-filled email (read-only) */}
               <div className="flex flex-col gap-1.5">
-                <label className={labelClass}>
-                  <User className="w-4 h-4 inline mr-1 text-green-600" />
-                  Last Name <span className="text-red-500">*</span>
-                </label>
-                <input 
-                  className={inputClass} 
-                  name="lastName" 
-                  placeholder="Enter your last name" 
-                  value={formData.lastName} 
-                  onChange={handleChange} 
-                  required 
-                />
-              </div>
-
-              {/* Email display only */}
-              <div className="flex flex-col gap-1.5">
-                <label className={labelClass}>
-                  <Mail className="w-4 h-4 inline mr-1 text-green-600" />
-                  Email (from OAuth)
-                </label>
-                <div className="w-full p-3 border border-gray-200 rounded-xl bg-gray-100 text-gray-600 font-medium flex items-center gap-2">
-                  <Mail className="w-4 h-4 text-green-500" />
-                  {userEmail}
+                <label className={labelClass}><Mail className="w-4 h-4 inline mr-1 text-green-600" />Email (from {profile?.provider})</label>
+                <div className="w-full p-3 border border-gray-200 rounded-xl bg-gray-100 text-gray-600 font-medium">
+                  {profile?.email || 'N/A'}
                 </div>
-                <p className="text-xs text-gray-500 mt-1">
-                  Managed by your OAuth provider ({userProvider}). No password needed.
-                </p>
+                <p className="text-xs text-gray-500 mt-1">Managed by your OAuth provider. No password needed.</p>
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <label className={labelClass}>
-                  <Calendar className="w-4 h-4 inline mr-1 text-green-600" />
-                  Age <span className="text-red-500">*</span>
-                </label>
-                <input 
-                  className={inputClass} 
-                  name="age" 
-                  type="number" 
-                  min="1" 
-                  max="150"
-                  placeholder="Your age" 
-                  value={formData.age} 
-                  onChange={handleChange} 
-                  required 
-                />
+                <label className={labelClass}><Calendar className="w-4 h-4 inline mr-1 text-green-600" />Age <span className="text-red-500">*</span></label>
+                <input className={inputClass} name="age" type="number" min="1" max="150" placeholder="Age"
+                  value={formData.age} onChange={handleChange} required />
               </div>
-
               <div className="flex flex-col gap-1.5">
-                <label className={labelClass}>
-                  <Calendar className="w-4 h-4 inline mr-1 text-green-600" />
-                  Birthdate <span className="text-red-500">*</span>
-                </label>
-                <input 
-                  className={inputClass} 
-                  name="birthdate" 
-                  type="date" 
-                  value={formData.birthdate} 
-                  onChange={handleChange} 
-                  required 
-                />
+                <label className={labelClass}><Calendar className="w-4 h-4 inline mr-1 text-green-600" />Birthdate <span className="text-red-500">*</span></label>
+                <input className={inputClass} name="birthdate" type="date" value={formData.birthdate} onChange={handleChange} required />
               </div>
 
               <div className="md:col-span-2 flex flex-col gap-1.5">
-                <label className={labelClass}>
-                  <IdCard className="w-4 h-4 inline mr-1 text-green-600" />
-                  Valid ID Number <span className="text-red-500">*</span>
-                </label>
-                <input 
-                  className={inputClass} 
-                  name="idNumber" 
-                  placeholder="e.g., Passport No., Driver's License No., National ID" 
-                  value={formData.idNumber} 
-                  onChange={handleChange} 
-                  required 
-                />
+                <label className={labelClass}><IdCard className="w-4 h-4 inline mr-1 text-green-600" />Valid ID Number <span className="text-red-500">*</span></label>
+                <input className={inputClass} name="idNumber" placeholder="e.g., Passport No., Driver's License No." value={formData.idNumber} onChange={handleChange} required />
               </div>
 
               <div className="md:col-span-2 flex flex-col gap-1.5">
-                <label className={labelClass}>
-                  <Camera className="w-4 h-4 inline mr-1 text-green-600" />
-                  Upload ID Picture <span className="text-red-500">*</span>
-                </label>
+                <label className={labelClass}><Camera className="w-4 h-4 inline mr-1 text-green-600" />Upload ID Picture <span className="text-red-500">*</span></label>
                 <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-green-500 transition cursor-pointer bg-gray-50">
                   <input className="hidden" id="file-upload" type="file" accept="image/*" onChange={handleFileChange} required />
                   <label htmlFor="file-upload" className="cursor-pointer">
                     <Camera className="w-8 h-8 text-gray-400 mx-auto mb-2" />
-                    <p className="text-sm text-gray-500 font-medium">
-                      {idFile ? idFile.name : "Click to upload a photo of your valid ID"}
-                    </p>
+                    <p className="text-sm text-gray-500 font-medium">{idFile ? idFile.name : "Click to upload a photo of your valid ID"}</p>
                     <p className="text-xs text-gray-400 mt-1">PNG, JPG up to 5MB</p>
                   </label>
                 </div>
               </div>
 
               <div className="md:col-span-2 flex flex-col gap-1.5">
-                <label className={labelClass}>
-                  <Phone className="w-4 h-4 inline mr-1 text-green-600" />
-                  Mobile Number <span className="text-red-500">*</span>
-                </label>
-                <input 
-                  className={inputClass} 
-                  name="mobileNumber" 
-                  type="tel" 
-                  placeholder="e.g., 09123456789" 
-                  value={formData.mobileNumber} 
-                  onChange={handleChange} 
-                  required 
-                />
+                <label className={labelClass}><Phone className="w-4 h-4 inline mr-1 text-green-600" />Mobile Number <span className="text-red-500">*</span></label>
+                <input className={inputClass} name="mobileNumber" type="tel" placeholder="e.g., 09123456789" value={formData.mobileNumber} onChange={handleChange} required />
               </div>
 
               <div className="md:col-span-2 flex flex-col gap-1.5">
-                <label className={labelClass}>
-                  <MapPin className="w-4 h-4 inline mr-1 text-green-600" />
-                  Full Address <span className="text-red-500">*</span>
-                </label>
-                <textarea 
-                  className={`${inputClass} h-24 resize-none`} 
-                  name="address" 
-                  placeholder="House No., Street, Barangay, City/Municipality, Province" 
-                  value={formData.address} 
-                  onChange={handleChange} 
-                  required 
-                />
+                <label className={labelClass}><MapPin className="w-4 h-4 inline mr-1 text-green-600" />Full Address <span className="text-red-500">*</span></label>
+                <textarea className={`${inputClass} h-24 resize-none`} name="address" placeholder="House No., Street, Barangay, City, Province" value={formData.address} onChange={handleChange} required />
               </div>
 
-              <button 
-                type="submit" 
+              <button
+                type="submit"
                 className="md:col-span-2 bg-gradient-to-r from-green-600 to-blue-600 text-white font-bold py-4 rounded-xl hover:from-green-700 hover:to-blue-700 transition shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-2"
                 disabled={loading}
               >
@@ -383,19 +295,14 @@ export default function CreateUserForOauth() {
                     SUBMITTING FOR VERIFICATION...
                   </>
                 ) : (
-                  <>
-                    <UserPlus className="w-5 h-5" />
-                    Submit for Verification
-                  </>
+                  <><UserPlus className="w-5 h-5" /> Submit for Verification</>
                 )}
               </button>
             </form>
 
             <div className="mt-6 text-center border-t border-gray-200 pt-4">
               <p className="text-xs text-gray-500">
-                By submitting, you agree that the information provided will be used for account verification purposes.
-                <br />
-                Your OAuth account ({userEmail}) will be linked to this profile upon admin approval.
+                Your OAuth account ({profile?.email}) will be linked to this profile upon admin approval.
               </p>
             </div>
           </div>

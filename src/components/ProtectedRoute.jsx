@@ -60,7 +60,8 @@ export default function ProtectedRoute({ children, adminOnly = false, staffOnly 
         if (parsedUser && !parsedStaff) {
           // Regular user trying to access admin/staff routes? Block them.
           if (adminOnly || staffOnly) {
-            localStorage.removeItem('currentUser');
+            localStorage.removeItem('currentUser');   // whatever your navbar already does
+            await supabase.auth.signOut();            // ← this is the missing half
             setAuthorized(false);
             setLoading(false);
             navigate('/login', { 
