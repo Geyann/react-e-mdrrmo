@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useState } from "react";
 import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
 import { supabase } from "../createClient";
@@ -39,6 +39,22 @@ const AdminDashboard = () => {
   // History Tab State
   const [historyFilter, setHistoryFilter] = useState("all");
   const [historySearchTerm, setHistorySearchTerm] = useState("");
+
+  // ---------- FIXED: timezone-safe helpers ----------
+  // toISOString().split("T")[0] shifts the date by a day in negative-UTC timezones.
+  const toDateString = (date) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    const d = String(date.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  };
+
+  // Parse month directly from the stored YYYY-MM-DD text (handles "2026-08-07" and ISO strings)
+  const getMonthIndex = (dateStr) => {
+    if (!dateStr) return -1;
+    const m = Number(dateStr.split("T")[0].split("-")[1]);
+    return m >= 1 && m <= 12 ? m - 1 : -1;
+  };
 
   // Auto-mark date as unavailable when volume limit is reached
   const autoMarkUnavailableIfFull = async (date, limit, currentBookingCount) => {
@@ -97,7 +113,7 @@ const AdminDashboard = () => {
 
       const updatedUnavailable = [...unavailable];
       const bookingCounts = {};
-      
+
       (appointmentData || []).forEach(apt => {
         bookingCounts[apt.date] = (bookingCounts[apt.date] || 0) + 1;
       });
@@ -228,7 +244,9 @@ const AdminDashboard = () => {
         return;
       }
 
-      const currentBookingCount = appointments.filter(a => a.date === selectedDate).length;
+      // FIXED: count from ALL appointments (unfiltered) so date-range filters
+      // don't corrupt the booking count used for auto-disable
+      const currentBookingCount = allAppointments.filter(a => a.date === selectedDate).length;
       const shouldBeUnavailable = makeUnavailable || (currentBookingCount >= limit);
 
       const { error } = await supabase
@@ -259,7 +277,7 @@ const AdminDashboard = () => {
       setVolumeLimit("");
       setMakeUnavailable(false);
       setShowVolumeModal(false);
-      
+
       if (currentBookingCount >= limit) {
         alert(`Volume limit for ${selectedDate} set to ${limit}. Date has been auto-marked as unavailable because ${currentBookingCount} appointments already exist.`);
       } else {
@@ -272,7 +290,7 @@ const AdminDashboard = () => {
   };
 
   const handleCalendarDateClick = (date) => {
-    const dateString = date.toISOString().split('T')[0];
+    const dateString = toDateString(date); // FIXED: timezone-safe
     setSelectedDate(dateString);
     setVolumeLimit(dateVolumeLimits[dateString] ? dateVolumeLimits[dateString].toString() : "");
     setMakeUnavailable(unavailableDates.includes(dateString));
@@ -312,7 +330,7 @@ const AdminDashboard = () => {
             .select("appointmentId")
             .eq("date", date)
             .eq("status", "approved");
-          
+
           const count = dateAppts?.length || 0;
           if (limit && count >= limit) {
             await autoMarkUnavailableIfFull(date, limit, count);
@@ -346,6 +364,41 @@ const AdminDashboard = () => {
     { name: "Approved", value: appointmentStats.approved, fill: "#34D399" },
     { name: "Rejected", value: appointmentStats.rejected, fill: "#F87171" },
   ];
+
+  // ============================================================
+  // NEW: Monthly Appointment Trends (same logic as AdminBorrowAnalytics)
+  // Groups appointments into Jan–Dec, stacked bars by purpose,
+  // filtered by the shared startDate/endDate range.
+  // ============================================================
+  const monthlyTrendData = useMemo(() => {
+    const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+    // 1. Identify unique purposes (same as uniqueVehicles in borrow analytics)
+    const uniquePurposes = [...new Set(appointments.map(a => a.purpose).filter(Boolean))];
+
+    // 2. Initialize monthly structure
+    const formattedData = months.map(month => {
+      const entry = { name: month };
+      uniquePurposes.forEach(p => { entry[p] = 0; });
+      return entry;
+    });
+
+    // 3. Grouping logic (timezone-safe month parse)
+    appointments.forEach(apt => {
+      if (apt.date) {
+        const monthIndex = getMonthIndex(apt.date);
+        const purpose = apt.purpose;
+
+        if (formattedData[monthIndex] && purpose) {
+          formattedData[monthIndex][purpose] += 1;
+        }
+      }
+    });
+
+    return formattedData;
+  }, [appointments]);
+
+  const TREND_COLORS = ["#10b981", "#3b82f6", "#f59e0b", "#8b5cf6", "#ec4899", "#f43f5e", "#6366f1"];
 
   const COLORS = ["#6366f1", "#8b5cf6", "#ec4899", "#f43f5e", "#f59e0b"];
 
@@ -402,7 +455,7 @@ const AdminDashboard = () => {
   }
 
   return (
-    <div className="p-6 md:p-10 min-h-screen">
+    <div className="p-6 md:p-10 min-h-screen bg-white">
       <h1 className="text-3xl font-black text-slate-800 mb-8">ADMIN DASHBOARD</h1>
 
       {/* Tab Navigation */}
@@ -445,24 +498,32 @@ const AdminDashboard = () => {
       {activeTab === "calendar" && (
         <>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-8 mb-8">
-            
+
             {/* Analytics Section */}
             <div className="lg:col-span-2 p-8 rounded-[25px] bg-white border border-slate-200 shadow-sm">
               <div className="flex flex-wrap justify-between items-center mb-8 gap-4">
                 <div>
                   <h2 className="text-lg font-black text-slate-800">APPOINTMENT VOLUME</h2>
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 items-center">
                   <input
                     type="date"
+                    value={startDate}
                     onChange={(e) => setStartDate(e.target.value)}
                     className="text-xs p-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
                   <input
                     type="date"
+                    value={endDate}
                     onChange={(e) => setEndDate(e.target.value)}
                     className="text-xs p-2 border border-slate-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-indigo-500"
                   />
+                  <button
+                    onClick={() => { setStartDate(""); setEndDate(""); }}
+                    className="text-xs px-3 py-2 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg font-bold text-slate-700 transition-colors"
+                  >
+                    Reset
+                  </button>
                 </div>
               </div>
               <div className="w-full h-[300px]">
@@ -494,10 +555,10 @@ const AdminDashboard = () => {
               <Calendar
                 onClickDay={handleCalendarDateClick}
                 tileClassName={({ date }) => {
-                  const d = date.toISOString().split('T')[0];
+                  const d = toDateString(date); // FIXED: timezone-safe
                   const isUnavailable = unavailableDates.includes(d);
                   const hasLimit = dateVolumeLimits[d];
-                  
+
                   let baseClasses = "cursor-pointer hover:opacity-80 transition-opacity ";
                   if (isUnavailable) {
                     return baseClasses + "!bg-red-500 !text-white font-bold";
@@ -513,6 +574,56 @@ const AdminDashboard = () => {
                 <div><span className="inline-block w-3 h-3 bg-yellow-200 rounded mr-2 border border-slate-300"></span>Limited Volume</div>
                 <div><span className="inline-block w-3 h-3 bg-green-100 rounded mr-2 border border-slate-300"></span>Available</div>
               </div>
+            </div>
+          </div>
+
+          {/* ============================================================ */}
+          {/* NEW: MONTHLY APPOINTMENT TRENDS (borrow-analytics style) */}
+          {/* ============================================================ */}
+          <div className="p-8 rounded-[25px] bg-white border border-slate-200 shadow-sm mb-8">
+            <div className="flex flex-wrap justify-between items-start mb-4 gap-4">
+              <div>
+                <h2 className="text-lg font-black text-slate-800">MONTHLY APPOINTMENT TRENDS</h2>
+                <p className="text-sm text-slate-500 mt-1">
+                  Monthly appointment volume stacked by purpose (Jan–Dec)
+                </p>
+              </div>
+              <button
+                onClick={() => { setStartDate(""); setEndDate(""); }}
+                className="text-xs px-3 py-2 bg-slate-100 hover:bg-slate-200 border border-slate-300 rounded-lg font-bold text-slate-700 transition-colors"
+              >
+                Reset
+              </button>
+            </div>
+
+            <div className="w-full h-[300px]">
+              {monthlyTrendData.some(entry =>
+                Object.keys(entry).some(k => k !== "name" && entry[k] > 0)
+              ) ? (
+                <ResponsiveContainer width="100%" height="100%">
+                  <BarChart data={monthlyTrendData} margin={{ top: 20, right: 30, left: 20, bottom: 5 }}>
+                    <CartesianGrid strokeDasharray="3 3" vertical={false} />
+                    <XAxis dataKey="name" fontSize={12} />
+                    <YAxis allowDecimals={false} fontSize={12} />
+                    <Tooltip />
+                    <Legend iconType="circle" />
+                    {Object.keys(monthlyTrendData[0])
+                      .filter(key => key !== "name")
+                      .map((purpose, index) => (
+                        <Bar
+                          key={purpose}
+                          dataKey={purpose}
+                          stackId="a"
+                          fill={TREND_COLORS[index % TREND_COLORS.length]}
+                        />
+                      ))}
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="flex items-center justify-center h-full text-slate-500">
+                  No data available for selected date range
+                </div>
+              )}
             </div>
           </div>
 
@@ -533,11 +644,13 @@ const AdminDashboard = () => {
                 <tbody>
                   {getAllDatesWithRestrictions().length > 0 ? (
                     getAllDatesWithRestrictions().map((date) => {
-                      const bookingsOnDate = appointments.filter(a => a.date === date).length;
+                      // FIXED: count from ALL appointments so the date-range
+                      // filter can't make this number wrong
+                      const bookingsOnDate = allAppointments.filter(a => a.date === date).length;
                       const isUnavailable = unavailableDates.includes(date);
                       const limit = dateVolumeLimits[date];
                       const isAutoDisabled = limit && bookingsOnDate >= limit;
-                      
+
                       return (
                         <tr key={date} className={`border-b border-slate-200 hover:bg-slate-50 ${isAutoDisabled ? 'bg-red-50' : ''}`}>
                           <td className="py-3 px-4 font-semibold text-slate-800">{date}</td>
@@ -549,10 +662,10 @@ const AdminDashboard = () => {
                                 ? "bg-yellow-100 text-yellow-700"
                                 : "bg-green-100 text-green-700"
                             }`}>
-                              {isUnavailable 
-                                ? (isAutoDisabled ? "Auto-Disabled (Full)" : "Unavailable") 
-                                : limit 
-                                ? "Limited" 
+                              {isUnavailable
+                                ? (isAutoDisabled ? "Auto-Disabled (Full)" : "Unavailable")
+                                : limit
+                                ? "Limited"
                                 : "Available"}
                             </span>
                           </td>

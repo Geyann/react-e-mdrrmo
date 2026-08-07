@@ -15,10 +15,10 @@ export default function Navbar() {
   };
 
   const NavLink = ({ to, children, onClick }) => (
-    <Link 
-      to={to} 
+    <Link
+      to={to}
       onClick={onClick}
-      className="group relative inline-block py-2 my-2 px-2 text-gray-800 lg:text-white text-center font-semibold uppercase text-[#262626] transition-colors text-nowrap"
+      className="group relative inline-block py-2 my-2 px-2 text-gray-800 lg:text-white text-center font-semibold uppercase transition-colors text-nowrap"
     >
       <span className="relative z-10 transition-colors duration-300 group-hover:text-gray-600">
         {children}
@@ -28,21 +28,20 @@ export default function Navbar() {
   );
 
   return (
-    <header className="bg-gradient-to-r from-blue-600 to-purple-600 absolute inset-x-0 top-0 z-5000 w-full p-3 border-b border-gray-500">
-      <div className="flex items-center justify-between ">
-        <Link to="/home" title='Go to Home Page.' className="z-50">
-          <img src={imgLogo} alt="logo" className=" top-10 left-3 w-16 h-12 hover:h-12.5 " />
-      
+    <header className="absolute inset-x-0 top-0 z-50 w-full border-b border-gray-500 bg-gradient-to-r from-blue-600 to-purple-600 p-3">
+      <div className="flex items-center justify-between">
+        <Link to="/home" title="Go to Home Page." className="z-50">
+          <img src={imgLogo} alt="logo" className="w-16 h-12" />
         </Link>
 
-        <button 
-          className="lg:hidden z-50 text-2xl text-white font-bold" 
+        <button
+          className="z-50 text-2xl font-bold text-white lg:hidden"
           onClick={() => setIsOpen(!isOpen)}
         >
           {isOpen ? '✖' : '☰'}
         </button>
 
-        <nav className={`${isOpen ? `flex` : `hidden`} lg:flex flex-col lg:flex-row absolute lg:static top-full left-0 w-full lg:w-auto bg-white lg:bg-transparent p-6 lg:p-0 gap-2 items-center`}>
+        <nav className={`${isOpen ? 'flex' : 'hidden'} absolute top-full left-0 w-full flex-col items-center gap-2 bg-white p-6 lg:static lg:flex lg:w-auto lg:flex-row lg:bg-transparent lg:p-0`}>
           <NavLink to="/hazard-report" onClick={() => setIsOpen(false)}>Hazard Report</NavLink>
           <NavLink to="/report" onClick={() => setIsOpen(false)}>Report Incident</NavLink>
           <NavLink to="/borrow" onClick={() => setIsOpen(false)}>Borrow Vehicle</NavLink>
@@ -51,29 +50,29 @@ export default function Navbar() {
           <NavLink to="/checkup" onClick={() => setIsOpen(false)}>Out Patient Check-up</NavLink>
           <NavLink to="/about" onClick={() => setIsOpen(false)}>About</NavLink>
           <NavLink to="/settings" onClick={() => setIsOpen(false)}>Settings</NavLink>
-          
+
           {/* Mobile logout button */}
-          <button 
+          <button
             onClick={handleLogout}
-            className="lg:hidden py-2 px-4 text-lg font-semibold uppercase text-red-600"
+            className="py-2 px-4 text-lg font-semibold uppercase text-red-600 lg:hidden"
           >
             Log out
           </button>
         </nav>
 
-        <div className="hidden lg:flex items-center gap-4">
+        <div className="hidden items-center gap-4 lg:flex">
           <button
             onClick={handleLogout}
-            className="group text-white relative inline-block py-2 px-4 text-center font-semibold uppercase text-[#262626] transition-colors"
+            className="group relative inline-block py-2 px-4 text-center text-white font-semibold uppercase transition-colors"
           >
             <span className="text-nowrap relative z-10 transition-colors duration-300 group-hover:text-gray-700">
               Log out
             </span>
             <span className="absolute rounded-md top-[2px] left-0 h-full w-full origin-top scale-0 bg-white opacity-0 transition-all duration-300 group-hover:scale-100 group-hover:opacity-100" />
           </button>
-          
-          <Link to="/profile" title='View Profile Picture.'><User2Icon className="text-white hover:bg-white hover:text-gray-700 rounded-xl" /></Link>
-          <Link to="/notification" title='Notifications.'><BellIcon className='text-white hover:bg-white hover:text-gray-700 rounded-xl' /></Link>
+
+          <Link to="/profile" title="View Profile Picture."><User2Icon className="rounded-xl text-white hover:bg-white hover:text-gray-700" /></Link>
+          <Link to="/notification" title="Notifications."><BellIcon className="rounded-xl text-white hover:bg-white hover:text-gray-700" /></Link>
         </div>
       </div>
     </header>

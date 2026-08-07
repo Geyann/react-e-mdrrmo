@@ -1,18 +1,16 @@
 import { useEffect } from 'react'
 import { Route, Routes, useLocation, useNavigate, Navigate } from 'react-router-dom'
-import { supabase } from './createClient'   // <-- ADDED: supabase import (fix path if needed)
+import { supabase } from './createClient'
 
 import AdminAppointmentDashboard from './components/AdminAppointmentDashboard'
 import Home from './pages/Home'
 import About from './pages/About'
 import Report from './pages/Report'
-import Navbar from './components/navbar'
 import Admin from './pages/Admin'
 import Borrow from './pages/Borrow'
 import Appointment from './pages/appointment'
 import CheckUp from './pages/CheckUp'
 import LoginPage from './pages/login'
-import Adminlogin from './pages/adminlogin'
 import RegisterAdmin from './pages/register-admin'
 import AdminNavbar from './components/adminNavbar'
 import HazardReport from './pages/HazardReport'
@@ -42,7 +40,7 @@ import EditProfile from './pages/editProfile'
 
 function App() {
   const location = useLocation();
-  const navigate = useNavigate();          // <-- ADDED: was used but never created
+  const navigate = useNavigate();
   const path = location.pathname;
 
   useEffect(() => {
@@ -57,18 +55,40 @@ function App() {
     return () => subscription.unsubscribe();
   }, [location.pathname, navigate]);
 
-  // Which navbars are allowed per path group
-  const isAdminPath = path.startsWith('/admin/') || path === '/admin';
+  // ===== Navbar decision (fixed) =====
+  const isAdminLoginPath =
+    path === '/admin' || path === '/admin/' || path === '/admin/register-admin';
+  const isAuthPath =
+    path.startsWith('/login') ||
+    path.startsWith('/register') ||
+    path.startsWith('/auth/callback') ||
+    isAdminLoginPath;
+  const isAdminPath = path.startsWith('/admin/') && !isAdminLoginPath;
   const isStaffPath = path.startsWith('/staff/');
-  const isGuestNavbarPath = path === '/';
-  const isAuthPath = path.startsWith('/login') || path.startsWith('/register') || path.startsWith('/auth/callback');
+  const isGuestPath = path === '/' || path.startsWith('/guest/');
+
+  const renderNavbar = () => {
+    if (isAuthPath) return null;          // login/register/callback → no navbar
+    if (isAdminPath) return <AdminNavbar />;
+    if (isStaffPath) return <StaffNavbar />;
+    if (isGuestPath) return <GuestNavbar />;
+    return <DynamicNavbar />;             // user area → role-aware navbar
+  };
 
   return (
-    <div className="app" style={{ backgroundImage: `url(${background})`, repeat: 'no-repeat', backgroundSize: 'cover', minHeight: '100vh', maxHeight: '100vh', overflowY: 'auto', scrollbarWidth: 'none' }}>
-      
-     {isGuestNavbarPath ? <GuestNavbar /> : (
-  !isAuthPath && !isAdminPath && !isStaffPath && <DynamicNavbar />
-)}
+    <div
+      className="app"
+      style={{
+        backgroundImage: `url(${background})`,
+        backgroundRepeat: 'no-repeat',
+        backgroundSize: 'cover',
+        minHeight: '100vh',
+        maxHeight: '100vh',
+        overflowY: 'auto',
+        scrollbarWidth: 'none',
+      }}
+    >
+      {renderNavbar()}
 
       <div className="content pt-20">
         <Routes>
@@ -78,7 +98,7 @@ function App() {
           <Route path="/register" element={<CreateUser />} />
           <Route path="/register/oauth" element={<CreateUserForOauth />} />
           <Route path="/auth/callback" element={<AuthCallback />} />
-          
+
           {/* ===== ADMIN LOGIN ROUTES ===== */}
           <Route path="/admin" element={<AdminLoginRedirect />} />
           <Route path="/admin/" element={<AdminLoginRedirect />} />
@@ -90,7 +110,7 @@ function App() {
 
           {/* ===== PROTECTED USER ROUTES ===== */}
           <Route path="/home" element={<ProtectedRoute><Home /></ProtectedRoute>} />
-          <Route path="/track" element={<ProtectedRoute><TrackAppointment/></ProtectedRoute>} />
+          <Route path="/track" element={<ProtectedRoute><TrackAppointment /></ProtectedRoute>} />
           <Route path="/about" element={<ProtectedRoute><About /></ProtectedRoute>} />
           <Route path="/report" element={<ProtectedRoute><Report /></ProtectedRoute>} />
           <Route path="/hazard-report" element={<ProtectedRoute><HazardReport /></ProtectedRoute>} />
@@ -98,9 +118,9 @@ function App() {
           <Route path="/appointment" element={<ProtectedRoute><Appointment /></ProtectedRoute>} />
           <Route path="/checkup" element={<ProtectedRoute><CheckUp /></ProtectedRoute>} />
           <Route path="/hazardmap" element={<ProtectedRoute><UserHazardmap /></ProtectedRoute>} />
-          <Route path="/edit-profile" element={<EditProfile/>} />
+          <Route path="/edit-profile" element={<EditProfile />} />
           <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
-          <Route path="/profile" element={<Profile/>} />
+          <Route path="/profile" element={<Profile />} />
           <Route path="/yearly-incident-trends" element={<ProtectedRoute><MonthlyIncidentTrends /></ProtectedRoute>} />
 
           {/* ===== PROTECTED ADMIN ROUTES ===== */}
@@ -121,6 +141,12 @@ function App() {
           <Route path="/staff/settings" element={<ProtectedRoute staffOnly={true}><Settings /></ProtectedRoute>} />
           <Route path="/staff/profile" element={<ProtectedRoute staffOnly={true}><Profile /></ProtectedRoute>} />
           <Route path="/staff/notification" element={<ProtectedRoute staffOnly={true}><StaffHome /></ProtectedRoute>} />
+
+          {/* ===== EXTRA ROUTES USED BY NAVBARS (placeholders — swap real pages later) ===== */}
+          <Route path="/admin/settings" element={<ProtectedRoute adminOnly={true}><Settings /></ProtectedRoute>} />
+          <Route path="/admin/profile" element={<ProtectedRoute adminOnly={true}><Profile /></ProtectedRoute>} />
+          <Route path="/admin/notification" element={<ProtectedRoute adminOnly={true}><Admin /></ProtectedRoute>} />
+          <Route path="/notification" element={<ProtectedRoute><Home /></ProtectedRoute>} />
 
           {/* ===== CATCH-ALLS ===== */}
           <Route path="/admin/*" element={<Navigate to="/admin" />} />

@@ -15,21 +15,21 @@ export default function AdminNavbar() {
   };
 
   const NavLink = ({ to, children, onClick }) => (
-    <Link 
-      to={to} 
+    <Link
+      to={to}
       onClick={onClick}
-      className="group relative inline-block py-2 px-1 text-white text-center font-semibold uppercase text-[#262626] transition-colors text-nowrap"
+      className="group relative inline-block py-2  px-2 text-gray-800 lg:text-white text-center font-semibold uppercase transition-colors text-nowrap"
     >
-      <span className="relative z-10 transition-colors duration-300 group-hover:text-white">
+      <span className="relative z-10 transition-colors duration-300 group-hover:text-gray-600">
         {children}
       </span>
-      <span className="absolute inset-0 border-y-2 border-[#262626] opacity-0 transition-all duration-300 scale-y-[2] group-hover:scale-y-100 group-hover:opacity-100" />
-      <span className="absolute top-[2px] left-0 h-full w-full origin-top scale-0 bg-[#262626] opacity-0 transition-all duration-300 group-hover:scale-100 group-hover:opacity-100" />
+      <span className="absolute rounded-md top-[2px] left-0 h-full w-full origin-top scale-0 bg-white opacity-0 transition-all duration-300 group-hover:scale-100 group-hover:opacity-100" />
     </Link>
   );
 
+
   return (
-    <header className="absolute inset-x-0 top-0 z-5000 bg-gradient-to-r from-blue-600 to-purple-600 w-full p-5">
+    <header className="absolute inset-x-0 top-0 z-50 w-full bg-gradient-to-r from-blue-600 to-purple-600 p-5">
       <div className="flex items-center justify-between">
         {/* Logo */}
         <Link to="/admin/dashboard" className="z-50">
@@ -37,15 +37,15 @@ export default function AdminNavbar() {
         </Link>
 
         {/* Hamburger Toggle */}
-        <button 
-          className="lg:hidden z-50 text-2xl font-bold" 
+        <button
+          className="z-50 text-2xl font-bold text-white lg:hidden"
           onClick={() => setIsOpen(!isOpen)}
         >
           {isOpen ? '✖' : '☰'}
         </button>
 
         {/* Navigation Links */}
-        <nav className={`${isOpen ? 'flex' : 'hidden'} lg:flex flex-col lg:flex-row absolute lg:static top-full left-0 w-full lg:w-auto bg-white/95 lg:bg-transparent p-6 lg:p-0 gap-2 items-center`}>
+        <nav className={`${isOpen ? 'flex' : 'hidden'} absolute top-full left-0 w-full flex-col items-center gap-2 bg-white/95 p-6 lg:static lg:flex lg:w-auto lg:flex-row lg:bg-transparent lg:p-0`}>
           <NavLink to="/admin/dashboard" onClick={() => setIsOpen(false)}>Dashboard</NavLink>
           <NavLink to="/admin/hazard-map" onClick={() => setIsOpen(false)}>Hazard Map</NavLink>
           <NavLink to="/admin/pending-account" onClick={() => setIsOpen(false)}>User Approval</NavLink>
@@ -54,30 +54,29 @@ export default function AdminNavbar() {
           <NavLink to="/admin/appointment" onClick={() => setIsOpen(false)}>Appointments</NavLink>
           <NavLink to="/admin/checkup" onClick={() => setIsOpen(false)}>Out Patient Check-ups</NavLink>
           <NavLink to="/admin/settings" onClick={() => setIsOpen(false)}>Settings</NavLink>
-          
+
           {/* Mobile logout button */}
-          <button 
+          <button
             onClick={handleLogout}
-            className="lg:hidden py-2 px-4 text-lg font-semibold uppercase text-red-600"
+            className="py-2 px-4 text-lg font-semibold uppercase text-red-600 lg:hidden"
           >
             Log out
           </button>
         </nav>
 
         {/* Desktop logout + icons */}
-        <div className="hidden lg:flex items-center gap-4">
-          <button
+        <div className="hidden items-center gap-4 lg:flex">
+           <button
             onClick={handleLogout}
-            className="group relative inline-block py-2 px-4 text-center text-white font-semibold uppercase text-[#262626] transition-colors"
+            className="group relative inline-block py-2 px-4 text-center text-white font-semibold uppercase transition-colors"
           >
-            <span className="text-nowrap relative z-10 transition-colors duration-300 group-hover:text-white">
+            <span className="text-nowrap relative z-10 transition-colors duration-300 group-hover:text-gray-700">
               Log out
             </span>
-            <span className="absolute inset-0 border-y-2 border-[#262626] opacity-0 transition-all duration-300 scale-y-[2] group-hover:scale-y-100 group-hover:opacity-100" />
-            <span className="absolute top-[2px] left-0 h-full w-full origin-top scale-0 bg-[#262626] opacity-0 transition-all duration-300 group-hover:scale-100 group-hover:opacity-100" />
+            <span className="absolute rounded-md top-[2px] left-0 h-full w-full origin-top scale-0 bg-white opacity-0 transition-all duration-300 group-hover:scale-100 group-hover:opacity-100" />
           </button>
-          <Link to="/profile"><User2Icon className=" text-white" /></Link>
-          <Link to="/notification"><BellIcon className='text-white' /></Link>
+          <Link to="/admin/profile" title="Profile"><User2Icon className="text-white hover:rounded-xl hover:bg-white hover:text-gray-700" /></Link>
+          <Link to="/admin/notification" title="Notifications"><BellIcon className="text-white hover:rounded-xl hover:bg-white hover:text-gray-700" /></Link>
         </div>
       </div>
     </header>

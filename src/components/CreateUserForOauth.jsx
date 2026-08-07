@@ -163,35 +163,37 @@ export default function CreateUserForOauth() {
     }
   };
 
-  const inputClass = "w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-green-500 focus:border-green-500 outline-none transition bg-gray-50";
+  const inputClass = "w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-purple-500 focus:border-purple-500 outline-none transition bg-gray-50";
   const labelClass = "text-sm font-bold text-gray-700";
 
   if (!sessionReady) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-green-600 mx-auto"></div>
+        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto"></div>
         <p className="mt-4 text-gray-600 font-semibold ml-3">Loading your profile...</p>
       </div>
     );
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-green-50 to-blue-50 py-10 px-4">
-      <div className="max-w-3xl mx-auto">
-        <button
-          onClick={() => navigate('/login')}
-          className="flex items-center gap-2 text-gray-600 hover:text-green-600 transition mb-4 font-semibold"
-        >
-          <ArrowLeft className="w-5 h-5" /> Back to Login
-        </button>
+    <div className="min-h-screen ">
+       <button
+        onClick={() => navigate('/')}
+        className="absolute top-6 left-6 flex items-center gap-2 text-gray-600 hover:text-purple-600 transition font-semibold z-10"
+      >
+        <ArrowLeft className="w-5 h-5" />
+        Back to Home
+      </button>
+      <div className="max-w-3xl mx-auto py-10 px-4">
+       
 
         <div className="bg-white rounded-3xl shadow-xl border border-gray-200 overflow-hidden">
-          <div className="bg-gradient-to-r from-green-600 to-blue-600 p-8 text-center">
-            <img src={imlogo} alt="Logo" className="w-24 h-24 object-contain mx-auto mb-4 bg-white rounded-full p-2 shadow-lg" />
+          <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-8 text-center">
+            <img src={imlogo} alt="Logo" className="w-30 h-30 object-contain mx-auto mb-4 bg-slate-700 rounded-full p-5 shadow-lg" />
             <h2 className="text-2xl font-bold text-white flex items-center justify-center gap-2">
               <UserPlus className="w-6 h-6" /> Complete Your Profile
             </h2>
-            <p className="text-green-200 text-sm mt-1">
+            <p className="text-purple-200 text-sm mt-1">
               Signed in with <span className="font-semibold capitalize">{profile?.provider}</span> — finish verification to continue
             </p>
           </div>
@@ -204,23 +206,23 @@ export default function CreateUserForOauth() {
               </div>
             )}
             {notice && (
-              <div className="flex items-start gap-3 bg-green-50 border border-green-200 rounded-xl p-4 mb-6">
-                <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-                <p className="text-green-700 text-sm font-medium">{notice}</p>
+              <div className="flex items-start gap-3 bg-purple-50 border border-purple-200 rounded-xl p-4 mb-6">
+                <CheckCircle className="w-5 h-5 text-purple-600 flex-shrink-0 mt-0.5" />
+                <p className="text-purple-700 text-sm font-medium">{notice}</p>
               </div>
             )}
 
             <form onSubmit={handleRegister} className="grid grid-cols-1 md:grid-cols-2 gap-5">
               {/* Auto-filled username */}
               <div className="md:col-span-2 flex flex-col gap-1.5">
-                <label className={labelClass}><User className="w-4 h-4 inline mr-1 text-green-600" />Username <span className="text-red-500">*</span></label>
+                <label className={labelClass}><User className="w-4 h-4 inline mr-1 text-purple-600" />Username <span className="text-red-500">*</span></label>
                 <input className={inputClass} name="username" placeholder="Choose a unique username"
                   value={formData.username} onChange={handleChange} required minLength={3} />
               </div>
 
               {/* Auto-filled from OAuth */}
               <div className="flex flex-col gap-1.5">
-                <label className={labelClass}><User className="w-4 h-4 inline mr-1 text-green-600" />First Name <span className="text-red-500">*</span></label>
+                <label className={labelClass}><User className="w-4 h-4 inline mr-1 text-purple-600" />First Name <span className="text-red-500">*</span></label>
                 <input className={inputClass} name="firstName" placeholder="First Name"
                   value={formData.firstName} onChange={handleChange} required />
               </div>
@@ -230,14 +232,14 @@ export default function CreateUserForOauth() {
                   value={formData.middleName} onChange={handleChange} />
               </div>
               <div className="flex flex-col gap-1.5">
-                <label className={labelClass}><User className="w-4 h-4 inline mr-1 text-green-600" />Last Name <span className="text-red-500">*</span></label>
+                <label className={labelClass}><User className="w-4 h-4 inline mr-1 text-purple-600" />Last Name <span className="text-red-500">*</span></label>
                 <input className={inputClass} name="lastName" placeholder="Last Name"
                   value={formData.lastName} onChange={handleChange} required />
               </div>
 
               {/* Auto-filled email (read-only) */}
               <div className="flex flex-col gap-1.5">
-                <label className={labelClass}><Mail className="w-4 h-4 inline mr-1 text-green-600" />Email (from {profile?.provider})</label>
+                <label className={labelClass}><Mail className="w-4 h-4 inline mr-1 text-purple-600" />Email (from {profile?.provider})</label>
                 <div className="w-full p-3 border border-gray-200 rounded-xl bg-gray-100 text-gray-600 font-medium">
                   {profile?.email || 'N/A'}
                 </div>
@@ -245,23 +247,23 @@ export default function CreateUserForOauth() {
               </div>
 
               <div className="flex flex-col gap-1.5">
-                <label className={labelClass}><Calendar className="w-4 h-4 inline mr-1 text-green-600" />Age <span className="text-red-500">*</span></label>
+                <label className={labelClass}><Calendar className="w-4 h-4 inline mr-1 text-purple-600" />Age <span className="text-red-500">*</span></label>
                 <input className={inputClass} name="age" type="number" min="1" max="150" placeholder="Age"
                   value={formData.age} onChange={handleChange} required />
               </div>
               <div className="flex flex-col gap-1.5">
-                <label className={labelClass}><Calendar className="w-4 h-4 inline mr-1 text-green-600" />Birthdate <span className="text-red-500">*</span></label>
+                <label className={labelClass}><Calendar className="w-4 h-4 inline mr-1 text-purple-600" />Birthdate <span className="text-red-500">*</span></label>
                 <input className={inputClass} name="birthdate" type="date" value={formData.birthdate} onChange={handleChange} required />
               </div>
 
               <div className="md:col-span-2 flex flex-col gap-1.5">
-                <label className={labelClass}><IdCard className="w-4 h-4 inline mr-1 text-green-600" />Valid ID Number <span className="text-red-500">*</span></label>
+                <label className={labelClass}><IdCard className="w-4 h-4 inline mr-1 text-purple-600" />Valid ID Number <span className="text-red-500">*</span></label>
                 <input className={inputClass} name="idNumber" placeholder="e.g., Passport No., Driver's License No." value={formData.idNumber} onChange={handleChange} required />
               </div>
 
               <div className="md:col-span-2 flex flex-col gap-1.5">
-                <label className={labelClass}><Camera className="w-4 h-4 inline mr-1 text-green-600" />Upload ID Picture <span className="text-red-500">*</span></label>
-                <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-green-500 transition cursor-pointer bg-gray-50">
+                <label className={labelClass}><Camera className="w-4 h-4 inline mr-1 text-purple-600" />Upload ID Picture <span className="text-red-500">*</span></label>
+                <div className="border-2 border-dashed border-gray-300 rounded-xl p-6 text-center hover:border-purple-500 transition cursor-pointer bg-gray-50">
                   <input className="hidden" id="file-upload" type="file" accept="image/*" onChange={handleFileChange} required />
                   <label htmlFor="file-upload" className="cursor-pointer">
                     <Camera className="w-8 h-8 text-gray-400 mx-auto mb-2" />
@@ -272,18 +274,18 @@ export default function CreateUserForOauth() {
               </div>
 
               <div className="md:col-span-2 flex flex-col gap-1.5">
-                <label className={labelClass}><Phone className="w-4 h-4 inline mr-1 text-green-600" />Mobile Number <span className="text-red-500">*</span></label>
+                <label className={labelClass}><Phone className="w-4 h-4 inline mr-1 text-purple-600" />Mobile Number <span className="text-red-500">*</span></label>
                 <input className={inputClass} name="mobileNumber" type="tel" placeholder="e.g., 09123456789" value={formData.mobileNumber} onChange={handleChange} required />
               </div>
 
               <div className="md:col-span-2 flex flex-col gap-1.5">
-                <label className={labelClass}><MapPin className="w-4 h-4 inline mr-1 text-green-600" />Full Address <span className="text-red-500">*</span></label>
+                <label className={labelClass}><MapPin className="w-4 h-4 inline mr-1 text-purple-600" />Full Address <span className="text-red-500">*</span></label>
                 <textarea className={`${inputClass} h-24 resize-none`} name="address" placeholder="House No., Street, Barangay, City, Province" value={formData.address} onChange={handleChange} required />
               </div>
 
               <button
                 type="submit"
-                className="md:col-span-2 bg-gradient-to-r from-green-600 to-blue-600 text-white font-bold py-4 rounded-xl hover:from-green-700 hover:to-blue-700 transition shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-2"
+                className="md:col-span-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-bold py-4 rounded-xl hover:from-purple-700 hover:to-blue-700 transition shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2 mt-2"
                 disabled={loading}
               >
                 {loading ? (

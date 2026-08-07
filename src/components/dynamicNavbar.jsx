@@ -1,6 +1,5 @@
 import { useState, useEffect } from 'react';
 import { useLocation } from 'react-router-dom';
-import { supabase } from '../createClient';
 import Navbar from './navbar';
 import AdminNavbar from './adminNavbar';
 import StaffNavbar from './StaffNavbar';
@@ -13,59 +12,48 @@ export default function DynamicNavbar() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const detectRole = async () => {
-      // 1. Public/auth pages — no navbar needed
+    const detectRole = () => {
+      // 1. Auth / login / admin-login pages → no navbar
       if (
-        path === '/admin' ||
-        path === '/admin/' ||
-        path === '/admin/login' ||
-        path === '/admin/register-admin' ||
-        path === '/register' ||
-        path === '/login' ||
-        path === '/login/' ||
-        path === '/auth/callback'
+        path === '/admin' || path === '/admin/' ||
+        path.startsWith('/admin/register') ||
+        path.startsWith('/login') ||
+        path.startsWith('/register') ||
+        path.startsWith('/auth/callback')
       ) {
         setUserRole('none');
         setLoading(false);
         return;
       }
 
-      // 2. Check localStorage for staff/admin (priority — highest role)
-      const storedStaff = localStorage.getItem('currentStaff');
-      if (storedStaff) {
-        try {
+      // 2. Admin first (highest priority), then staff
+      try {
+        const storedStaff = localStorage.getItem('currentStaff');
+        if (storedStaff) {
           const parsedStaff = JSON.parse(storedStaff);
-          if (parsedStaff.role === 'admin') {
+          if (parsedStaff?.role === 'admin') {
             setUserRole('admin');
             setLoading(false);
             return;
           }
-          if (parsedStaff.role === 'staff') {
+          if (parsedStaff?.role === 'staff') {
             setUserRole('staff');
             setLoading(false);
             return;
           }
-        } catch {
-          // Invalid JSON, ignore
         }
+      } catch {
+        // invalid JSON — ignore
       }
 
-      // 3. Check localStorage for regular user
-      const storedUser = localStorage.getItem('currentUser');
-      if (storedUser) {
+      // 3. Regular user
+      if (localStorage.getItem('currentUser')) {
         setUserRole('user');
         setLoading(false);
         return;
       }
 
-      // 4. Guest routes
-      if (path === '/' || path.startsWith('/guest/') || path === '/guest/hazardmap' || path === '/guest/yearly-incident-trends') {
-        setUserRole('guest');
-        setLoading(false);
-        return;
-      }
-
-      // 5. Default to guest
+      // 4. Fallback → guest
       setUserRole('guest');
       setLoading(false);
     };
@@ -75,10 +63,11 @@ export default function DynamicNavbar() {
 
   if (loading) return null;
 
-  // Render the correct navbar based on role
-  if (userRole === 'none') return null;
-  if (userRole === 'admin') return <AdminNavbar />;
-  if (userRole === 'staff') return <StaffNavbar />;
-  if (userRole === 'user') return <Navbar />;
-  return <GuestNavbar />;
+  switch (userRole) {
+    case 'none': return null;
+    case 'admin': return <AdminNavbar />;
+    case 'staff': return <StaffNavbar />;
+    case 'user': return <Navbar />;
+    default: return <GuestNavbar />;
+  }
 }
