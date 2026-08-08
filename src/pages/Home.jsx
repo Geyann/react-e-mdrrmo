@@ -19,13 +19,13 @@ export default function Guest() {
             
             <div className="flex flex-col sm:flex-row gap-4 justify-center">
               <Link 
-                to="/guest/hazardmap" 
+                to="/hazardmap" 
                 className="inline-flex items-center gap-2 px-10 py-3 bg-purple-600 text-white rounded-lg font-medium hover:bg-purple-800 transition-all shadow-lg hover:shadow-purple-200"
               >
                 <Map className="w-5 h-5" /> View Hazard Map
               </Link>
               <Link 
-                to="/guest/yearly-incident-trends" 
+                to="/yearly-incident-trends" 
                 className="inline-flex items-center gap-2 px-10 py-3 bg-slate-600 text-white rounded-lg font-medium hover:bg-slate-800 transition-all shadow-lg hover:shadow-slate-200"
               >
                 <TrendingUp className="w-5 h-5" /> Yearly Incident Trends
