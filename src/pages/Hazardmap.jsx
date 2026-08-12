@@ -6,7 +6,6 @@ import { supabase } from "../createClient";
 
 // ════════════════════════════════════════════════════════════════════════════
 //  NAIC BOUNDARY COORDINATES (lng, lat)
-// ════════════════════════════════════════════════════════════════════════════
 const naicBoundaryRaw = [
   [120.676693, 14.346669], [120.683441, 14.335786], [120.723202, 14.313171],
   [120.726786, 14.310712], [120.733770, 14.306325], [120.736533, 14.303019],
@@ -180,28 +179,38 @@ const naicBoundaryRaw = [
   [120.780961, 14.348087], [120.744502, 14.377321], [120.708761, 14.406043],
   [120.708354, 14.403861], [120.687116, 14.363579], [120.686765, 14.362958],
 ];
+// ════════════════════════════════════════════════════════════════════════════
+
 
 // ════════════════════════════════════════════════════════════════════════════
 //  CATEGORY ICONS & COLORS
+//  Keys are lowercased versions of the HazardReport form options:
+//  physical | chemical/biological | electrical | procedural/safety practices | natural disaster
 // ════════════════════════════════════════════════════════════════════════════
 const CATEGORY_CONFIG = {
-  'flood':             { label: 'Flood' },
-  'fire':              { label: 'Fire' },
-  'earthquake':        { label: 'Earthquake' },
-  'landslide':         { label: 'Landslide' },
-  'typhoon':           { label: 'Typhoon' },
-  'volcanic':          { label: 'Volcanic' },
-  'industrial':        { label: 'Industrial' },
-  'traffic':           { label: 'Traffic' },
-  'health':            { label: 'Health' },
-  'infrastructure':    { label: 'Infrastructure' },
-  'others':            { label: 'Others' },
+  'physical': {
+    label: 'Physical',
+  },
+  'chemical/biological': {
+    label: 'Chemical / Biological',
+  },
+  'electrical': {
+    label: 'Electrical',
+    
+  },
+  'procedural/safety practices': {
+    label: 'Procedural / Safety',
+  },
+  'natural disaster': {
+    label: 'Natural Disaster',
+  },
 };
 
 const CATEGORY_LIST = Object.entries(CATEGORY_CONFIG).map(([key, val]) => ({
   key,
   ...val,
 }));
+
 // ════════════════════════════════════════════════════════════════════════════
 //  CUSTOM CANVAS HEATMAP LAYER — Properly anchored to map
 // ════════════════════════════════════════════════════════════════════════════
@@ -264,11 +273,9 @@ const SimpleHeatLayer = ({ points, radius = 8, blur = 6, maxIntensity = 1.0 }) =
         canvas.style.left = '0';
         canvas.style.zIndex = '400';
 
-        // ════════════════════════════════════════════════════════════════
-        // FIX: Set willReadFrequently on the 2D context BEFORE simpleheat
-        // uses it. simpleheat calls getImageData internally, and this
-        // attribute tells the browser to optimize for repeated readback.
-        // ════════════════════════════════════════════════════════════════
+        // FIX: Set willReadFrequently on the 2D context BEFORE simpleheat uses it.
+        // simpleheat calls getImageData internally, and this attribute tells the
+        // browser to optimize for repeated readback.
         const ctx = canvas.getContext('2d', { willReadFrequently: true });
 
         canvasRef.current = canvas;
@@ -367,7 +374,8 @@ const CategoryFilter = ({ categories, selected, onChange, uniqueCounts }) => {
   const [isOpen, setIsOpen] = useState(false);
 
   return (
-    <div className="relative ">
+    // FIX: z-[1000] so the dropdown always stacks above the map area
+    <div className="relative z-[1000]">
       <button
         onClick={() => setIsOpen(!isOpen)}
         className="flex items-center gap-2 px-3 py-1.5 bg-purple-600 hover:bg-purple-600/80 border border-purple-600/60 rounded-lg text-[10px] font-bold uppercase tracking-wider text-slate-100 transition"
@@ -385,7 +393,8 @@ const CategoryFilter = ({ categories, selected, onChange, uniqueCounts }) => {
         <>
           <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
 
-          <div className="absolute right-0 top-full mt-1 z-1000 bg-purple-600 border border-purple-700/80 rounded-xl shadow-2xl backdrop-blur-md p-4 w-70 max-h-72 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-600/50 scrollbar-track-purple-600/50">
+          {/* FIX: z-1000 → z-[1000], w-70 → w-72 */}
+          <div className="absolute right-0 top-full mt-1 z-[1000] bg-purple-600 border border-purple-700/80 rounded-xl shadow-2xl backdrop-blur-md p-4 w-72 max-h-72 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-600/50 scrollbar-track-purple-600/50">
             <div className="flex gap-2 px-3 pb-2 border-b border-purple-700/60 mb-2">
               <button
                 onClick={() => onChange(categories.map(c => c.key))}
@@ -489,7 +498,7 @@ const UserHazardMap = () => {
         setReports([]);
       } else {
         setFetchStatus(`Loaded ${data.length} reports`);
-        setReports(data);  
+        setReports(data);
       }
       setLastUpdated(new Date().toLocaleTimeString());
     } catch (err) {
@@ -564,12 +573,13 @@ const UserHazardMap = () => {
   //  RENDER
   // ═════════════════════════════════════════════════════════════════════════
   return (
-    <div className="min-h-[calc(screen-20px)] bg-slate-900 font-mono">
-      
+    // FIX: min-h-[calc(screen-20px)] → min-h-screen (invalid CSS calc before)
+    <div className="min-h-screen bg-slate-900 font-mono">
+
       {/* Header */}
       <div className="bg-slate-100 px-5 py-3 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          
+
           <div>
             <h1 className="text-lg font-bold text-gray-700 tracking-wider uppercase leading-tight">Hazard Heatmap</h1>
             <p className="text-[9px] text-slate-600 tracking-widest uppercase">NAIC Area • Pinpoint hazard locations</p>
@@ -577,7 +587,7 @@ const UserHazardMap = () => {
         </div>
 
         <div className="flex items-center gap-2 ">
-          
+
           <CategoryFilter
             categories={CATEGORY_LIST}
             selected={selectedCategories}
@@ -600,7 +610,7 @@ const UserHazardMap = () => {
 
       {/* Map Container */}
       <div className="relative h-[82vh]">
-        
+
         {/* Loading */}
         {loading && (
           <div className="absolute inset-0 z-[1000] bg-slate-900/85 flex items-center justify-center backdrop-blur-sm">
@@ -660,11 +670,7 @@ const UserHazardMap = () => {
               <span className="text-[8px] text-slate-900">NAIC Boundary</span>
             </div>
           </div>
-
-         
         </div>
-
-       
 
         {/* ─── Leaflet Map ─── */}
         <MapContainer

@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../createClient";
-import { Clock, User, AlertCircle, CheckCircle, XCircle, ArrowLeft, CalendarDays } from "lucide-react";
+import { Clock, User, AlertCircle, CheckCircle, XCircle, CalendarDays } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 
 const MyAppointments = () => {
@@ -21,39 +21,45 @@ const MyAppointments = () => {
         const currentUser = JSON.parse(storedUser);
 
         // ============================================================
-        // FIX: Query by user_id_from_auth — the auth UUID column
+        // Non-auth user ID (pending_registrations UUID)
+        // -> stored in the "userId" column (plain text, no FK)
         // ============================================================
-        // Get the auth user UUID
-        let authUserId = null;
+        const pendingUserId = currentUser.id || currentUser.user_id || null;
 
-        // Source 1: Supabase Auth session
+        // ============================================================
+        // Real auth UUID (auth.users) — ONLY from the auth session
+        // -> stored in the "user_id_from_auth" column (FK)
+        // ============================================================
         const { data: { user } } = await supabase.auth.getUser();
-        if (user?.id) {
-          authUserId = user.id;
-        }
+        const authUserId = user?.id || null;
 
-        // Source 2: localStorage currentUser id
-        if (!authUserId && currentUser.id) {
-          authUserId = currentUser.id;
-        }
-
-        // Source 3: currentUser.user_id
-        if (!authUserId && currentUser.user_id) {
-          authUserId = currentUser.user_id;
-        }
-
-        if (!authUserId) {
+        if (!pendingUserId && !authUserId) {
           setError("Unable to identify user. Please log in again.");
           setLoading(false);
           return;
         }
 
-        // Query using user_id_from_auth (the auth UUID column)
-        const { data, error } = await supabase
+        let query = supabase
           .from("appointments")
           .select("*")
-          .eq("user_id_from_auth", authUserId)
           .order("created_at", { ascending: false });
+
+        if (authUserId && pendingUserId) {
+          // User has both IDs -> match EITHER column.
+          // NOTE: "userId" is camelCase, so it must be double-quoted
+          // inside the .or() filter string.
+          query = query.or(
+            `"userId".eq.${pendingUserId},user_id_from_auth.eq.${authUserId}`
+          );
+        } else if (authUserId) {
+          // Staff/admin or auth-only user
+          query = query.eq("user_id_from_auth", authUserId);
+        } else {
+          // Pending-only user (no auth row yet)
+          query = query.eq("userId", pendingUserId);
+        }
+
+        const { data, error } = await query;
 
         if (error) {
           console.error("Supabase error:", error);
@@ -142,7 +148,7 @@ const MyAppointments = () => {
                     <div className="space-y-2">
                       <div className="flex items-center gap-2 text-sm text-gray-500">
                         <CalendarDays className="w-4 h-4" />
-                        {new Date(appt.date).toLocaleDateString("en-US", {
+                        {new Date(appt.date + "T00:00:00").toLocaleDateString("en-US", {
                           weekday: "long",
                           year: "numeric",
                           month: "long",

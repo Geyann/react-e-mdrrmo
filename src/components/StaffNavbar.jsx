@@ -44,6 +44,7 @@ export default function StaffNavbar() {
         <nav className={`${isOpen ? 'flex' : 'hidden'} absolute top-full left-0 w-full flex-col items-center gap-2 bg-white/95 p-6 lg:static lg:flex lg:w-auto lg:flex-row lg:bg-transparent lg:p-0`}>
           <NavLink to="/staff/borrow" onClick={() => setIsOpen(false)}>Borrow Vehicle</NavLink>
           <NavLink to="/staff/checkup" onClick={() => setIsOpen(false)}>OPD Check Up Form</NavLink>
+          <NavLink to="/staff/checkupqueue" onClick={() => setIsOpen(false)}>OPD Check Up Queue</NavLink>
           <NavLink to="/staff/inventory" onClick={() => setIsOpen(false)}>Inventory Management</NavLink>
           <NavLink to="/staff/borrower-slip" onClick={() => setIsOpen(false)}>Borrower Slip</NavLink>
           <NavLink to="/staff/settings" onClick={() => setIsOpen(false)}>Settings</NavLink>

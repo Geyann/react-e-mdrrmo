@@ -33,10 +33,10 @@ const AppointmentForm = () => {
         if (storedUser) {
           const parsedUser = JSON.parse(storedUser);
           setCurrentUser(parsedUser);
-          
-          const fullName = parsedUser.full_name || 
+
+          const fullName = parsedUser.full_name ||
             `${parsedUser.first_name || ''} ${parsedUser.last_name || ''}`.trim();
-          
+
           if (fullName) {
             setFormData(prev => ({ ...prev, fullName }));
           }
@@ -47,7 +47,7 @@ const AppointmentForm = () => {
         const { data: { user } } = await supabase.auth.getUser();
         if (user) {
           setCurrentUser(user);
-          
+
           const { data: profile } = await supabase
             .from("pending_registrations")
             .select("first_name, last_name")
@@ -163,6 +163,47 @@ const AppointmentForm = () => {
     setSelectedDateBookings(bookingsPerDate[date] || 0);
   };
 
+  // ============================================================
+  // Build a full account snapshot from profiles + pending_registrations
+  // ============================================================
+  const getAccountSnapshot = async (authUserId, userEmail) => {
+    const snapshot = {};
+
+    // 1. profiles — post-approval account data
+    const profileFields =
+      "email, first_name, middle_name, last_name, age, birthdate, address, mobile_number, username, role, is_active";
+
+    if (authUserId) {
+      const { data } = await supabase
+        .from("profiles")
+        .select(profileFields)
+        .eq("id", authUserId)
+        .maybeSingle();
+      if (data) Object.assign(snapshot, data);
+    }
+    if (!snapshot.email && userEmail) {
+      const { data } = await supabase
+        .from("profiles")
+        .select(profileFields)
+        .eq("email", userEmail)
+        .maybeSingle();
+      if (data) Object.assign(snapshot, data);
+    }
+
+    // 2. pending_registrations — pre-approval source (also has id_number / id_image_url)
+    const pendingFields =
+      "email, first_name, middle_name, last_name, age, birthdate, address, mobile_number, username, role, id_number, id_image_url, status";
+
+    if (userEmail || authUserId) {
+      let query = supabase.from("pending_registrations").select(pendingFields);
+      query = userEmail ? query.eq("email", userEmail) : query.eq("user_id", authUserId);
+      const { data } = await query.maybeSingle();
+      if (data) Object.assign(snapshot, data);
+    }
+
+    return snapshot;
+  };
+
   async function createAppointment(event) {
     event.preventDefault();
 
@@ -187,37 +228,50 @@ const AppointmentForm = () => {
       }
 
       // ============================================================
-      // FIX: Get the auth UUID — this is critical for tracking
+      // AUTH UUID — ONLY from the real Supabase auth session.
+      // Never from localStorage: currentUser.id / currentUser.user_id
+      // are pending_registrations UUIDs, NOT auth.users UUIDs, and
+      // putting them in user_id_from_auth violates the FK (409).
       // ============================================================
-      // Try to get the auth UUID (user_id_from_auth) from multiple sources
-      let authUserId = null;
-
-      // Source 1: Supabase Auth session
       const { data: { user } } = await supabase.auth.getUser();
-      if (user?.id) {
-        authUserId = user.id;
-      }
+      const authUserId = user?.id ?? null;
 
-      // Source 2: localStorage currentUser might have an id that's the auth UUID
-      if (!authUserId && currentUser.id) {
-        authUserId = currentUser.id;
-      }
+      // ============================================================
+      // NON-AUTH USER ID — pending_registrations / localStorage UUID
+      // Goes into "userId" (plain text column, no FK constraint).
+      // ============================================================
+      let pendingUserId = null;
+      if (currentUser?.id) pendingUserId = currentUser.id;
+      else if (currentUser?.user_id) pendingUserId = currentUser.user_id;
 
-      // Source 3: currentUser.user_id
-      if (!authUserId && currentUser.user_id) {
-        authUserId = currentUser.user_id;
-      }
+      // Full account snapshot from profiles + pending_registrations
+      const account = await getAccountSnapshot(
+        authUserId,
+        user?.email || currentUser?.email
+      );
 
-      // Build the insert object
       const appointmentData = {
         fullName: formData.fullName,
         purpose: formData.purpose,
         date: formData.date,
         time: formData.time,
         reason: formData.reason,
-        userId: authUserId,  // Keep this for backwards compatibility
-        user_id_from_auth: authUserId,  // NEW: Store the auth UUID for tracking
-        user_id: authUserId,  // Also store in user_id (text) for good measure
+        userId: pendingUserId,               // non-auth ID (text, no FK)
+        user_id_from_auth: authUserId,       // auth UUID (FK to auth.users) or null
+        email: account.email ?? null,
+        first_name: account.first_name ?? null,
+        middle_name: account.middle_name ?? null,
+        last_name: account.last_name ?? null,
+        age: account.age ?? null,
+        birthdate: account.birthdate ?? null,
+        address: account.address ?? null,
+        mobile_number: account.mobile_number ?? null,
+        username: account.username ?? null,
+        id_number: account.id_number ?? null,
+        id_image_url: account.id_image_url ?? null,
+        account_role: account.role ?? null,
+        account_status: account.status ?? null,
+        is_active: account.is_active ?? null,
       };
 
       console.log("Inserting appointment:", appointmentData);
@@ -343,7 +397,7 @@ const AppointmentForm = () => {
         className="max-w-5xl mx-auto bg-white p-8 md:p-10 rounded-b-3xl shadow-xl border border-gray-200"
       >
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">
-          
+
           {/* Left Column - Form Fields */}
           <div className="flex flex-col gap-6">
             {/* User Info Display */}

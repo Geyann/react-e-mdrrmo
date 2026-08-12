@@ -16,13 +16,39 @@ const CheckUp = () => {
     setCheckUp((prev) => ({ ...prev, [name]: value }));
   }
 
+  // Works for BOTH login paths: real Supabase Auth AND legacy
+  // localStorage sessions written by LoginPage (pending_registrations users)
+  async function getCurrentUserId() {
+    // Path 1: real Supabase Auth session
+    const { data: { user }, error } = await supabase.auth.getUser();
+    if (!error && user) return user.id;
+
+    // Path 2: legacy localStorage session
+    try {
+      const raw = localStorage.getItem('currentUser');
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        return parsed.user_id || parsed.id || null;
+      }
+    } catch {}
+    return null;
+  }
+
   async function handleSubmit(event) {
     event.preventDefault();
+
+    const userId = await getCurrentUserId();
+    if (!userId) {
+      alert("You must be logged in to submit a check-up request.");
+      return;
+    }
+
     const finalEscort = checkUp.escort === "other" ? checkUp.specificVehicle : checkUp.escort;
 
     const { error } = await supabase
       .from("outPatientCheckUp")
       .insert([{
+        userId,                              // <-- logged-in user's ID
         patientName: checkUp.patientName,
         location: checkUp.location,
         hospitalName: checkUp.hospitalName,
@@ -36,6 +62,7 @@ const CheckUp = () => {
 
     if (error) {
       console.error("Error:", error);
+      alert("Failed to submit: " + error.message);
     } else {
       alert("Submitted successfully!");
       setCheckUp({
@@ -48,24 +75,20 @@ const CheckUp = () => {
 
   return (
     <div className="min-h-screen pt-10">
-   
-
-       <div className="bg-gradient-to-r from-blue-600 to-purple-600 max-w-2xl mx-auto bg-white rounded-t-4xl shadow-xl border border-b-transparent border-gray-100">
+      <div className="bg-gradient-to-r from-blue-600 to-purple-600 max-w-2xl mx-auto bg-white rounded-t-4xl shadow-xl border border-b-transparent border-gray-100">
         <div className="flex flex-col items-center mb-3 pt-5">
-        <HeartPlus className='h-15 w-auto text-white'/>
-            <h1 className="text-4xl font-bold text-white">Out Patient Check Up</h1>
+          <HeartPlus className='h-15 w-auto text-white'/>
+          <h1 className="text-4xl font-bold text-white">Out Patient Check Up</h1>
           <p className="text-white text-sm text-center">
             Fields marked <span className="text-red-500">*</span> are required for assessment.
           </p>
         </div>
-        </div>
-     
+      </div>
+
       <form
         onSubmit={handleSubmit}
         className="max-w-2xl mx-auto bg-white px-10 pb-10 pt-5 rounded-b-3xl shadow-xl border border-gray-100"
       >
-        
-
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           {[
             { label: "Patient Name", name: "patientName" },
@@ -75,7 +98,7 @@ const CheckUp = () => {
           ].map((field) => (
             <div key={field.name} className="flex flex-col gap-1.5 md:col-span-2">
               <label className="text-sm font-medium text-gray-700">{field.label} <span className="text-red-500">*</span></label>
-              <input name={field.name} value={(checkUp )[field.name]} onChange={handleChange} className="p-3 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-500" required />
+              <input name={field.name} value={(checkUp)[field.name]} onChange={handleChange} className="p-3 border border-gray-300 rounded-xl outline-none focus:ring-2 focus:ring-blue-500" required />
             </div>
           ))}
 
@@ -117,7 +140,6 @@ const CheckUp = () => {
         </button>
       </form>
     </div>
-    
   );
 };
 

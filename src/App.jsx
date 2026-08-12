@@ -37,6 +37,7 @@ import StaffHome from './pages/StaffHome'
 import StaffInventory from './pages/StaffInventory'
 import DynamicNavbar from './components/dynamicNavbar'
 import EditProfile from './pages/editProfile'
+import CheckUpQueue from './pages/StaffCheckUpQueue'
 
 function App() {
   const location = useLocation();
@@ -136,6 +137,7 @@ function App() {
           <Route path="/staff/dashboard" element={<ProtectedRoute staffOnly={true}><StaffHome /></ProtectedRoute>} />
           <Route path="/staff/borrow" element={<ProtectedRoute staffOnly={true}><Borrow /></ProtectedRoute>} />
           <Route path="/staff/checkup" element={<ProtectedRoute staffOnly={true}><CheckUp /></ProtectedRoute>} />
+          <Route path="/staff/checkupqueue" element={<ProtectedRoute staffOnly={true}><CheckUpQueue /></ProtectedRoute>} />
           <Route path="/staff/inventory" element={<ProtectedRoute staffOnly={true}><StaffInventory /></ProtectedRoute>} />
           <Route path="/staff/borrower-slip" element={<ProtectedRoute staffOnly={true}><StaffHome /></ProtectedRoute>} />
           <Route path="/staff/settings" element={<ProtectedRoute staffOnly={true}><Settings /></ProtectedRoute>} />
