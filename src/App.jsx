@@ -35,6 +35,7 @@ import AdminLoginRedirect from './components/AdminLoginRedirect'
 import StaffNavbar from './components/StaffNavbar'
 import StaffHome from './pages/StaffHome'
 import StaffInventory from './pages/StaffInventory'
+import AdminInventory from './pages/AdminInventory'
 import DynamicNavbar from './components/dynamicNavbar'
 import EditProfile from './pages/editProfile'
 import CheckUpQueue from './pages/StaffCheckUpQueue'
@@ -123,6 +124,7 @@ function App() {
           <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
           <Route path="/profile" element={<Profile />} />
           <Route path="/yearly-incident-trends" element={<ProtectedRoute><MonthlyIncidentTrends /></ProtectedRoute>} />
+          
 
           {/* ===== PROTECTED ADMIN ROUTES ===== */}
           <Route path="/admin/dashboard" element={<ProtectedRoute adminOnly={true}><Admin /></ProtectedRoute>} />
@@ -132,6 +134,7 @@ function App() {
           <Route path="/admin/borrow" element={<ProtectedRoute adminOnly={true}><BorrowedVehicles /></ProtectedRoute>} />
           <Route path="/admin/appointment" element={<ProtectedRoute adminOnly={true}><AdminAppointmentDashboard /></ProtectedRoute>} />
           <Route path="/admin/checkup" element={<ProtectedRoute adminOnly={true}><CheckUpTable /></ProtectedRoute>} />
+          <Route path="/admin/inventory" element={<ProtectedRoute adminOnly={true}><AdminInventory /></ProtectedRoute>} />
 
           {/* ===== PROTECTED STAFF ROUTES ===== */}
           <Route path="/staff/dashboard" element={<ProtectedRoute staffOnly={true}><StaffHome /></ProtectedRoute>} />

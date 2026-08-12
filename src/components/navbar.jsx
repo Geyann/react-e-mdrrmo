@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import imgLogo from '../Images/icon.png';
 import { supabase } from '../createClient';
 import { BellIcon, User2Icon } from 'lucide-react';
+import Notification from './notification';
 
 export default function Navbar() {
   const [isOpen, setIsOpen] = useState(false);
@@ -28,7 +29,7 @@ export default function Navbar() {
   );
 
   return (
-    <header className="absolute inset-x-0 top-0 z-50 w-full border-b border-gray-500 bg-gradient-to-r from-blue-600 to-purple-600 p-3">
+    <header className="absolute inset-x-0 top-0 z-50000 w-full border-b border-gray-500 bg-gradient-to-r from-blue-600 to-purple-600 p-3">
       <div className="flex items-center justify-between">
         <Link to="/home" title="Go to Home Page." className="z-50">
           <img src={imgLogo} alt="logo" className="w-16 h-12" />
@@ -71,9 +72,9 @@ export default function Navbar() {
             <span className="absolute rounded-md top-[2px] left-0 h-full w-full origin-top scale-0 bg-white opacity-0 transition-all duration-300 group-hover:scale-100 group-hover:opacity-100" />
           </button>
 
-          <Link to="/profile" title="View Profile Picture."><User2Icon className="rounded-xl text-white hover:bg-white hover:text-gray-700" /></Link>
-          <Link to="/notification" title="Notifications."><BellIcon className="rounded-xl text-white hover:bg-white hover:text-gray-700" /></Link>
-        </div>
+          <Link to="/profile" title="View Profile Picture." className="rounded-xl text-white p-2 hover:bg-white hover:text-gray-700"> <User2Icon /></Link>
+         <Notification />
+           </div>
       </div>
     </header>
   );

@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { supabase } from '../createClient';
 import {
   Siren, Search, AlertCircle, Clock, CheckCircle, XCircle,
@@ -18,12 +18,30 @@ const IncidentReported = () => {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const closeBtnRef = useRef(null);
 
   const STATUS_OPTIONS = ['Pending', 'In Progress', 'Resolved', 'Rejected'];
 
   useEffect(() => {
     fetchReports();
   }, []);
+
+  // ── Modal: lock body scroll, close on Escape, focus on open ──
+  useEffect(() => {
+    if (!selected) return;
+
+    document.body.style.overflow = 'hidden';
+    const onKey = (e) => {
+      if (e.key === 'Escape') setSelected(null);
+    };
+    window.addEventListener('keydown', onKey);
+    closeBtnRef.current?.focus();
+
+    return () => {
+      document.body.style.overflow = '';
+      window.removeEventListener('keydown', onKey);
+    };
+  }, [selected]);
 
   const fetchReports = async () => {
     setLoading(true);
@@ -145,7 +163,7 @@ const IncidentReported = () => {
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="text-center">
+        <div role="status" aria-live="polite" className="text-center">
           <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto"></div>
           <p className="mt-4 text-gray-600 font-semibold">Loading incident reports...</p>
         </div>
@@ -154,13 +172,13 @@ const IncidentReported = () => {
   }
 
   return (
-    <div className="p-6 md:p-10 bg-slate-50 min-h-screen">
+    <div className="p-4 sm:p-6 lg:p-10 bg-slate-50 min-h-screen">
       <div className="max-w-7xl mx-auto">
-        {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        {/* Header — stacks on phones */}
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4 mb-6">
           <div>
-            <h1 className="text-3xl font-black text-slate-800 flex items-center gap-3">
-              <Siren className="w-8 h-8 text-purple-600" />
+            <h1 className="text-2xl sm:text-3xl font-black text-slate-800 flex items-center gap-3">
+              <Siren className="w-7 h-7 sm:w-8 sm:h-8 text-purple-600" />
               Reported Incidents
             </h1>
             <p className="text-slate-500 mt-1">
@@ -168,8 +186,10 @@ const IncidentReported = () => {
             </p>
           </div>
           <button
+            type="button"
             onClick={fetchReports}
-            className="px-4 py-2 bg-purple-600 text-white rounded-xl font-bold hover:bg-purple-700 transition flex items-center gap-2"
+            aria-label="Refresh reports"
+            className="w-full sm:w-auto justify-center px-4 py-2.5 bg-purple-600 text-white rounded-xl font-bold hover:bg-purple-700 transition flex items-center gap-2 focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2"
           >
             <RefreshCw className="w-4 h-4" />
             Refresh
@@ -178,20 +198,20 @@ const IncidentReported = () => {
 
         {/* Success banner */}
         {success && (
-          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-xl flex items-center gap-3">
+          <div role="status" className="mb-6 p-4 bg-green-50 border border-green-200 rounded-xl flex items-center gap-3">
             <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
             <p className="text-sm font-medium text-green-700">{success}</p>
           </div>
         )}
         {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3">
+          <div role="alert" className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3">
             <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
             <p className="text-sm font-medium text-red-700">{error}</p>
           </div>
         )}
 
-        {/* Stats Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-6">
+        {/* Stats Cards — 2 cols on phones, 3 on tablet, 6 on desktop */}
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 mb-6">
           {[
             { label: 'Total Reports', value: stats.total, color: 'bg-blue-50 border-blue-200 text-blue-700', icon: Siren },
             { label: 'Pending', value: stats.pending, color: 'bg-yellow-50 border-yellow-200 text-yellow-700', icon: Clock },
@@ -200,13 +220,13 @@ const IncidentReported = () => {
             { label: 'High Priority', value: stats.high, color: 'bg-red-50 border-red-200 text-red-700', icon: ShieldAlert },
             { label: 'Rejected', value: stats.rejected, color: 'bg-slate-100 border-slate-200 text-slate-700', icon: XCircle },
           ].map((stat, i) => (
-            <div key={i} className={`p-4 rounded-xl border ${stat.color} shadow-sm`}>
+            <div key={i} className={`p-3 sm:p-4 rounded-xl border ${stat.color} shadow-sm`}>
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs font-bold opacity-70">{stat.label}</p>
-                  <p className="text-2xl font-bold mt-1">{stat.value}</p>
+                  <p className="text-xl sm:text-2xl font-bold mt-1">{stat.value}</p>
                 </div>
-                <stat.icon className="w-7 h-7 opacity-70" />
+                <stat.icon className="w-6 h-6 sm:w-7 sm:h-7 opacity-70" />
               </div>
             </div>
           ))}
@@ -216,19 +236,21 @@ const IncidentReported = () => {
         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 mb-6">
           <div className="flex flex-col sm:flex-row gap-3">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-3 w-5 h-5 text-slate-400" />
+              <Search className="absolute left-3 top-3 w-5 h-5 text-slate-400" aria-hidden="true" />
               <input
-                type="text"
+                type="search"
+                aria-label="Search reports by patient, address, incident type, or reporter"
                 placeholder="Search by patient, address, incident type, reporter..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none"
+                className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none text-base"
               />
             </div>
             <select
+              aria-label="Filter by priority"
               value={priorityFilter}
               onChange={(e) => setPriorityFilter(e.target.value)}
-              className="px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none bg-white"
+              className="px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none bg-white text-base"
             >
               <option value="all">All Priorities</option>
               <option value="Low">Low</option>
@@ -236,9 +258,10 @@ const IncidentReported = () => {
               <option value="High">High</option>
             </select>
             <select
+              aria-label="Filter by status"
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none bg-white"
+              className="px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none bg-white text-base"
             >
               <option value="all">All Status</option>
               <option value="Pending">Pending</option>
@@ -249,23 +272,81 @@ const IncidentReported = () => {
           </div>
         </div>
 
-        {/* Reports Table */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        {/* ===== MOBILE CARDS (below md) ===== */}
+        <div className="md:hidden space-y-3">
+          {filteredReports.length === 0 ? (
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-12 text-center">
+              <AlertCircle className="w-12 h-12 text-slate-400 mx-auto mb-3" />
+              <p className="text-slate-600 font-semibold">No incident reports found matching your criteria.</p>
+            </div>
+          ) : (
+            filteredReports.map((r, index) => (
+              <div key={r.reportIncidentId} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4">
+                <div className="flex items-start justify-between gap-3 mb-3">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className={`w-10 h-10 rounded-full flex items-center justify-center text-white font-bold text-sm shrink-0 ${avatarColor(r.priorityLevel)}`}>
+                      {(r.patientName?.charAt(0) || '?').toUpperCase()}
+                    </div>
+                    <div className="min-w-0">
+                      <p className="font-semibold text-slate-800 text-sm truncate">{r.patientName}</p>
+                      <p className="text-xs text-slate-400 font-mono">#{r.reportIncidentId}</p>
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-end gap-1 shrink-0">
+                    <StatusBadge status={r.status} />
+                    <PriorityBadge level={r.priorityLevel} />
+                  </div>
+                </div>
+
+                <div className="space-y-1.5 text-sm text-slate-600 mb-4">
+                  <p className="flex items-start gap-2">
+                    <MapPin className="w-4 h-4 text-slate-400 shrink-0 mt-0.5" aria-hidden="true" />
+                    <span className="min-w-0">{r.address}{r.landMark ? ` — ${r.landMark}` : ''}</span>
+                  </p>
+                  <p className="flex items-center gap-2">
+                    <Activity className="w-4 h-4 text-slate-400 shrink-0" aria-hidden="true" />
+                    {r.incidentType}
+                  </p>
+                  <p className="flex items-center gap-2">
+                    <Calendar className="w-4 h-4 text-slate-400 shrink-0" aria-hidden="true" />
+                    {r.date} {r.time}
+                  </p>
+                  <p className="flex items-center gap-2">
+                    <User className="w-4 h-4 text-slate-400 shrink-0" aria-hidden="true" />
+                    {r.profiles?.full_name || 'Unknown'}
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => openModal(r)}
+                  className="w-full flex items-center justify-center gap-2 px-4 py-3 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-sm font-bold transition focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2"
+                >
+                  <MessageSquare className="w-4 h-4" aria-hidden="true" />
+                  Analyze / Respond
+                </button>
+              </div>
+            ))
+          )}
+        </div>
+
+        {/* ===== DESKTOP TABLE (md and up) ===== */}
+        <div className="hidden md:block bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
           <div className="overflow-x-auto">
-            <table className="w-full">
+            <table className="w-full" aria-label="Reported incidents table">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50">
-                  <th className="px-4 py-4 text-left text-sm font-bold text-slate-700">#</th>
-                  <th className="px-4 py-4 text-left text-sm font-bold text-slate-700">Report ID</th>
-                  <th className="px-4 py-4 text-left text-sm font-bold text-slate-700">Patient</th>
-                  <th className="px-4 py-4 text-left text-sm font-bold text-slate-700">Address / Location</th>
-                  <th className="px-4 py-4 text-left text-sm font-bold text-slate-700">Incident Type</th>
-                  <th className="px-4 py-4 text-left text-sm font-bold text-slate-700">Priority</th>
-                  <th className="px-4 py-4 text-left text-sm font-bold text-slate-700">Date</th>
-                  <th className="px-4 py-4 text-left text-sm font-bold text-slate-700">Time</th>
-                  <th className="px-4 py-4 text-left text-sm font-bold text-slate-700">Status</th>
-                  <th className="px-4 py-4 text-left text-sm font-bold text-slate-700">Reporter</th>
-                  <th className="px-4 py-4 text-left text-sm font-bold text-slate-700">Actions</th>
+                  <th scope="col" className="px-4 py-4 text-left text-sm font-bold text-slate-700">#</th>
+                  <th scope="col" className="px-4 py-4 text-left text-sm font-bold text-slate-700">Report ID</th>
+                  <th scope="col" className="px-4 py-4 text-left text-sm font-bold text-slate-700">Patient</th>
+                  <th scope="col" className="px-4 py-4 text-left text-sm font-bold text-slate-700">Address / Location</th>
+                  <th scope="col" className="px-4 py-4 text-left text-sm font-bold text-slate-700">Incident Type</th>
+                  <th scope="col" className="px-4 py-4 text-left text-sm font-bold text-slate-700">Priority</th>
+                  <th scope="col" className="px-4 py-4 text-left text-sm font-bold text-slate-700">Date</th>
+                  <th scope="col" className="px-4 py-4 text-left text-sm font-bold text-slate-700">Time</th>
+                  <th scope="col" className="px-4 py-4 text-left text-sm font-bold text-slate-700">Status</th>
+                  <th scope="col" className="px-4 py-4 text-left text-sm font-bold text-slate-700">Reporter</th>
+                  <th scope="col" className="px-4 py-4 text-left text-sm font-bold text-slate-700">Actions</th>
                 </tr>
               </thead>
               <tbody>
@@ -310,11 +391,12 @@ const IncidentReported = () => {
                       </td>
                       <td className="px-4 py-4">
                         <button
+                          type="button"
                           onClick={() => openModal(r)}
-                          className="flex items-center gap-1 px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold transition"
+                          className="flex items-center gap-1 px-3 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-xs font-bold transition focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2"
                           title="Analyze and respond"
                         >
-                          <MessageSquare className="w-3 h-3" />
+                          <MessageSquare className="w-3 h-3" aria-hidden="true" />
                           Analyze / Respond
                         </button>
                       </td>
@@ -333,48 +415,63 @@ const IncidentReported = () => {
 
       {/* ===== ANALYZE / RESPOND MODAL ===== */}
       {selected && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={() => setSelected(null)}>
-          <div className="bg-white rounded-2xl max-w-2xl w-full max-h-[92vh] overflow-y-auto shadow-2xl" onClick={(e) => e.stopPropagation()}>
+        <div
+          className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-3 sm:p-4"
+          onClick={() => setSelected(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="modal-title"
+            className="bg-white rounded-2xl max-w-2xl w-full max-h-[92vh] overflow-y-auto shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
             {/* Modal header */}
-            <div className="flex items-center justify-between p-6 pb-4 border-b border-slate-200">
-              <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                <Siren className="w-5 h-5 text-purple-600" />
+            <div className="flex items-center justify-between p-4 sm:p-6 pb-4 border-b border-slate-200">
+              <h3 id="modal-title" className="text-lg sm:text-xl font-bold text-slate-800 flex items-center gap-2">
+                <Siren className="w-5 h-5 text-purple-600" aria-hidden="true" />
                 Report #{selected.reportIncidentId}
               </h3>
-              <button onClick={() => setSelected(null)} className="p-2 hover:bg-slate-100 rounded-lg transition">
-                <X className="w-5 h-5 text-slate-500" />
+              <button
+                type="button"
+                ref={closeBtnRef}
+                onClick={() => setSelected(null)}
+                aria-label="Close report details"
+                className="p-2 hover:bg-slate-100 rounded-lg transition focus-visible:ring-2 focus-visible:ring-purple-500"
+              >
+                <X className="w-5 h-5 text-slate-500" aria-hidden="true" />
               </button>
             </div>
 
-            <div className="p-6">
+            <div className="p-4 sm:p-6">
               {error && (
-                <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl flex items-center gap-2">
-                  <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0" />
+                <div role="alert" className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0" aria-hidden="true" />
                   <p className="text-sm text-red-700">{error}</p>
                 </div>
               )}
 
               {/* Report details */}
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-5">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
                 <div className="p-3 bg-slate-50 rounded-xl">
-                  <p className="text-xs font-bold text-slate-400 flex items-center gap-1"><User className="w-3 h-3" /> PATIENT</p>
+                  <p className="text-xs font-bold text-slate-400 flex items-center gap-1"><User className="w-3 h-3" aria-hidden="true" /> PATIENT</p>
                   <p className="font-semibold text-slate-800 mt-1">{selected.patientName}</p>
                 </div>
                 <div className="p-3 bg-slate-50 rounded-xl">
-                  <p className="text-xs font-bold text-slate-400 flex items-center gap-1"><Phone className="w-3 h-3" /> REPORTER CONTACT</p>
+                  <p className="text-xs font-bold text-slate-400 flex items-center gap-1"><Phone className="w-3 h-3" aria-hidden="true" /> REPORTER CONTACT</p>
                   <p className="font-semibold text-slate-800 mt-1">{selected.reporterContact || '—'}</p>
                 </div>
                 <div className="p-3 bg-slate-50 rounded-xl">
-                  <p className="text-xs font-bold text-slate-400 flex items-center gap-1"><MapPin className="w-3 h-3" /> ADDRESS</p>
+                  <p className="text-xs font-bold text-slate-400 flex items-center gap-1"><MapPin className="w-3 h-3" aria-hidden="true" /> ADDRESS</p>
                   <p className="font-semibold text-slate-800 mt-1">{selected.address}</p>
                   {selected.landMark && <p className="text-xs text-slate-500 mt-0.5">Landmark: {selected.landMark}</p>}
                 </div>
                 <div className="p-3 bg-slate-50 rounded-xl">
-                  <p className="text-xs font-bold text-slate-400 flex items-center gap-1"><Calendar className="w-3 h-3" /> DATE / TIME</p>
+                  <p className="text-xs font-bold text-slate-400 flex items-center gap-1"><Calendar className="w-3 h-3" aria-hidden="true" /> DATE / TIME</p>
                   <p className="font-semibold text-slate-800 mt-1">{selected.date} {selected.time}</p>
                 </div>
                 <div className="p-3 bg-slate-50 rounded-xl">
-                  <p className="text-xs font-bold text-slate-400 flex items-center gap-1"><Activity className="w-3 h-3" /> INCIDENT TYPE</p>
+                  <p className="text-xs font-bold text-slate-400 flex items-center gap-1"><Activity className="w-3 h-3" aria-hidden="true" /> INCIDENT TYPE</p>
                   <p className="font-semibold text-slate-800 mt-1">{selected.incidentType}</p>
                 </div>
                 <div className="p-3 bg-slate-50 rounded-xl flex items-center justify-between">
@@ -405,10 +502,10 @@ const IncidentReported = () => {
               {/* Incident picture */}
               {selected.pictureOfIncident && (
                 <div className="mb-5">
-                  <p className="text-xs font-bold text-slate-400 flex items-center gap-1 mb-2"><Camera className="w-3 h-3" /> INCIDENT PICTURE</p>
+                  <p className="text-xs font-bold text-slate-400 flex items-center gap-1 mb-2"><Camera className="w-3 h-3" aria-hidden="true" /> INCIDENT PICTURE</p>
                   <img
                     src={selected.pictureOfIncident}
-                    alt="Incident"
+                    alt={`Incident photo reported by ${selected.profiles?.full_name || 'reporter'}`}
                     className="rounded-xl border border-slate-200 max-h-64 w-full object-cover"
                   />
                 </div>
@@ -417,16 +514,17 @@ const IncidentReported = () => {
               {/* Admin response form */}
               <form onSubmit={handleSave} className="border-t border-slate-200 pt-5">
                 <p className="text-sm font-bold text-slate-600 mb-3 flex items-center gap-2">
-                  <MessageSquare className="w-4 h-4 text-purple-600" />
+                  <MessageSquare className="w-4 h-4 text-purple-600" aria-hidden="true" />
                   Admin Response
                 </p>
 
                 <div className="mb-4">
-                  <label className="text-sm font-bold text-slate-700">Status</label>
+                  <label htmlFor="admin-status" className="text-sm font-bold text-slate-700">Status</label>
                   <select
+                    id="admin-status"
                     value={newStatus}
                     onChange={(e) => setNewStatus(e.target.value)}
-                    className="w-full p-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none mt-1 bg-white"
+                    className="w-full p-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none mt-1 bg-white text-base"
                   >
                     {STATUS_OPTIONS.map((s) => (
                       <option key={s} value={s}>{s}</option>
@@ -435,32 +533,33 @@ const IncidentReported = () => {
                 </div>
 
                 <div className="mb-5">
-                  <label className="text-sm font-bold text-slate-700">Response / Remarks</label>
+                  <label htmlFor="admin-response" className="text-sm font-bold text-slate-700">Response / Remarks</label>
                   <textarea
+                    id="admin-response"
                     value={adminResponse}
                     onChange={(e) => setAdminResponse(e.target.value)}
                     rows={4}
                     placeholder="e.g. Ambulance dispatched to location, ETA 10 minutes..."
-                    className="w-full p-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none mt-1 resize-y"
+                    className="w-full p-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none mt-1 resize-y text-base"
                   />
                 </div>
 
-                <div className="flex gap-3">
+                <div className="flex flex-col sm:flex-row gap-3">
                   <button
                     type="submit"
                     disabled={saving}
-                    className="flex-1 px-4 py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white rounded-xl font-bold transition flex items-center justify-center gap-2"
+                    className="flex-1 px-4 py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white rounded-xl font-bold transition flex items-center justify-center gap-2 focus-visible:ring-2 focus-visible:ring-purple-500 focus-visible:ring-offset-2"
                   >
                     {saving ? (
-                      <><Loader2 className="w-4 h-4 animate-spin" /> Saving...</>
+                      <><Loader2 className="w-4 h-4 animate-spin" aria-hidden="true" /> Saving...</>
                     ) : (
-                      <><Save className="w-4 h-4" /> Save Response</>
+                      <><Save className="w-4 h-4" aria-hidden="true" /> Save Response</>
                     )}
                   </button>
                   <button
                     type="button"
                     onClick={() => setSelected(null)}
-                    className="px-6 py-3 border border-slate-300 rounded-xl hover:bg-slate-50 font-bold transition"
+                    className="px-6 py-3 border border-slate-300 rounded-xl hover:bg-slate-50 font-bold transition focus-visible:ring-2 focus-visible:ring-slate-400"
                   >
                     Cancel
                   </button>

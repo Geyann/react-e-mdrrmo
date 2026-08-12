@@ -1,8 +1,29 @@
 import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
-import { MapContainer, TileLayer, Polygon, useMap } from 'react-leaflet';
+import { MapContainer, TileLayer, Polygon, CircleMarker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { supabase } from "../createClient";
+
+// ════════════════════════════════════════════════════════════════════════════
+//  MOBILE: small helper hook — true below `breakpoint` px, updates live on resize/rotate
+// ════════════════════════════════════════════════════════════════════════════
+const useIsMobile = (breakpoint = 768) => {
+  const [isMobile, setIsMobile] = useState(() =>
+    typeof window !== 'undefined'
+      ? window.matchMedia(`(max-width: ${breakpoint}px)`).matches
+      : false
+  );
+
+  useEffect(() => {
+    if (typeof window === 'undefined') return;
+    const mq = window.matchMedia(`(max-width: ${breakpoint}px)`);
+    const handler = e => setIsMobile(e.matches);
+    mq.addEventListener('change', handler);
+    return () => mq.removeEventListener('change', handler);
+  }, [breakpoint]);
+
+  return isMobile;
+};
 
 // ════════════════════════════════════════════════════════════════════════════
 //  NAIC BOUNDARY COORDINATES (lng, lat)
@@ -186,23 +207,34 @@ const naicBoundaryRaw = [
 //  CATEGORY ICONS & COLORS
 //  Keys are lowercased versions of the HazardReport form options:
 //  physical | chemical/biological | electrical | procedural/safety practices | natural disaster
+//  FIX: color/icon were referenced in CategoryFilter but never defined here —
+//  the filter dropdown was rendering blank swatches and no icons.
 // ════════════════════════════════════════════════════════════════════════════
 const CATEGORY_CONFIG = {
   'physical': {
     label: 'Physical',
+    color: '#eab308',
+    icon: '⚠️',
   },
   'chemical/biological': {
     label: 'Chemical / Biological',
+    color: '#22c55e',
+    icon: '🧪',
   },
   'electrical': {
     label: 'Electrical',
-    
+    color: '#dc2626',
+    icon: '⚡',
   },
   'procedural/safety practices': {
     label: 'Procedural / Safety',
+    color: '#a855f7',
+    icon: '📋',
   },
   'natural disaster': {
     label: 'Natural Disaster',
+    color: '#ea580c',
+    icon: '🌪️',
   },
 };
 
@@ -231,7 +263,6 @@ const SimpleHeatLayer = ({ points, radius = 8, blur = 6, maxIntensity = 1.0 }) =
     if (!heatRef.current || !canvasRef.current || !map || !points || points.length === 0) return;
 
     try {
-      // Project all points from lat/lng to pixel coords relative to the map container
       const data = points.map(p => {
         const pt = map.latLngToContainerPoint(L.latLng(p.lat, p.lng));
         return [Math.round(pt.x), Math.round(pt.y), p.intensity];
@@ -260,45 +291,35 @@ const SimpleHeatLayer = ({ points, radius = 8, blur = 6, maxIntensity = 1.0 }) =
 
         const size = map.getSize();
 
-        // Create canvas element
         const canvas = L.DomUtil.create('canvas', 'leaflet-heatmap-layer');
         canvas.width = size.x;
         canvas.height = size.y;
         canvas.style.width = size.x + 'px';
         canvas.style.height = size.y + 'px';
-        canvas.style.pointerEvents = 'none';
+        canvas.style.pointerEvents = 'none'; // MOBILE: never block touch/click on markers
         canvas.style.position = 'absolute';
-        // CRITICAL: Position at top-left of the map container
         canvas.style.top = '0';
         canvas.style.left = '0';
-        canvas.style.zIndex = '400';
+        // MOBILE: 390 keeps the heat below Leaflet's overlay/marker pane (400) so
+        // tappable CircleMarkers always stay visible & clickable on top of the heat
+        canvas.style.zIndex = '390';
 
-        // FIX: Set willReadFrequently on the 2D context BEFORE simpleheat uses it.
-        // simpleheat calls getImageData internally, and this attribute tells the
-        // browser to optimize for repeated readback.
-        const ctx = canvas.getContext('2d', { willReadFrequently: true });
+        canvas.getContext('2d', { willReadFrequently: true });
 
         canvasRef.current = canvas;
 
-        // Add canvas to the map container directly (not overlay pane)
-        // This avoids Leaflet's transform system which was causing the disappearing
         const mapContainer = map.getContainer();
         mapContainer.style.position = 'relative';
         mapContainer.appendChild(canvas);
 
-        // Initialize simpleheat with the pre-configured canvas
         const heat = new SimpleHeatConstructor(canvas);
         heat.gradient(gradient);
         heat.radius(radius, blur);
         heat.max(maxIntensity);
         heatRef.current = heat;
 
-        // Draw initial data
         redraw();
 
-        // ── Event Handlers ──
-
-        // Resize handler
         const handleResize = () => {
           if (!canvasRef.current || !heatRef.current) return;
           const newSize = map.getSize();
@@ -306,35 +327,20 @@ const SimpleHeatLayer = ({ points, radius = 8, blur = 6, maxIntensity = 1.0 }) =
           canvasRef.current.height = newSize.y;
           canvasRef.current.style.width = newSize.x + 'px';
           canvasRef.current.style.height = newSize.y + 'px';
-          // Re-get context with willReadFrequently after resize
           canvasRef.current.getContext('2d', { willReadFrequently: true });
           redraw();
         };
 
-        // Redraw on any map movement (pan/zoom)
-        // latLngToContainerPoint changes when the map moves, so we must redraw
-        const handleMoveEnd = () => {
-          redraw();
-        };
+        const handleMoveEnd = () => redraw();
+        const handleMove = () => redraw();
+        const handleZoom = () => redraw();
 
-        // While actively panning, redraw continuously
-        const handleMove = () => {
-          redraw();
-        };
-
-        // While zooming, redraw continuously
-        const handleZoom = () => {
-          redraw();
-        };
-
-        // Bind events
         map.on('resize', handleResize);
         map.on('moveend', handleMoveEnd);
         map.on('move', handleMove);
         map.on('zoom', handleZoom);
         map.on('zoomend', handleMoveEnd);
 
-        // Store cleanup
         heatRef.current._cleanup = () => {
           map.off('resize', handleResize);
           map.off('moveend', handleMoveEnd);
@@ -342,8 +348,6 @@ const SimpleHeatLayer = ({ points, radius = 8, blur = 6, maxIntensity = 1.0 }) =
           map.off('zoom', handleZoom);
           map.off('zoomend', handleMoveEnd);
         };
-
-        console.log('✅ SimpleHeat rendered:', points.length, 'points');
       } catch (err) {
         console.error('❌ SimpleHeat init error:', err);
       }
@@ -372,13 +376,16 @@ const SimpleHeatLayer = ({ points, radius = 8, blur = 6, maxIntensity = 1.0 }) =
 // ════════════════════════════════════════════════════════════════════════════
 const CategoryFilter = ({ categories, selected, onChange, uniqueCounts }) => {
   const [isOpen, setIsOpen] = useState(false);
+  const isMobile = useIsMobile(); // MOBILE: switches dropdown to a centered sheet
 
   return (
-    // FIX: z-[1000] so the dropdown always stacks above the map area
     <div className="relative z-[1000]">
       <button
         onClick={() => setIsOpen(!isOpen)}
-        className="flex items-center gap-2 px-3 py-1.5 bg-purple-600 hover:bg-purple-600/80 border border-purple-600/60 rounded-lg text-[10px] font-bold uppercase tracking-wider text-slate-100 transition"
+        aria-haspopup="menu"
+        aria-expanded={isOpen}
+        // MOBILE: min-h-11 = 44px touch target, touch-manipulation kills double-tap zoom delay
+        className="flex items-center gap-2 px-3 py-1.5 min-h-11 bg-purple-600 hover:bg-purple-600/80 border border-purple-600/60 rounded-lg text-[10px] font-bold uppercase tracking-wider text-slate-100 transition select-none touch-manipulation active:scale-95"
       >
         <svg className="w-3.5 h-3.5 text-slate-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/>
@@ -393,18 +400,20 @@ const CategoryFilter = ({ categories, selected, onChange, uniqueCounts }) => {
         <>
           <div className="fixed inset-0 z-40" onClick={() => setIsOpen(false)} />
 
-          {/* FIX: z-1000 → z-[1000], w-70 → w-72 */}
-          <div className="absolute right-0 top-full mt-1 z-[1000] bg-purple-600 border border-purple-700/80 rounded-xl shadow-2xl backdrop-blur-md p-4 w-72 max-h-72 overflow-y-auto scrollbar-thin scrollbar-thumb-slate-600/50 scrollbar-track-purple-600/50">
+          {/* MOBILE: on phones the menu becomes a centered bottom-sheet-style panel
+              (fixed + w-[92vw] + max-h-[75vh]) so it never overflows the screen edge;
+              on sm+ it reverts to the anchored dropdown under the button. */}
+          <div className="fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 z-[1000] bg-purple-600 border border-purple-700/80 rounded-xl shadow-2xl backdrop-blur-md p-4 w-[92vw] max-w-72 max-h-[75vh] overflow-y-auto scrollbar-thin scrollbar-thumb-slate-600/50 scrollbar-track-purple-600/50 sm:absolute sm:left-auto sm:right-0 sm:top-full sm:translate-x-0 sm:translate-y-0 sm:mt-1 sm:w-72 sm:max-h-72">
             <div className="flex gap-2 px-3 pb-2 border-b border-purple-700/60 mb-2">
               <button
                 onClick={() => onChange(categories.map(c => c.key))}
-                className="flex-1 text-[9px] uppercase font-bold text-slate-400 hover:text-white bg-slate-700/50 hover:bg-slate-600/50 rounded-md py-1 transition"
+                className="flex-1 text-[9px] uppercase font-bold text-slate-400 hover:text-white bg-slate-700/50 hover:bg-slate-600/50 rounded-md py-2 transition select-none touch-manipulation"
               >
                 All
               </button>
               <button
                 onClick={() => onChange([])}
-                className="flex-1 text-[9px] uppercase font-bold text-slate-400 hover:text-white bg-slate-700/50 hover:bg-slate-600/50 rounded-md py-1 transition"
+                className="flex-1 text-[9px] uppercase font-bold text-slate-400 hover:text-white bg-slate-700/50 hover:bg-slate-600/50 rounded-md py-2 transition select-none touch-manipulation"
               >
                 None
               </button>
@@ -423,7 +432,7 @@ const CategoryFilter = ({ categories, selected, onChange, uniqueCounts }) => {
                       onChange([...selected, cat.key]);
                     }
                   }}
-                  className={`w-full flex items-center gap-2 px-2.5 py-1.5 rounded-lg text-[11px] transition mb-0.5 ${
+                  className={`w-full flex items-center gap-2 px-2.5 py-2 rounded-lg text-[11px] transition mb-0.5 select-none touch-manipulation ${
                     isSelected
                       ? 'bg-slate-700/80 text-white'
                       : 'text-slate-400 hover:bg-slate-700/40 hover:text-slate-200'
@@ -459,6 +468,13 @@ const CategoryFilter = ({ categories, selected, onChange, uniqueCounts }) => {
 // ════════════════════════════════════════════════════════════════════════════
 //  MAIN USER HAZARD MAP
 // ════════════════════════════════════════════════════════════════════════════
+const RISK_MARKER_COLOR = {
+  critical: '#dc2626',
+  high: '#ea580c',
+  medium: '#eab308',
+  low: '#22c55e',
+};
+
 const UserHazardMap = () => {
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -466,22 +482,29 @@ const UserHazardMap = () => {
   const [isRealistic, setIsRealistic] = useState(false);
   const [lastUpdated, setLastUpdated] = useState(null);
   const [fetchStatus, setFetchStatus] = useState('');
+  // FIX: toggle so markers (with popups) can be shown alongside/instead of the heat layer
+  const [showMarkers, setShowMarkers] = useState(true);
 
-  // ── Category filter state ──
+  // MOBILE: live breakpoint + legend collapsed by default on phones so it
+  // doesn't cover half the map
+  const isMobile = useIsMobile();
+  const [legendOpen, setLegendOpen] = useState(() => !isMobile);
+
   const [selectedCategories, setSelectedCategories] = useState(CATEGORY_LIST.map(c => c.key));
 
-  // ── Boundary ──
   const flippedBoundary = useMemo(() => naicBoundaryRaw.map(c => [c[1], c[0]]), []);
   const bounds = useMemo(() => L.latLngBounds(flippedBoundary), [flippedBoundary]);
   const worldBounds = [[-90, -180], [-90, 180], [90, 180], [90, -180]];
   const maskCoords = [worldBounds, flippedBoundary];
 
-  // ── Fetch approved reports ──
   const fetchApprovedReports = useCallback(async () => {
     setLoading(true);
     setError(null);
     setFetchStatus('Fetching reports...');
     try {
+      // NOTE: querying both `status` and `report_status` because the table appears to
+      // have two overlapping status columns. Confirm with AdminApproval.jsx which one
+      // it actually writes to, then drop the `.or()` and query a single column.
       const { data, error: supabaseError } = await supabase
         .from('hazard_reports')
         .select('id, latitude, longitude, risk_level, hazard_category, hazard_description, address, reporter_name, date_observed, created_at')
@@ -513,7 +536,6 @@ const UserHazardMap = () => {
     fetchApprovedReports();
   }, [fetchApprovedReports]);
 
-  // ── Unique category counts (from all reports) ──
   const uniqueCategoryCounts = useMemo(() => {
     const counts = {};
     reports.forEach(r => {
@@ -523,7 +545,6 @@ const UserHazardMap = () => {
     return counts;
   }, [reports]);
 
-  // ── Filtered reports ──
   const filteredReports = useMemo(() => {
     if (selectedCategories.length === 0) return [];
     if (selectedCategories.length === CATEGORY_LIST.length) return reports;
@@ -533,7 +554,6 @@ const UserHazardMap = () => {
     });
   }, [reports, selectedCategories]);
 
-  // ── Stats ──
   const stats = useMemo(() => ({
     total: filteredReports.length,
     critical: filteredReports.filter(r => r.risk_level?.toLowerCase() === 'critical').length,
@@ -542,7 +562,6 @@ const UserHazardMap = () => {
     low: filteredReports.filter(r => r.risk_level?.toLowerCase() === 'low').length,
   }), [filteredReports]);
 
-  // ── Heatmap points — each report gets its own intensity based on risk_level ──
   const heatPoints = useMemo(() => {
     return filteredReports.map(r => ({
       lat: parseFloat(r.latitude),
@@ -556,7 +575,6 @@ const UserHazardMap = () => {
     }));
   }, [filteredReports]);
 
-  // ── Cluster info ──
   const clusterInfo = useMemo(() => {
     if (filteredReports.length === 0) return { maxCluster: 0, totalClusters: 0 };
     const gridSize = 0.002;
@@ -573,21 +591,23 @@ const UserHazardMap = () => {
   //  RENDER
   // ═════════════════════════════════════════════════════════════════════════
   return (
-    // FIX: min-h-[calc(screen-20px)] → min-h-screen (invalid CSS calc before)
-    <div className="min-h-screen bg-slate-900 font-mono">
+    // MOBILE: flex-col + 100dvh (fallback 100vh via h-screen) makes the map fill
+    // the real viewport on phones instead of fighting the URL bar.
+    <div
+      className="min-h-screen h-screen flex flex-col bg-slate-900 font-mono"
+      style={{ height: '100dvh' }}
+    >
 
-      {/* Header */}
-      <div className="bg-slate-100 px-5 py-3 flex items-center justify-between">
+      {/* Header — MOBILE: wraps onto a second row instead of overflowing */}
+      <div className="bg-slate-100 px-4 sm:px-5 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <div className="flex items-center gap-3">
-
           <div>
             <h1 className="text-lg font-bold text-gray-700 tracking-wider uppercase leading-tight">Hazard Heatmap</h1>
             <p className="text-[9px] text-slate-600 tracking-widest uppercase">NAIC Area • Pinpoint hazard locations</p>
           </div>
         </div>
 
-        <div className="flex items-center gap-2 ">
-
+        <div className="flex flex-wrap items-center gap-1.5 sm:gap-2">
           <CategoryFilter
             categories={CATEGORY_LIST}
             selected={selectedCategories}
@@ -595,21 +615,33 @@ const UserHazardMap = () => {
             uniqueCounts={uniqueCategoryCounts}
           />
 
-          <button onClick={fetchApprovedReports}
-            className="ml-1 p-2 bg-purple-600 hover:bg-purple-700 rounded-md border border-purple-600 transition" title="Refresh">
+          {/* FIX: was dead UI-less state — now a real toggle for the click-to-view markers */}
+          <button
+            onClick={() => setShowMarkers(!showMarkers)}
+            aria-pressed={showMarkers}
+            className="ml-1 px-3 py-1.5 min-h-11 text-[9px] font-bold uppercase rounded-lg border bg-purple-600 border-purple-600 text-slate-300 hover:bg-purple-700 transition select-none touch-manipulation active:scale-95">
+            {showMarkers ? 'Hide Pins' : 'Show Pins'}
+          </button>
+
+          <button
+            onClick={fetchApprovedReports}
+            aria-label="Refresh reports"
+            className="ml-1 min-h-11 min-w-11 p-2 bg-purple-600 hover:bg-purple-700 rounded-md border border-purple-600 transition flex items-center justify-center select-none touch-manipulation active:scale-95" title="Refresh">
             <svg className={`w-3.5 h-3.5 text-slate-300 ${loading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
             </svg>
           </button>
-          <button onClick={() => setIsRealistic(!isRealistic)}
-            className="ml-1 px-3 py-1.5 text-[9px] font-bold uppercase rounded-lg border bg-purple-600 border-purple-600 text-slate-300 hover:bg-purple-700 transition">
+          <button
+            onClick={() => setIsRealistic(!isRealistic)}
+            aria-pressed={isRealistic}
+            className="ml-1 px-3 py-1.5 min-h-11 text-[9px] font-bold uppercase rounded-lg border bg-purple-600 border-purple-600 text-slate-300 hover:bg-purple-700 transition select-none touch-manipulation active:scale-95">
             {isRealistic ? 'Map' : 'Satellite'}
           </button>
         </div>
       </div>
 
-      {/* Map Container */}
-      <div className="relative h-[82vh]">
+      {/* Map Container — MOBILE: flex-1 fills remaining screen; md keeps old 82vh */}
+      <div className="relative flex-1 min-h-0 md:h-[82vh] md:flex-none">
 
         {/* Loading */}
         {loading && (
@@ -623,54 +655,87 @@ const UserHazardMap = () => {
 
         {/* Error */}
         {error && !loading && (
-          <div className="absolute top-4 left-1/2 -translate-x-1/2 z-[1000] bg-red-600/90 text-white px-5 py-2.5 rounded-lg shadow-xl text-xs font-bold">
+          <div className="absolute top-4 left-3 right-3 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 z-[1000] bg-red-600/90 text-white px-5 py-2.5 rounded-lg shadow-xl text-xs font-bold text-center max-w-[95vw] sm:max-w-md">
             {error}
             <button onClick={fetchApprovedReports} className="ml-3 underline">Retry</button>
           </div>
         )}
 
+        {/* FIX: fetchStatus was computed but never rendered — now shown as an empty-state banner */}
+        {!loading && !error && filteredReports.length === 0 && (
+          <div className="absolute top-4 left-3 right-3 sm:left-1/2 sm:right-auto sm:-translate-x-1/2 z-[1000] bg-slate-700/95 text-slate-100 px-5 py-2.5 rounded-lg shadow-xl text-xs font-bold text-center max-w-[95vw] sm:max-w-md">
+            {fetchStatus}
+          </div>
+        )}
+
         {/* ─── Legend ─── */}
-        <div className="absolute bottom-6 left-4 z-[1000] bg-slate-200 border border-slate-700/60 rounded-xl p-4 backdrop-blur-md shadow-2xl w-56">
-          <h3 className="text-[15px] uppercase text-slate-900 font-bold tracking-wider mb-3 flex items-center gap-1.5">
+        {/* MOBILE: hidden behind a "Legend" chip by default; desktop unchanged */}
+        {(isMobile ? legendOpen : true) && (
+          <div className={`absolute left-4 z-[1000] bg-slate-200 border border-slate-700/60 rounded-xl p-4 backdrop-blur-md shadow-2xl w-56 max-w-[calc(100vw-2rem)] max-h-[60vh] overflow-y-auto ${
+            isMobile ? 'bottom-[max(4rem,env(safe-area-inset-bottom))]' : 'bottom-6'
+          }`}>
+            <h3 className="text-[15px] uppercase text-slate-900 font-bold tracking-wider mb-3 flex items-center gap-1.5">
+              <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z"/>
+              </svg>
+              Hazard Intensity
+            </h3>
+
+            <div className="relative mb-3">
+              <div className="w-full h-5 rounded-md" style={{
+                background: 'linear-gradient(to right, #22c55e, #84cc16, #eab308, #ea580c, #dc2626)'
+              }}></div>
+              <div className="flex justify-between text-[8px] text-slate-900 mt-0.5">
+                <span>Low</span>
+                <span>Moderate</span>
+                <span>Critical</span>
+              </div>
+            </div>
+
+            <div className="space-y-1.5 mb-3">
+              {[
+                { color: '#22c55e', label: 'Low risk' },
+                { color: '#84cc16', label: 'Low-Medium risk' },
+                { color: '#eab308', label: 'Medium risk' },
+                { color: '#ea580c', label: 'High risk' },
+                { color: '#dc2626', label: 'Critical risk' },
+              ].map(item => (
+                <div key={item.label} className="flex items-center gap-2">
+                  <div className="w-3 h-3 rounded-sm" style={{backgroundColor: item.color}}></div>
+                  <span className="text-[9px] text-slate-900">{item.label}</span>
+                </div>
+              ))}
+            </div>
+
+            {/* FIX: clusterInfo was computed but never displayed — now shown here */}
+            <div className="border-t border-slate-700/60 pt-2.5 space-y-1">
+              <div className="flex items-center gap-2">
+                <span className="w-3 h-3 rounded-full border-2 border-slate-500 bg-slate-500/30"></span>
+                <span className="text-[8px] text-slate-900">NAIC Boundary</span>
+              </div>
+              <div className="text-[8px] text-slate-700 pt-1">
+                {stats.total} report{stats.total !== 1 ? 's' : ''} shown • {clusterInfo.totalClusters} hotspot cluster{clusterInfo.totalClusters !== 1 ? 's' : ''}
+              </div>
+              {lastUpdated && (
+                <div className="text-[8px] text-slate-500">Updated {lastUpdated}</div>
+              )}
+            </div>
+          </div>
+        )}
+
+        {/* MOBILE: compact legend toggle chip */}
+        {isMobile && (
+          <button
+            onClick={() => setLegendOpen(o => !o)}
+            aria-expanded={legendOpen}
+            className="absolute bottom-[max(1.5rem,env(safe-area-inset-bottom))] left-4 z-[1000] min-h-11 px-3 py-2 bg-slate-200 border border-slate-700/60 rounded-xl shadow-2xl text-[10px] font-bold uppercase tracking-wider text-slate-900 flex items-center gap-1.5 select-none touch-manipulation active:scale-95">
             <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 10V3L4 14h7v7l9-11h-7z"/>
             </svg>
-            Hazard Intensity
-          </h3>
-
-          <div className="relative mb-3">
-            <div className="w-full h-5 rounded-md" style={{
-              background: 'linear-gradient(to right, #22c55e, #84cc16, #eab308, #ea580c, #dc2626)'
-            }}></div>
-            <div className="flex justify-between text-[8px] text-slate-900 mt-0.5">
-              <span>Low</span>
-              <span>Moderate</span>
-              <span>Critical</span>
-            </div>
-          </div>
-
-          <div className="space-y-1.5 mb-3">
-            {[
-              { color: '#22c55e', label: 'Low risk' },
-              { color: '#84cc16', label: 'Low-Medium risk' },
-              { color: '#eab308', label: 'Medium risk' },
-              { color: '#ea580c', label: 'High risk' },
-              { color: '#dc2626', label: 'Critical risk' },
-            ].map(item => (
-              <div key={item.label} className="flex items-center gap-2">
-                <div className="w-3 h-3 rounded-sm" style={{backgroundColor: item.color}}></div>
-                <span className="text-[9px] text-slate-900">{item.label}</span>
-              </div>
-            ))}
-          </div>
-
-          <div className="border-t border-slate-700/60 pt-2.5 space-y-1">
-            <div className="flex items-center gap-2">
-              <span className="w-3 h-3 rounded-full border-2 border-slate-500 bg-slate-500/30"></span>
-              <span className="text-[8px] text-slate-900">NAIC Boundary</span>
-            </div>
-          </div>
-        </div>
+            Legend
+            <span className="text-[8px]">{legendOpen ? '▴' : '▾'}</span>
+          </button>
+        )}
 
         {/* ─── Leaflet Map ─── */}
         <MapContainer
@@ -710,6 +775,52 @@ const UserHazardMap = () => {
               maxIntensity={1.0}
             />
           )}
+
+          {/* FIX: hazard_description / reporter_name / date_observed / address were
+              fetched but never used anywhere — clicking a hazard showed nothing.
+              These circle markers give each report a click target with its details. */}
+          {showMarkers && filteredReports.map(r => {
+            const lat = parseFloat(r.latitude);
+            const lng = parseFloat(r.longitude);
+            if (Number.isNaN(lat) || Number.isNaN(lng)) return null;
+            const risk = (r.risk_level || '').toLowerCase();
+            const catConfig = CATEGORY_CONFIG[(r.hazard_category || '').toLowerCase().trim()];
+
+            return (
+              <CircleMarker
+                key={r.id}
+                center={[lat, lng]}
+                // MOBILE: bigger radius = fatter tap target for popups on touch screens
+                radius={isMobile ? 9 : 6}
+                pathOptions={{
+                  color: '#ffffff',
+                  weight: 1,
+                  fillColor: RISK_MARKER_COLOR[risk] || '#94a3b8',
+                  fillOpacity: 0.9,
+                }}
+              >
+                <Popup
+                  // MOBILE: narrower popups on small screens so content doesn't clip
+                  maxWidth={isMobile ? 240 : 320}
+                  minWidth={isMobile ? 200 : 260}
+                  autoPan
+                >
+                  <div className="text-xs space-y-1">
+                    <p className="font-bold uppercase">
+                      {catConfig ? `${catConfig.icon} ${catConfig.label}` : (r.hazard_category || 'Unclassified')}
+                    </p>
+                    {r.hazard_description && <p>{r.hazard_description}</p>}
+                    {r.address && <p className="text-slate-500">{r.address}</p>}
+                    <p className="text-slate-500">
+                      Risk: <span className="font-semibold">{r.risk_level || 'Unspecified'}</span>
+                    </p>
+                    {r.reporter_name && <p className="text-slate-500">Reported by: {r.reporter_name}</p>}
+                    {r.date_observed && <p className="text-slate-500">Observed: {r.date_observed}</p>}
+                  </div>
+                </Popup>
+              </CircleMarker>
+            );
+          })}
         </MapContainer>
 
       </div>

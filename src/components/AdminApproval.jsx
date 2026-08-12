@@ -1,23 +1,26 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../createClient";
 
+// ⚠️ TODO: Confirm this against Supabase Dashboard → Storage and set it once, correctly.
+// The previous version guessed between "hazard-photos", "hazard_photos", and "photos"
+// at runtime via broken-image fallbacks — that masks a config bug instead of fixing it.
+const BUCKET_NAME = "hazard-photos";
+
 // --- Helper Component to Fetch and Display Images From Supabase Storage ---
 const PhotoGallery = ({ photoNames }) => {
   const [imageUrls, setImageUrls] = useState([]);
 
   useEffect(() => {
-    if (!photoNames || photoNames.length === 0) return;
+    if (!photoNames || photoNames.length === 0) {
+      setImageUrls([]);
+      return;
+    }
 
-    // Map through the filenames and get their public URLs from your bucket
     const urls = photoNames.map((fileName) => {
-      // ⚠️ IMPORTANT: Change this string to your exact Supabase bucket name if it's different
-      // Common defaults: "hazard-photos", "hazard_photos", or "photos"
-      const BUCKET_NAME = "hazard-photos"; 
-
       const { data } = supabase.storage
         .from(BUCKET_NAME)
         .getPublicUrl(fileName);
-      
+
       return { name: fileName, url: data.publicUrl };
     });
 
@@ -33,36 +36,24 @@ const PhotoGallery = ({ photoNames }) => {
       {imageUrls.map((img, index) => (
         <div key={index} style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: "4px" }}>
           <a href={img.url} target="_blank" rel="noreferrer" title="Click to view full size">
-            <img 
-              src={img.url} 
-              alt={img.name} 
-              // Smart runtime fallback logic if the main bucket returns a 404
+            <img
+              src={img.url}
+              alt={img.name}
+              // FIX: no more multi-bucket guessing — a broken image now just shows a
+              // clear placeholder so a wrong BUCKET_NAME is obvious during testing.
               onError={(e) => {
-                if (!e.target.src.includes("fallback_attempted")) {
-                  // Fallback guess 1: Try lowercase with underscore
-                  const fallbackUrl = `https://jgternuvcgyxbjxmcfrd.supabase.co/storage/v1/object/public/hazard_photos/${img.name}?t=fallback_attempted`;
-                  e.target.src = fallbackUrl;
-                  e.target.parentNode.href = fallbackUrl;
-                } else if (e.target.src.includes("hazard_photos")) {
-                  // Fallback guess 2: Try a simple "photos" bucket name
-                  const simplePhotosUrl = `https://jgternuvcgyxbjxmcfrd.supabase.co/storage/v1/object/public/photos/${img.name}?t=final_fallback`;
-                  e.target.src = simplePhotosUrl;
-                  e.target.parentNode.href = simplePhotosUrl;
-                } else {
-                  // Block fallback if everything is 404
-                  e.target.onerror = null; 
-                  e.target.src = "https://placehold.co/120x90?text=Check+Bucket+Name";
-                }
+                e.target.onerror = null;
+                e.target.src = "https://placehold.co/120x90?text=Image+Not+Found";
               }}
-              style={{ 
-                width: "120px", 
-                height: "90px", 
-                objectFit: "cover", 
-                borderRadius: "6px", 
+              style={{
+                width: "120px",
+                height: "90px",
+                objectFit: "cover",
+                borderRadius: "6px",
                 border: "1px solid #cbd5e1",
                 cursor: "pointer",
                 boxShadow: "0 2px 4px rgba(0,0,0,0.05)"
-              }} 
+              }}
             />
           </a>
           <span style={{ fontSize: "10px", color: "#64748b", maxWidth: "120px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -80,6 +71,9 @@ const AdminApproval = () => {
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [selectedReport, setSelectedReport] = useState(null);
+  // FIX: tracks whether an approve/reject request is currently in flight,
+  // so buttons can be disabled and a double-click can't fire two updates.
+  const [submitting, setSubmitting] = useState(false);
 
   useEffect(() => {
     fetchReports();
@@ -101,22 +95,32 @@ const AdminApproval = () => {
     setLoading(false);
   };
 
-  // Handles moving data safely using lowercase string states
   const handleUpdateStatus = async (id, newStatus) => {
+    // FIX: guard against double-submit while a request is already in flight
+    if (submitting) return;
+
+    // FIX: reject is destructive (dismisses a hazard report) — confirm first
+    if (newStatus === "rejected") {
+      const confirmed = window.confirm("Reject and dismiss this hazard report? This cannot be undone from here.");
+      if (!confirmed) return;
+    }
+
+    setSubmitting(true);
     const sanitizedStatus = newStatus.toLowerCase();
 
     const { error } = await supabase
       .from("hazard_reports")
-      .update({ report_status: sanitizedStatus }) // Standardized column pointer target
-      .eq("id", id); 
+      .update({ report_status: sanitizedStatus }) // single source of truth — see note in UserHazardMap.jsx
+      .eq("id", id);
 
     if (error) {
       alert(`Update Failed: ${error.message}`);
     } else {
       alert(`Report marked as ${sanitizedStatus}`);
       if (selectedReport?.id === id) setSelectedReport(null);
-      fetchReports();
+      await fetchReports();
     }
+    setSubmitting(false);
   };
 
   const getPriorityStyle = (level) => {
@@ -136,7 +140,7 @@ const AdminApproval = () => {
           Refresh Data
         </button>
       </div>
-      
+
       <br />
       {loading ? (
         <p>Loading hazard incident reports...</p>
@@ -180,7 +184,7 @@ const AdminApproval = () => {
                     📁 {report.hazard_photos ? report.hazard_photos.length : 0} item(s)
                   </td>
                   <td style={{ padding: "12px 16px", textAlign: "center" }}>
-                    <button 
+                    <button
                       onClick={() => setSelectedReport(report)}
                       style={{ padding: "6px 12px", backgroundColor: "#0f172a", color: "#fff", border: "none", borderRadius: "4px", cursor: "pointer" }}
                     >
@@ -200,9 +204,9 @@ const AdminApproval = () => {
           <div style={{ backgroundColor: "#fff", padding: "30px", borderRadius: "12px", maxWidth: "650px", width: "90%", maxHeight: "85vh", overflowY: "auto", boxShadow: "0 20px 25px -5px rgba(0,0,0,0.3)" }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: "20px" }}>
               <h3 style={{ margin: '0' }}>Reviewing Hazard Incident Report</h3>
-              <button onClick={() => setSelectedReport(null)} style={{ border: "none", background: "none", fontSize: "20px", cursor: "pointer" }}>&times;</button>
+              <button onClick={() => !submitting && setSelectedReport(null)} style={{ border: "none", background: "none", fontSize: "20px", cursor: "pointer" }}>&times;</button>
             </div>
-            
+
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "15px", fontSize: "14px", marginBottom: "20px" }}>
               <div><strong>Reporter Name:</strong> {selectedReport.reporter_name || "Anonymous"}</div>
               <div><strong>Contact:</strong> {selectedReport.reporter_contact || "N/A"}</div>
@@ -237,17 +241,33 @@ const AdminApproval = () => {
             </div>
 
             <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px", borderTop: "1px solid #e2e8f0", paddingTop: "15px" }}>
-              <button 
+              <button
                 onClick={() => handleUpdateStatus(selectedReport.id, "approved")}
-                style={{ padding: "8px 16px", backgroundColor: "#22c55e", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer" }}
+                disabled={submitting}
+                style={{
+                  padding: "8px 16px",
+                  backgroundColor: submitting ? "#86efac" : "#22c55e",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: "6px",
+                  cursor: submitting ? "not-allowed" : "pointer"
+                }}
               >
-                Approve & Dispatch
+                {submitting ? "Working…" : "Approve & Dispatch"}
               </button>
-              <button 
+              <button
                 onClick={() => handleUpdateStatus(selectedReport.id, "rejected")}
-                style={{ padding: "8px 16px", backgroundColor: "#ef4444", color: "#fff", border: "none", borderRadius: "6px", cursor: "pointer" }}
+                disabled={submitting}
+                style={{
+                  padding: "8px 16px",
+                  backgroundColor: submitting ? "#fca5a5" : "#ef4444",
+                  color: "#fff",
+                  border: "none",
+                  borderRadius: "6px",
+                  cursor: submitting ? "not-allowed" : "pointer"
+                }}
               >
-                Reject / Dismiss
+                {submitting ? "Working…" : "Reject / Dismiss"}
               </button>
             </div>
           </div>
