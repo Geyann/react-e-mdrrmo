@@ -34,36 +34,22 @@ const UserMonthlyIncidentGraph = () => {
       setLoading(false);
     }
   };
+const processData = (incidents) => {
+  const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  const countMap = months.reduce((acc, month) => { acc[month] = 0; return acc; }, {});
 
-  const processData = (incidents) => {
-    // 1. Initialize an object for all 12 months
-    const months = [
-      "Jan", "Feb", "Mar", "Apr", "May", "Jun",
-      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"
-    ];
-    
-    const countMap = months.reduce((acc, month) => {
-      acc[month] = 0;
-      return acc;
-    }, {});
+  incidents.forEach((item) => {
+    if (!item.date) return;
+    // "2026-08-04" -> month 8 (1-12) -> index 7. No Date object = no timezone shift.
+    const m = String(item.date).match(/^(\d{4})-(\d{1,2})/);
+    if (!m) return;
+    const idx = Number(m[2]) - 1;
+    if (idx >= 0 && idx <= 11) countMap[months[idx]]++;
+  });
 
-    // 2. Count incidents per month
-    incidents.forEach((item) => {
-      if (item.date) {
-        const monthIndex = new Date(item.date).getMonth();
-        const monthName = months[monthIndex];
-        countMap[monthName]++;
-      }
-    });
-
-    // 3. Format for Recharts
-    const chartData = months.map((month) => ({
-      name: month,
-      incidents: countMap[month],
-    }));
-
-    setData(chartData);
-  };
+  const chartData = months.map((month) => ({ name: month, incidents: countMap[month] }));
+  setData(chartData);
+};
 
   if (loading) return <p style={{ textAlign: "center" }}>Loading Chart...</p>;
 

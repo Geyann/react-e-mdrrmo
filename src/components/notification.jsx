@@ -12,21 +12,24 @@ import {
  *  CONFIG — edit these to match your tables / preferences
  * ============================================================= */
 
-// Tables whose status changes we watch (exact Supabase table names).
 const WATCH_TABLES = ["appointments", "borrow-vehicle", "outPatientCheckUp"];
 
 // How often we re-scan (fallback when Realtime is not enabled).
+// Lower to 3000 while testing if you want faster feedback.
 const POLL_INTERVAL_MS = 20000;
 
-// How long a toast stays on screen.
 const TOAST_DURATION_MS = 6000;
 
-// Max notifications kept per user.
 const MAX_NOTIFICATIONS = 60;
 
-// true = also notify about records already approved/rejected the
-// first time the component ever sees them (can cause an initial burst).
-const NOTIFY_ON_FIRST_SEEN = false;
+// FIX: true = also notify about records that are ALREADY approved/rejected
+// the first time the component sees them. With false, records approved
+// BEFORE the bell loads are silently baselined and you'll never see them.
+const NOTIFY_ON_FIRST_SEEN = true;
+
+// FIX: print diagnostics to the browser console. Set false in production.
+const DEBUG = true;
+const dbg = (...args) => { if (DEBUG) console.log("[Notification]", ...args); };
 
 const SUCCESS_STATUSES = ["approved", "confirmed"];
 const FAILURE_STATUSES = ["rejected", "declined", "cancelled"];
@@ -36,7 +39,6 @@ const STATUS_LABEL = {
   rejected: "Rejected", declined: "Declined", cancelled: "Cancelled",
 };
 
-// Per-table: label, icon, click target, and how to build the message.
 const TABLE_META = {
   appointments: {
     label: "Appointment",
@@ -53,7 +55,7 @@ const TABLE_META = {
   "borrow-vehicle": {
     label: "Vehicle Dispatch Request",
     icon: Truck,
-    link: "/home", // change to a borrow-tracking page if you add one
+    link: "/home",
     describe: (r) => ({
       title: "Dispatch Request",
       message: [
@@ -82,8 +84,8 @@ const TABLE_META = {
  * ============================================================= */
 
 const storageKeys = (userId) => ({
-  cache: `mdrrmo_notif_cache_${userId}`, // last known status per record
-  list: `mdrrmo_notif_list_${userId}`,   // notification history
+  cache: `mdrrmo_notif_cache_${userId}`,
+  list: `mdrrmo_notif_list_${userId}`,
 });
 
 const readJSON = (key, fallback) => {
@@ -123,11 +125,22 @@ const matchesUser = (row, ids) =>
     (v) => v && (v === ids.pendingUserId || v === ids.authUserId)
   );
 
+// FIX: build a PostgREST filter for the current user — SAME columns and
+// quoting as trackAppointment.jsx ("userId" is camelCase, so double-quoted).
+const buildUserFilter = (ids) => {
+  if (ids.authUserId && ids.pendingUserId) {
+    return `"userId".eq.${ids.pendingUserId},user_id_from_auth.eq.${ids.authUserId}`;
+  }
+  if (ids.pendingUserId) return `"userId".eq.${ids.pendingUserId}`;
+  if (ids.authUserId) return `user_id_from_auth.eq.${ids.authUserId}`;
+  return null;
+};
+
 /* =============================================================
  *  Component
  * ============================================================= */
 
-export default function NotificationBell() {
+export default function Notification() {
   const navigate = useNavigate();
 
   const [ready, setReady] = useState(false);
@@ -138,6 +151,7 @@ export default function NotificationBell() {
 
   const idsRef = useRef({ pendingUserId: null, authUserId: null });
   const cacheRef = useRef({});
+  const toastTimersRef = useRef({});
 
   const unreadCount = notifications.filter((n) => !n.read).length;
 
@@ -191,21 +205,42 @@ export default function NotificationBell() {
       { id: notification.id, type: isSuccess ? "success" : "error",
         title: notification.title, message: notification.message },
     ].slice(-3));
+
+    dbg(`Status change → ${table} #${recordId}: ${previous || "(first seen)"} → ${status}`);
   }, [persistCache, persistList]);
 
-  /* Fetch the user's recent rows from one table */
+  /* FIX: fetch the user's own rows — server-side filter first,
+     fallback to a large unfiltered scan + client-side match. */
   const fetchRecentRows = useCallback(async (table, ids) => {
+    const filter = buildUserFilter(ids);
+
+    if (filter) {
+      try {
+        const { data, error } = await supabase
+          .from(table)
+          .select("*")
+          .order("created_at", { ascending: false })
+          .or(filter)
+          .limit(100);
+        if (error) throw error;
+        return data || [];
+      } catch (err) {
+        // Table doesn't have one of the filter columns (e.g. no
+        // user_id_from_auth) → fall back to client-side matching below.
+        dbg(`Filter failed on "${table}" (${err.message}) → client-side fallback`);
+      }
+    }
+
     try {
       const { data, error } = await supabase
         .from(table)
         .select("*")
         .order("created_at", { ascending: false })
-        .limit(30);
+        .limit(1000);
       if (error) throw error;
       return (data || []).filter((r) => matchesUser(r, ids));
     } catch (err) {
-      // Table doesn't exist / not readable — skip it silently.
-      console.warn(`[NotificationBell] Skipping table "${table}":`, err.message);
+      console.warn(`[Notification] Skipping table "${table}":`, err.message);
       return null;
     }
   }, []);
@@ -218,6 +253,7 @@ export default function NotificationBell() {
     for (const table of WATCH_TABLES) {
       const rows = await fetchRecentRows(table, ids);
       if (!rows) continue;
+      dbg(`${table}: ${rows.length} row(s) for user`);
 
       for (const row of rows) {
         const status = String(row.status || "").toLowerCase();
@@ -255,6 +291,7 @@ export default function NotificationBell() {
       cacheRef.current = readJSON(storageKeys(uid).cache, {});
       setNotifications(readJSON(storageKeys(uid).list, []));
       setReady(true);
+      dbg("identity:", ids);
 
       await scanAllTables();
     })();
@@ -291,6 +328,7 @@ export default function NotificationBell() {
           SUCCESS_STATUSES.includes(status) || FAILURE_STATUSES.includes(status);
         if (!isRelevant) return;
 
+        dbg(`realtime ${payload.eventType} on ${table} #${row.id}`, status);
         handleStatusEvent(table, row, status);
       })
       .subscribe();
@@ -298,15 +336,32 @@ export default function NotificationBell() {
     return () => { supabase.removeChannel(channel); };
   }, [ready, handleStatusEvent]);
 
-  /* ---- auto-dismiss toasts ---- */
+  /* ---- auto-dismiss toasts (FIX: per-toast timers, not reset-all) ---- */
   useEffect(() => {
-    if (toasts.length === 0) return;
-    const timers = toasts.map((t) =>
-      setTimeout(() => setToasts((prev) => prev.filter((x) => x.id !== t.id)),
-        TOAST_DURATION_MS)
-    );
-    return () => timers.forEach(clearTimeout);
+    const liveIds = new Set(toasts.map((t) => t.id));
+    Object.keys(toastTimersRef.current).forEach((id) => {
+      if (!liveIds.has(id)) {
+        clearTimeout(toastTimersRef.current[id]);
+        delete toastTimersRef.current[id];
+      }
+    });
+    toasts.forEach((t) => {
+      if (!toastTimersRef.current[t.id]) {
+        toastTimersRef.current[t.id] = setTimeout(() => {
+          setToasts((prev) => prev.filter((x) => x.id !== t.id));
+          delete toastTimersRef.current[t.id];
+        }, TOAST_DURATION_MS);
+      }
+    });
   }, [toasts]);
+
+  useEffect(() => {
+    const ref = toastTimersRef;
+    return () => {
+      Object.values(ref.current).forEach(clearTimeout);
+      ref.current = {};
+    };
+  }, []);
 
   if (noUser) return null;
 

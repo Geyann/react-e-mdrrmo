@@ -3,7 +3,7 @@ import imgLogo from '../Images/icon.png';
 
 export default function GuestNavbar() {
   return (
-    <header className="absolute inset-x-0 top-0 z-50 w-full border-b border-gray-500 bg-gradient-to-r from-blue-600 to-purple-600 p-4">
+    <header className="absolute inset-x-0 top-0 z-50 w-full border-b border-gray-500 bg-gradient-to-r from-blue-600 to-purple-600 p-2">
       <div className="flex items-center justify-between">
         {/* Logo */}
         <Link to="/" className="z-50">

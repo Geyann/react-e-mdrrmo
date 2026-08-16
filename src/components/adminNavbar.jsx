@@ -2,7 +2,9 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import imgLogo from '../Images/icon.png';
 import { supabase } from '../createClient';
-import { BellIcon, User2Icon } from 'lucide-react';
+import Notification from './notification';
+import {  User2Icon } from 'lucide-react';
+import { BellAlertIcon } from '@heroicons/react/16/solid';
 
 export default function AdminNavbar() {
   const [isOpen, setIsOpen] = useState(false);
@@ -29,7 +31,7 @@ export default function AdminNavbar() {
 
 
   return (
-    <header className="absolute inset-x-0 top-0 z-5000 w-full bg-gradient-to-r from-blue-600 to-purple-600 p-5">
+    <header className="absolute inset-x-0 top-0 z-5000 w-full bg-gradient-to-r from-blue-600 to-purple-600 p-3">
       <div className="flex items-center justify-between">
         {/* Logo */}
         <Link to="/admin/dashboard" className="z-50">
@@ -76,7 +78,8 @@ export default function AdminNavbar() {
             <span className="absolute rounded-md top-[2px] left-0 h-full w-full origin-top scale-0 bg-white opacity-0 transition-all duration-300 group-hover:scale-100 group-hover:opacity-100" />
           </button>
           <Link to="/admin/profile" title="Profile"><User2Icon className="text-white hover:rounded-xl hover:bg-white hover:text-gray-700" /></Link>
-          <Link to="/admin/notification" title="Notifications"><BellIcon className="text-white hover:rounded-xl hover:bg-white hover:text-gray-700" /></Link>
+          <Notification />
+          <BellAlertIcon/>
         </div>
       </div>
     </header>

@@ -1,6 +1,7 @@
 import React, { useMemo, useState, useEffect, useCallback, useRef } from 'react';
 import { MapContainer, TileLayer, Polygon, CircleMarker, Popup, useMap } from 'react-leaflet';
 import L from 'leaflet';
+import {ArrowLeft} from 'lucide-react';
 import 'leaflet/dist/leaflet.css';
 import { supabase } from "../createClient";
 
@@ -597,11 +598,12 @@ const UserHazardMap = () => {
       className="min-h-screen h-screen flex flex-col bg-slate-900 font-mono"
       style={{ height: '100dvh' }}
     >
+      
 
       {/* Header — MOBILE: wraps onto a second row instead of overflowing */}
       <div className="bg-slate-100 px-4 sm:px-5 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
         <div className="flex items-center gap-3">
-          <div>
+          <div >
             <h1 className="text-lg font-bold text-gray-700 tracking-wider uppercase leading-tight">Hazard Heatmap</h1>
             <p className="text-[9px] text-slate-600 tracking-widest uppercase">NAIC Area • Pinpoint hazard locations</p>
           </div>

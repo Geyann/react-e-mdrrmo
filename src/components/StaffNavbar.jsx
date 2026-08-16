@@ -3,6 +3,7 @@ import { Link, useNavigate } from 'react-router-dom';
 import imgLogo from '../Images/icon.png';
 import { supabase } from '../createClient';
 import { BellIcon, User2Icon } from 'lucide-react';
+import Notification from './notification';
 
 export default function StaffNavbar() {
   const [isOpen, setIsOpen] = useState(false);
@@ -69,9 +70,9 @@ export default function StaffNavbar() {
             <span className="absolute rounded-md top-[2px] left-0 h-full w-full origin-top scale-0 bg-white opacity-0 transition-all duration-300 group-hover:scale-100 group-hover:opacity-100" />
           </button>
 
-          <Link to="/staff/profile" title="View Profile Picture."><User2Icon className="rounded-xl text-white hover:bg-white hover:text-gray-700" /></Link>
-          <Link to="/staff/notification" title="Notifications."><BellIcon className="rounded-xl text-white hover:bg-white hover:text-gray-700" /></Link>
-        </div>
+         <Link to="/profile" title="View Profile Picture." className="rounded-xl text-white p-2 hover:bg-white hover:text-gray-700"> <User2Icon /></Link>
+         <Notification />
+         </div>
       </div>
     </header>
   );
