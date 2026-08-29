@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../createClient";
 import {
@@ -9,26 +10,18 @@ import {
 } from "lucide-react";
 
 /* =============================================================
- *  CONFIG — edit these to match your tables / preferences
+ *  CONFIG
  * ============================================================= */
 
 const WATCH_TABLES = ["appointments", "borrow-vehicle", "outPatientCheckUp"];
 
-// How often we re-scan (fallback when Realtime is not enabled).
-// Lower to 3000 while testing if you want faster feedback.
-const POLL_INTERVAL_MS = 20000;
-
+const POLL_INTERVAL_MS = 5000;
 const TOAST_DURATION_MS = 6000;
-
 const MAX_NOTIFICATIONS = 60;
 
-// FIX: true = also notify about records that are ALREADY approved/rejected
-// the first time the component sees them. With false, records approved
-// BEFORE the bell loads are silently baselined and you'll never see them.
 const NOTIFY_ON_FIRST_SEEN = true;
 
-// FIX: print diagnostics to the browser console. Set false in production.
-const DEBUG = true;
+const DEBUG = false; // Set to true to see logs in browser console
 const dbg = (...args) => { if (DEBUG) console.log("[Notification]", ...args); };
 
 const SUCCESS_STATUSES = ["approved", "confirmed"];
@@ -80,7 +73,7 @@ const TABLE_META = {
 };
 
 /* =============================================================
- *  Storage helpers (per-user, survives reloads)
+ *  Storage helpers
  * ============================================================= */
 
 const storageKeys = (userId) => ({
@@ -100,12 +93,12 @@ const writeJSON = (key, value) => {
 };
 
 /* =============================================================
- *  Identity + matching (mirrors trackAppointment.jsx logic)
+ *  Identity + matching
  * ============================================================= */
 
 const resolveIdentity = async () => {
-  let pendingUserId = null; // UUID from pending_registrations
-  let authUserId = null;    // UUID from auth.users
+  let pendingUserId = null; 
+  let authUserId = null;    
   try {
     const raw = localStorage.getItem("currentUser");
     if (raw) {
@@ -125,8 +118,6 @@ const matchesUser = (row, ids) =>
     (v) => v && (v === ids.pendingUserId || v === ids.authUserId)
   );
 
-// FIX: build a PostgREST filter for the current user — SAME columns and
-// quoting as trackAppointment.jsx ("userId" is camelCase, so double-quoted).
 const buildUserFilter = (ids) => {
   if (ids.authUserId && ids.pendingUserId) {
     return `"userId".eq.${ids.pendingUserId},user_id_from_auth.eq.${ids.authUserId}`;
@@ -148,6 +139,7 @@ export default function Notification() {
   const [open, setOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
   const [toasts, setToasts] = useState([]);
+  const [selectedNotif, setSelectedNotif] = useState(null); 
 
   const idsRef = useRef({ pendingUserId: null, authUserId: null });
   const cacheRef = useRef({});
@@ -165,7 +157,6 @@ export default function Notification() {
     if (uid) writeJSON(storageKeys(uid).list, list);
   }, []);
 
-  /* Core: record a status change -> add notification + toast */
   const handleStatusEvent = useCallback((table, row, status) => {
     const meta = TABLE_META[table];
     if (!meta) return;
@@ -177,13 +168,12 @@ export default function Notification() {
     cacheRef.current[key] = status;
     persistCache();
 
-    // Realtime re-delivers the same row on unrelated updates — dedupe.
     if (previous && previous === status) return;
 
     const isSuccess = SUCCESS_STATUSES.includes(status);
     const { title, message } = meta.describe(row);
     const notification = {
-      id: `${key}::${status}`,
+      id: `${key}::${status}-${Date.now()}`,
       table,
       recordId,
       status,
@@ -209,8 +199,6 @@ export default function Notification() {
     dbg(`Status change → ${table} #${recordId}: ${previous || "(first seen)"} → ${status}`);
   }, [persistCache, persistList]);
 
-  /* FIX: fetch the user's own rows — server-side filter first,
-     fallback to a large unfiltered scan + client-side match. */
   const fetchRecentRows = useCallback(async (table, ids) => {
     const filter = buildUserFilter(ids);
 
@@ -225,8 +213,6 @@ export default function Notification() {
         if (error) throw error;
         return data || [];
       } catch (err) {
-        // Table doesn't have one of the filter columns (e.g. no
-        // user_id_from_auth) → fall back to client-side matching below.
         dbg(`Filter failed on "${table}" (${err.message}) → client-side fallback`);
       }
     }
@@ -240,12 +226,10 @@ export default function Notification() {
       if (error) throw error;
       return (data || []).filter((r) => matchesUser(r, ids));
     } catch (err) {
-      console.warn(`[Notification] Skipping table "${table}":`, err.message);
       return null;
     }
   }, []);
 
-  /* Scan every watched table; fire only on status transitions */
   const scanAllTables = useCallback(async () => {
     const ids = idsRef.current;
     if (!ids.pendingUserId && !ids.authUserId) return;
@@ -253,7 +237,6 @@ export default function Notification() {
     for (const table of WATCH_TABLES) {
       const rows = await fetchRecentRows(table, ids);
       if (!rows) continue;
-      dbg(`${table}: ${rows.length} row(s) for user`);
 
       for (const row of rows) {
         const status = String(row.status || "").toLowerCase();
@@ -266,7 +249,6 @@ export default function Notification() {
         const previous = cacheRef.current[key];
 
         if (!previous) {
-          // Baseline: remember it silently so we only notify on changes.
           if (NOTIFY_ON_FIRST_SEEN) handleStatusEvent(table, row, status);
           else cacheRef.current[key] = status;
           continue;
@@ -277,7 +259,6 @@ export default function Notification() {
     persistCache();
   }, [fetchRecentRows, handleStatusEvent, persistCache]);
 
-  /* ---- init: identity, cache, first silent scan ---- */
   useEffect(() => {
     let cancelled = false;
 
@@ -291,15 +272,13 @@ export default function Notification() {
       cacheRef.current = readJSON(storageKeys(uid).cache, {});
       setNotifications(readJSON(storageKeys(uid).list, []));
       setReady(true);
-      dbg("identity:", ids);
-
+      
       await scanAllTables();
     })();
 
     return () => { cancelled = true; };
   }, [scanAllTables]);
 
-  /* ---- polling fallback ---- */
   useEffect(() => {
     if (!ready) return;
     const timer = setInterval(scanAllTables, POLL_INTERVAL_MS);
@@ -313,7 +292,6 @@ export default function Notification() {
     };
   }, [ready, scanAllTables]);
 
-  /* ---- Supabase Realtime (instant; ignored if not enabled) ---- */
   useEffect(() => {
     if (!ready) return;
     const channel = supabase
@@ -328,7 +306,6 @@ export default function Notification() {
           SUCCESS_STATUSES.includes(status) || FAILURE_STATUSES.includes(status);
         if (!isRelevant) return;
 
-        dbg(`realtime ${payload.eventType} on ${table} #${row.id}`, status);
         handleStatusEvent(table, row, status);
       })
       .subscribe();
@@ -336,7 +313,6 @@ export default function Notification() {
     return () => { supabase.removeChannel(channel); };
   }, [ready, handleStatusEvent]);
 
-  /* ---- auto-dismiss toasts (FIX: per-toast timers, not reset-all) ---- */
   useEffect(() => {
     const liveIds = new Set(toasts.map((t) => t.id));
     Object.keys(toastTimersRef.current).forEach((id) => {
@@ -386,8 +362,7 @@ export default function Notification() {
   const openItem = (n) => {
     markRead(n.id);
     setOpen(false);
-    const link = TABLE_META[n.table]?.link;
-    if (link) navigate(link);
+    setSelectedNotif(n); 
   };
 
   const timeAgo = (iso) => {
@@ -400,15 +375,15 @@ export default function Notification() {
   };
 
   return (
-    <div className="relative">
+    <div className="relative inline-block">
       {/* ===== Bell button ===== */}
       <button
         type="button"
         onClick={() => setOpen((o) => !o)}
         title="Notifications"
-        className="relative rounded-xl p-2 text-white transition hover:bg-white hover:text-gray-700"
+        className="relative rounded-xl p-2 text-slate-100 transition hover:bg-slate-100 hover:text-slate-900"
       >
-        {unreadCount > 0 ? <BellRing className="h-6 w-6" /> : <Bell className="h-6 w-6" />}
+        {unreadCount > 0 ? <BellRing className="h-6 w-6 text-white hover:text-purple-600" /> : <Bell className="h-6 w-6" />}
         {unreadCount > 0 && (
           <span className="absolute -right-0.5 -top-0.5 flex h-5 min-w-5 items-center justify-center rounded-full bg-red-500 px-1 text-[10px] font-bold text-white shadow">
             {unreadCount > 99 ? "99+" : unreadCount}
@@ -416,107 +391,187 @@ export default function Notification() {
         )}
       </button>
 
-      {/* ===== Dropdown ===== */}
-      {open && (
+      {/* ===== PORTALS FOR DROPDOWN, MODALS, AND TOASTS ===== */}
+      {typeof document !== 'undefined' && createPortal(
         <>
-          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 z-50 mt-3 w-80 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
-            <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-4 py-3">
-              <p className="text-sm font-bold text-slate-800">
-                Notifications
-                {unreadCount > 0 && (
-                  <span className="ml-2 rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-bold text-white">
-                    {unreadCount} new
-                  </span>
-                )}
-              </p>
-              {notifications.length > 0 && (
-                <div className="flex items-center gap-1">
-                  <button type="button" onClick={markAllRead} title="Mark all as read"
-                    className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-200 hover:text-slate-700">
-                    <CheckCheck className="h-4 w-4" />
-                  </button>
-                  <button type="button" onClick={clearAll} title="Clear all"
-                    className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-200 hover:text-red-600">
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
-              )}
-            </div>
-
-            <div className="max-h-96 overflow-y-auto">
-              {notifications.length === 0 ? (
-                <div className="flex flex-col items-center gap-2 px-4 py-12 text-center">
-                  <Bell className="h-10 w-10 text-slate-300" />
-                  <p className="text-sm font-semibold text-slate-600">No notifications yet</p>
-                  <p className="text-xs text-slate-400">
-                    You'll be alerted here when a request or appointment is approved.
+          {/* ===== Notification Dropdown Menu (Fixed to Bottom-Left) ===== */}
+          {open && (
+            <>
+              <div className="fixed inset-0 z-[99998]" onClick={() => setOpen(false)} />
+              <div className="dropdown-pop-up fixed bottom-10 left-45 z-[99999] w-80 sm:w-96 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-2xl">
+                <div className="flex items-center justify-between border-b border-slate-100 bg-slate-50 px-4 py-3">
+                  <p className="text-sm font-bold text-slate-800 flex items-center">
+                    Notifications
+                    {unreadCount > 0 && (
+                      <span className="ml-2 rounded-full bg-red-500 px-2 py-0.5 text-[10px] font-bold text-white">
+                        {unreadCount} new
+                      </span>
+                    )}
                   </p>
+                  {notifications.length > 0 && (
+                    <div className="flex items-center gap-1">
+                      <button type="button" onClick={markAllRead} title="Mark all as read"
+                        className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-200 hover:text-slate-700 transition">
+                        <CheckCheck className="h-4 w-4" />
+                      </button>
+                      <button type="button" onClick={clearAll} title="Clear all"
+                        className="rounded-lg p-1.5 text-slate-500 hover:bg-slate-200 hover:text-red-600 transition">
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
+                  )}
                 </div>
-              ) : (
-                notifications.map((n) => {
-                  const meta = TABLE_META[n.table];
-                  const Icon = meta?.icon || Bell;
-                  const isSuccess = SUCCESS_STATUSES.includes(n.status);
-                  return (
-                    <button
-                      key={n.id}
-                      type="button"
-                      onClick={() => openItem(n)}
-                      className={`flex w-full items-start gap-3 border-b border-slate-50 px-4 py-3 text-left transition hover:bg-slate-50 ${
-                        n.read ? "bg-white" : "bg-blue-50/60"
-                      }`}
-                    >
-                      <span className={`mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full ${
-                        isSuccess ? "bg-green-100 text-green-600" : "bg-red-100 text-red-600"
+
+                <div className="max-h-96 overflow-y-auto">
+                  {notifications.length === 0 ? (
+                    <div className="flex flex-col items-center gap-2 px-4 py-12 text-center">
+                      <Bell className="h-10 w-10 text-slate-300" />
+                      <p className="text-sm font-semibold text-slate-600">No notifications yet</p>
+                      <p className="text-xs text-slate-400">
+                        You'll be alerted here when a request or appointment is processed.
+                      </p>
+                    </div>
+                  ) : (
+                    notifications.map((n) => {
+                      const meta = TABLE_META[n.table];
+                      const Icon = meta?.icon || Bell;
+                      const isSuccess = SUCCESS_STATUSES.includes(n.status);
+                      return (
+                        <button
+                          key={n.id}
+                          type="button"
+                          onClick={() => openItem(n)}
+                          className={`flex w-full items-start gap-3 border-b border-slate-50 px-4 py-3 text-left transition hover:bg-slate-50 ${
+                            n.read ? "bg-white" : "bg-blue-50/60"
+                          }`}
+                        >
+                          <span className={`mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full ${
+                            isSuccess ? "bg-green-100 text-green-600" : "bg-red-100 text-red-600"
+                          }`}>
+                            <Icon className="h-4.5 w-4.5" />
+                          </span>
+                          <span className="min-w-0 flex-1">
+                            <span className="flex items-center justify-between gap-2">
+                              <span className="truncate text-sm font-bold text-slate-800">{n.title}</span>
+                              <span className="flex-shrink-0 text-[10px] text-slate-400">{timeAgo(n.createdAt)}</span>
+                            </span>
+                            <span className="mt-0.5 block text-xs text-slate-500 line-clamp-1">{n.message}</span>
+                          </span>
+                          {!n.read && <span className="mt-1.5 h-2 w-2 flex-shrink-0 rounded-full bg-blue-500" />}
+                        </button>
+                      );
+                    })
+                  )}
+                </div>
+              </div>
+            </>
+          )}
+
+          {/* ===== Selected Notification Popup Modal (Centered) ===== */}
+          {selectedNotif && (
+            <div 
+              className="fixed inset-0 z-[99999] flex items-center justify-center bg-slate-900/50 p-4 backdrop-blur-sm"
+              onClick={() => setSelectedNotif(null)}
+            >
+              <div
+                className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl border border-slate-200"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <div className={`border-b px-6 py-4 ${
+                  SUCCESS_STATUSES.includes(selectedNotif.status)
+                    ? "border-green-100 bg-green-50"
+                    : "border-red-100 bg-red-50"
+                }`}>
+                  <div className="flex items-start justify-between">
+                    <div className="flex items-center gap-3">
+                      <span className={`flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-full ${
+                        SUCCESS_STATUSES.includes(selectedNotif.status)
+                          ? "bg-green-200 text-green-700"
+                          : "bg-red-200 text-red-700"
                       }`}>
-                        <Icon className="h-4.5 w-4.5" />
+                        {SUCCESS_STATUSES.includes(selectedNotif.status) ? (
+                          <CheckCircle2 className="h-6 w-6" />
+                        ) : (
+                          <XCircle className="h-6 w-6" />
+                        )}
                       </span>
-                      <span className="min-w-0 flex-1">
-                        <span className="flex items-center justify-between gap-2">
-                          <span className="truncate text-sm font-bold text-slate-800">{n.title}</span>
-                          <span className="flex-shrink-0 text-[10px] text-slate-400">{timeAgo(n.createdAt)}</span>
-                        </span>
-                        <span className="mt-0.5 block text-xs text-slate-500">{n.message}</span>
-                      </span>
-                      {!n.read && <span className="mt-1.5 h-2 w-2 flex-shrink-0 rounded-full bg-blue-500" />}
+                      <div>
+                        <h3 className="text-lg font-bold text-slate-800">{selectedNotif.title}</h3>
+                        <p className="text-xs font-medium text-slate-500">{timeAgo(selectedNotif.createdAt)}</p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => setSelectedNotif(null)}
+                      className="rounded-lg p-1 text-slate-400 hover:bg-slate-200 hover:text-slate-700 transition"
+                    >
+                      <X className="h-5 w-5" />
                     </button>
-                  );
-                })
-              )}
+                  </div>
+                </div>
+                <div className="p-6">
+                  <p className="text-sm text-slate-700 leading-relaxed mb-6">
+                    {selectedNotif.message}
+                  </p>
+                  <div className="flex justify-end gap-3">
+                    <button
+                      onClick={() => setSelectedNotif(null)}
+                      className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-50 transition"
+                    >
+                      Close
+                    </button>
+                    <button
+                      onClick={() => {
+                        setSelectedNotif(null);
+                        const link = TABLE_META[selectedNotif.table]?.link;
+                        if (link) navigate(link);
+                      }}
+                      className="rounded-xl bg-purple-600 px-4 py-2 text-sm font-bold text-white hover:bg-purple-700 shadow-md transition"
+                    >
+                      View Details
+                    </button>
+                  </div>
+                </div>
+              </div>
             </div>
+          )}
+
+          {/* ===== Toasts (Floating alerts) ===== */}
+          <div className="fixed right-6 bottom-6 z-[99999] flex w-80 flex-col gap-2 pointer-events-none">
+            {toasts.map((t) => (
+              <div key={t.id} className={`notif-toast-in pointer-events-auto flex items-start gap-3 rounded-xl border bg-white p-3 shadow-xl ${
+                t.type === "success" ? "border-green-200" : "border-red-200"
+              }`}>
+                {t.type === "success"
+                  ? <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0 text-green-500" />
+                  : <XCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-500" />}
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold text-slate-800">{t.title}</p>
+                  <p className="truncate text-xs text-slate-500">{t.message}</p>
+                </div>
+                <button type="button"
+                  onClick={() => setToasts((prev) => prev.filter((x) => x.id !== t.id))}
+                  className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
+                  <X className="h-4 w-4" />
+                </button>
+              </div>
+            ))}
           </div>
-        </>
+        </>,
+        document.body
       )}
 
-      {/* ===== Toasts ===== */}
-      <div className="fixed right-4 top-20 z-[100] flex w-80 flex-col gap-2">
-        {toasts.map((t) => (
-          <div key={t.id} className={`notif-toast-in flex items-start gap-3 rounded-xl border bg-white p-3 shadow-xl ${
-            t.type === "success" ? "border-green-200" : "border-red-200"
-          }`}>
-            {t.type === "success"
-              ? <CheckCircle2 className="mt-0.5 h-5 w-5 flex-shrink-0 text-green-500" />
-              : <XCircle className="mt-0.5 h-5 w-5 flex-shrink-0 text-red-500" />}
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-bold text-slate-800">{t.title}</p>
-              <p className="truncate text-xs text-slate-500">{t.message}</p>
-            </div>
-            <button type="button"
-              onClick={() => setToasts((prev) => prev.filter((x) => x.id !== t.id))}
-              className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 hover:text-slate-600">
-              <X className="h-4 w-4" />
-            </button>
-          </div>
-        ))}
-      </div>
-
       <style>{`
-        @keyframes notifToastIn {
-          from { opacity: 0; transform: translateX(24px); }
-          to   { opacity: 1; transform: translateX(0); }
+        @keyframes popUpBottomLeft {
+          from { opacity: 0; transform: translateY(16px) scale(0.95); transform-origin: bottom left; }
+          to   { opacity: 1; transform: translateY(0) scale(1); transform-origin: bottom left; }
         }
-        .notif-toast-in { animation: notifToastIn 0.25s ease-out; }
+        .dropdown-pop-up { animation: popUpBottomLeft 0.2s cubic-bezier(0.16, 1, 0.3, 1) forwards; }
+
+        @keyframes notifToastIn {
+          from { opacity: 0; transform: translateY(24px); }
+          to   { opacity: 1; transform: translateY(0); }
+        }
+        .notif-toast-in { animation: notifToastIn 0.3s cubic-bezier(0.16, 1, 0.3, 1); }
       `}</style>
     </div>
   );

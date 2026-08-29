@@ -92,7 +92,7 @@ function App() {
     >
       {renderNavbar()}
 
-      <div className="content pt-20">
+      <div className="content ">
         <Routes>
           {/* ===== PUBLIC ROUTES ===== */}
           <Route path="/" element={<Guest />} />
