@@ -1,10 +1,14 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useMemo, useState } from 'react';
 import { supabase } from '../createClient';
 import {
   Stethoscope, Search, RefreshCw, AlertCircle, CheckCircle, XCircle, Clock,
   MapPin, Phone, Calendar, User, Loader2, Eye, X, HeartPulse,
-  FileText, Tag, CalendarClock, UserCircle, Hash
+  FileText, Tag, CalendarClock, UserCircle, Hash, Download
 } from 'lucide-react';
+import {
+  PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid,
+  Tooltip, ResponsiveContainer, Legend,
+} from 'recharts';
 
 const CheckUpTable = () => {
   const [loading, setLoading] = useState(true);
@@ -14,6 +18,7 @@ const CheckUpTable = () => {
   const [savingId, setSavingId] = useState(null);
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+const [showReport, setShowReport] = useState(false);
 
   useEffect(() => {
     fetchCheckups();
@@ -199,13 +204,22 @@ const CheckUpTable = () => {
               Review outpatient check-up appointment requests
             </p>
           </div>
-          <button
-            onClick={fetchCheckups}
-            className="px-4 py-2 bg-purple-600 text-white rounded-xl font-bold hover:bg-purple-700 transition flex items-center gap-2"
-          >
-            <RefreshCw className="w-4 h-4" />
-            Refresh
-          </button>
+          <div className="flex items-center gap-2">
+  <button
+    onClick={() => setShowReport(true)}
+    className="px-4 py-2 border border-purple-300 text-purple-700 rounded-xl font-bold hover:bg-purple-50 transition flex items-center gap-2"
+  >
+    <Download className="w-4 h-4" />
+    Summary Report
+  </button>
+  <button
+    onClick={fetchCheckups}
+    className="px-4 py-2 bg-purple-600 text-white rounded-xl font-bold hover:bg-purple-700 transition flex items-center gap-2"
+  >
+    <RefreshCw className="w-4 h-4" />
+    Refresh
+  </button>
+</div>
         </div>
 
         {/* Banners */}
@@ -420,8 +434,341 @@ const CheckUpTable = () => {
           </div>
         </div>
       )}
+      {showReport && (
+        <CheckUpSummaryReportModal onClose={() => setShowReport(false)} />
+      )}
     </div>
   );
 };
 
 export default CheckUpTable;
+    
+// =============================================
+// CHECK-UP SUMMARY REPORT MODAL
+// =============================================
+
+// Module-scope labelers (shared shape with the table's copies)
+const mobilityLabelR = (v) => {
+  const map = { stretcher: 'Stretcher', 'wheel-chair': 'Wheel Chair', walker: 'Walker' };
+  return map[v] || v || '—';
+};
+const patientForLabelR = (v) => {
+  const map = { admission: 'Admission', discharge: 'Discharge', 'check-up': 'Check Up' };
+  return map[v] || v || '—';
+};
+
+const CheckUpSummaryReportModal = ({ onClose }) => {
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const [rows, setRows] = useState([]);
+  const [fetching, setFetching] = useState(true);
+  const [fetchError, setFetchError] = useState('');
+
+  const todayKey = (() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  })();
+
+  const applyPreset = (from, to) => { setFromDate(from); setToDate(to); };
+
+  // Server-side fetch on preferredDate
+  useEffect(() => {
+    const fetchRows = async () => {
+      setFetching(true);
+      setFetchError('');
+      try {
+        let query = supabase
+          .from('outPatientCheckUp')
+          .select('patientFor, mobility, preferredDate, status, hospitalName, location, escort');
+
+        if (fromDate) query = query.gte('preferredDate', fromDate);
+        if (toDate) query = query.lte('preferredDate', toDate);
+
+        const { data, error } = await query;
+        if (error) throw error;
+        setRows(data || []);
+      } catch (err) {
+        console.error('Error fetching report data:', err);
+        setFetchError(err.message);
+      } finally {
+        setFetching(false);
+      }
+    };
+    fetchRows();
+  }, [fromDate, toDate]);
+
+  const stats = useMemo(() => {
+    const countBy = (field, fallback, labeler = (v) => v) => {
+      const counts = {};
+      rows.forEach((r) => {
+        const key = labeler(r[field] || fallback);
+        counts[key] = (counts[key] || 0) + 1;
+      });
+      return Object.entries(counts)
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count);
+    };
+
+    const statusData = countBy('status', 'Pending');
+    const patientForData = countBy('patientFor', 'Other', patientForLabelR);
+    const mobilityData = countBy('mobility', 'Not Specified', mobilityLabelR);
+    const hospitalData = countBy('hospitalName', 'Not Specified');
+    const locationData = countBy('location', 'Not Specified');
+    const escortCount = rows.filter((r) => r.escort && String(r.escort).trim() !== '').length;
+
+    return {
+      statusData, patientForData, mobilityData, hospitalData, locationData,
+      escortCount,
+      topPatientFor: patientForData[0] || null,
+      topMobility: mobilityData[0] || null,
+    };
+  }, [rows]);
+
+  const pct = (count) => (rows.length ? Math.round((count / rows.length) * 100) : 0);
+
+  const PIE_COLORS = ['#3b82f6', '#10b981', '#f59e0b', '#ef4444', '#8b5cf6', '#ec4899'];
+  const BAR_COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f59e0b'];
+
+  const generatedAt = new Date().toLocaleString('en-US', {
+    year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+  const rangeLabel = fromDate || toDate ? `${fromDate || 'Start'} → ${toDate || 'End'}` : 'All dates';
+
+  const Card = ({ label, value, sub, color }) => (
+    <div className={`p-4 rounded-xl border ${color}`}>
+      <p className="text-xs font-bold opacity-70">{label}</p>
+      <p className="text-2xl font-bold mt-1">{value}</p>
+      {sub && <p className="text-xs opacity-70 mt-1">{sub}</p>}
+    </div>
+  );
+
+  const CountTable = ({ title, data, total, max = 10 }) => (
+    <div className="print-break-avoid">
+      <h2 className="font-bold text-slate-800 mb-3">{title}</h2>
+      {data.length === 0 ? (
+        <p className="text-sm text-slate-500">No check-ups in the covered range.</p>
+      ) : (
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr className="bg-slate-100">
+              <th className="p-2 text-left font-bold border border-slate-200 text-slate-700">Name</th>
+              <th className="p-2 text-center font-bold border border-slate-200 text-slate-700">Count</th>
+              <th className="p-2 text-center font-bold border border-slate-200 text-slate-700">Share</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.slice(0, max).map((d) => (
+              <tr key={d.name} className="border-b border-slate-100">
+                <td className="p-2 border border-slate-200 font-semibold text-slate-700">{d.name}</td>
+                <td className="p-2 border border-slate-200 text-center text-slate-600">{d.count}</td>
+                <td className="p-2 border border-slate-200 text-center text-slate-600">{pct(d.count)}%</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {data.length > max && <p className="text-xs text-slate-500 mt-2">…and {data.length - max} more entries.</p>}
+      {total !== undefined && <p className="text-xs text-slate-400 mt-1">Total in coverage: {total}</p>}
+    </div>
+  );
+
+  return (
+    <>
+      <style>{`
+        @media print {
+          @page { size: A4 portrait; margin: 12mm; }
+          body { background: #ffffff !important; }
+          body * { visibility: hidden; }
+          .report-overlay { position: static !important; overflow: visible !important; padding: 0 !important; background: none !important; }
+          .report-print, .report-print * { visibility: visible; }
+          .report-print {
+            position: absolute !important; top: 0 !important; left: 0 !important;
+            width: 100% !important; max-width: none !important; max-height: none !important;
+            margin: 0 !important; box-shadow: none !important; border: none !important; border-radius: 0 !important;
+          }
+          .report-print .print-hidden { display: none !important; }
+          .report-print .print-break-avoid, .report-print .print-section { break-inside: avoid; page-break-inside: avoid; }
+          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        }
+      `}</style>
+
+      <div className="report-overlay fixed inset-0 z-50 bg-black/50 flex items-start justify-center p-4 overflow-y-auto" onClick={onClose}>
+        <div className="report-print bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl my-8" onClick={(e) => e.stopPropagation()}>
+          {/* Toolbar (screen only) */}
+          <div className="print-hidden sticky top-0 z-10 bg-white/95 backdrop-blur border-b border-slate-200 rounded-t-2xl">
+            <div className="flex items-center justify-between gap-3 px-6 pt-4 pb-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-9 h-9 rounded-xl bg-purple-100 flex items-center justify-center flex-shrink-0">
+                  <FileText className="w-5 h-5 text-purple-600" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="font-bold text-slate-800 leading-tight truncate">Check-up Summary Report</h3>
+                  <p className="text-xs text-slate-400 leading-tight">Adjust coverage, then print</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button
+                  onClick={() => window.print()}
+                  disabled={fetching}
+                  className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-xl font-bold text-sm transition"
+                >
+                  <Download className="w-4 h-4" />
+                  {fetching ? 'Loading…' : 'Print / Save PDF'}
+                </button>
+                <button onClick={onClose} className="p-2 rounded-xl hover:bg-slate-200 text-slate-500 transition" title="Close">
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 px-6 pb-4">
+              <span className="text-xs font-bold uppercase tracking-wide text-slate-400">Coverage</span>
+              <input type="date" value={fromDate} onChange={(e) => setFromDate(e.target.value)}
+                className="px-2 py-2 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
+              <span className="text-slate-400 text-sm">→</span>
+              <input type="date" value={toDate} onChange={(e) => setToDate(e.target.value)}
+                className="px-2 py-2 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500" />
+              <div className="flex items-center gap-1 ml-1 bg-slate-100 rounded-xl p-1">
+                {[
+                  { label: 'All Time', from: '', to: '' },
+                  { label: 'This Month', from: `${todayKey.slice(0, 8)}01`, to: todayKey },
+                  { label: 'Today', from: todayKey, to: todayKey },
+                ].map((p) => {
+                  const active = fromDate === p.from && toDate === p.to;
+                  return (
+                    <button key={p.label} onClick={() => applyPreset(p.from, p.to)}
+                      className={`px-3 py-1.5 text-xs font-bold rounded-lg transition ${active ? 'bg-purple-600 text-white shadow-sm' : 'text-slate-600 hover:bg-white hover:text-slate-800'}`}>
+                      {p.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <span className="ml-auto text-xs font-semibold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-full">
+                {rows.length} record{rows.length === 1 ? '' : 's'} loaded
+              </span>
+            </div>
+          </div>
+
+          {/* Report body */}
+          <div className="p-8 text-slate-800">
+            <div className="text-center border-b-2 border-slate-800 pb-5 mb-6 print-section">
+              <p className="text-xs font-bold tracking-[0.2em] text-slate-400 uppercase">E-MDRRMO</p>
+              <h1 className="text-2xl font-black text-slate-900 mt-1">OUTPATIENT CHECK-UP SUMMARY REPORT</h1>
+              <div className="flex flex-wrap items-center justify-center gap-2 mt-3">
+                <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-3 py-1 rounded-full">Coverage: {rangeLabel}</span>
+                <span className="text-xs font-semibold text-purple-700 bg-purple-50 px-3 py-1 rounded-full">
+                  {rows.length} appointment{rows.length === 1 ? '' : 's'}
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-2">Generated: {generatedAt}</p>
+            </div>
+
+            {fetchError ? (
+              <div className="p-4 mb-6 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
+                Failed to load report data: {fetchError}
+              </div>
+            ) : fetching ? (
+              <div className="py-16 text-center text-slate-500 font-semibold">Loading report data…</div>
+            ) : (
+              <>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8 print-break-avoid">
+                  <Card label="Total Appointments" value={rows.length} sub="In coverage" color="bg-blue-50 border-blue-200 text-blue-700" />
+                  <Card label="Top Patient For" value={stats.topPatientFor ? stats.topPatientFor.name : '—'}
+                    sub={stats.topPatientFor ? `${stats.topPatientFor.count} requests` : 'No data'} color="bg-emerald-50 border-emerald-200 text-emerald-700" />
+                  <Card label="Top Mobility" value={stats.topMobility ? stats.topMobility.name : '—'}
+                    sub={stats.topMobility ? `${stats.topMobility.count} requests` : 'No data'} color="bg-violet-50 border-violet-200 text-violet-700" />
+                  <Card label="Escort Requests" value={stats.escortCount} sub={`${pct(stats.escortCount)}% of total`} color="bg-rose-50 border-rose-200 text-rose-700" />
+                </div>
+
+                <div className="mb-8 print-section">
+                  <h2 className="font-bold text-slate-800 mb-3">Status Overview</h2>
+                  {stats.statusData.length === 0 ? (
+                    <p className="text-sm text-slate-500">No check-ups in the covered range.</p>
+                  ) : (
+                    <div className={`grid gap-3 ${stats.statusData.length >= 4 ? 'grid-cols-2 md:grid-cols-4' : stats.statusData.length === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                      {stats.statusData.map((s, i) => (
+                        <Card key={s.name} label={s.name} value={s.count} sub={`${pct(s.count)}% of total`}
+                          color={i === 0 ? 'bg-yellow-50 border-yellow-200 text-yellow-700' : i === 1 ? 'bg-green-50 border-green-200 text-green-700' : 'bg-slate-50 border-slate-200 text-slate-700'} />
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {stats.statusData.length > 0 && (
+                  <div className="mb-8 print-section">
+                    <h2 className="font-bold text-slate-800 mb-3">Status Distribution</h2>
+                    <div className="w-full h-[260px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie data={stats.statusData.map((s) => ({ ...s, value: s.count }))}
+                            innerRadius={60} outerRadius={95} paddingAngle={5} dataKey="value">
+                            {stats.statusData.map((_, i) => <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />)}
+                          </Pie>
+                          <Tooltip />
+                          <Legend wrapperStyle={{ paddingTop: '10px' }} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                )}
+
+                {stats.patientForData.length > 0 && (
+                  <div className="mb-8 print-section">
+                    <h2 className="font-bold text-slate-800 mb-3">Patient For Distribution</h2>
+                    <div className="w-full h-[240px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={stats.patientForData}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e0e0e0" />
+                          <XAxis dataKey="name" fontSize={10} tickLine={false} axisLine={false} />
+                          <YAxis allowDecimals={false} fontSize={10} tickLine={false} axisLine={false} />
+                          <Tooltip cursor={{ fill: 'rgba(0,0,0,0.05)' }} />
+                          <Bar dataKey="count" radius={[10, 10, 0, 0]} barSize={40}>
+                            {stats.patientForData.map((_, i) => <Cell key={i} fill={BAR_COLORS[i % BAR_COLORS.length]} />)}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                )}
+
+                {stats.mobilityData.length > 0 && (
+                  <div className="mb-8 print-section">
+                    <h2 className="font-bold text-slate-800 mb-3">Mobility Requirements</h2>
+                    <div className="w-full h-[240px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={stats.mobilityData}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e0e0e0" />
+                          <XAxis dataKey="name" fontSize={10} tickLine={false} axisLine={false} />
+                          <YAxis allowDecimals={false} fontSize={10} tickLine={false} axisLine={false} />
+                          <Tooltip cursor={{ fill: 'rgba(0,0,0,0.05)' }} />
+                          <Bar dataKey="count" radius={[10, 10, 0, 0]} barSize={40}>
+                            {stats.mobilityData.map((_, i) => <Cell key={i} fill={BAR_COLORS[i % BAR_COLORS.length]} />)}
+                          </Bar>
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                )}
+
+                <div className="space-y-8 mb-8">
+                  <div className="print-section"><CountTable title="Check-ups by Status" data={stats.statusData} total={rows.length} /></div>
+                  <div className="print-section"><CountTable title="Check-ups by Patient For" data={stats.patientForData} total={rows.length} /></div>
+                  <div className="print-section"><CountTable title="Check-ups by Mobility" data={stats.mobilityData} total={rows.length} /></div>
+                </div>
+
+                <div className="space-y-8 mb-8">
+                  <div className="print-section"><CountTable title="Top Hospitals" data={stats.hospitalData} max={10} /></div>
+                  <div className="print-section"><CountTable title="Top Locations" data={stats.locationData} max={10} /></div>
+                </div>
+
+                <div className="pt-4 border-t border-slate-200 text-center text-xs text-slate-500 print-break-avoid">
+                  <p>This report is system-generated and reflects data at the time of generation.</p>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+};

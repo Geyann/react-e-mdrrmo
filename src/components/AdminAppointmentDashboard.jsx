@@ -8,8 +8,7 @@ import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
     PieChart, Pie, Legend
 } from "recharts";
-import { Check, X, Clock, CheckCircle, XCircle, Search, AlertCircle, History, CalendarDays } from "lucide-react";
-
+import { Check, X, Clock, CheckCircle, XCircle, Search, AlertCircle, History, CalendarDays, Download } from "lucide-react";
 const AdminDashboard = () => {
     // Shared State
     const [appointments, setAppointments] = useState([]);
@@ -22,6 +21,8 @@ const AdminDashboard = () => {
     const [volumeLimit, setVolumeLimit] = useState("");
     const [showVolumeModal, setShowVolumeModal] = useState(false);
     const [makeUnavailable, setMakeUnavailable] = useState(false);
+    // Summary Report State
+const [showReportModal, setShowReportModal] = useState(false);
 
     // Appointment Management State
     const [allAppointments, setAllAppointments] = useState([]);
@@ -460,18 +461,25 @@ const AdminDashboard = () => {
     return (
         <div className="p-6 md:p-10 bg-slate-50 min-h-screen">
             <div className="max-w-7xl mx-auto">
-                {/* Header */}
-                <div className="flex items-center justify-between mb-6">
-                    <div>
-                        <h1 className="text-3xl font-black text-slate-800 flex items-center gap-3">
-                            <CalendarDays className="w-8 h-8 text-purple-600" />
-                            Admin Appointments
-                        </h1>
-                        <p className="text-slate-500 mt-1">
-                            Manage appointment availability, review requests, and view analytics.
-                        </p>
-                    </div>
-                </div>
+               {/* Header */}
+<div className="flex items-center justify-between mb-6">
+    <div>
+        <h1 className="text-3xl font-black text-slate-800 flex items-center gap-3">
+            <CalendarDays className="w-8 h-8 text-purple-600" />
+            Admin Appointments
+        </h1>
+        <p className="text-slate-500 mt-1">
+            Manage appointment availability, review requests, and view analytics.
+        </p>
+    </div>
+    <button
+        onClick={() => setShowReportModal(true)}
+        className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold transition"
+    >
+        <Download className="w-5 h-5" />
+        Summary Report
+    </button>
+</div>
 
                 {/* Tab Navigation */}
                 <div className="mb-6 flex gap-4 border-b border-slate-200 bg-white p-4 rounded-t-2xl shadow-sm">
@@ -1161,9 +1169,249 @@ const AdminDashboard = () => {
                         </div>
                     </div>
                 )}
+                {/* Summary Report Modal */}
+{showReportModal && (
+    <AdminAppointmentsSummaryReportModal
+        reportData={allAppointments}
+        dateRange={{ startDate, endDate }}
+        unavailableDates={unavailableDates}
+        dateVolumeLimits={dateVolumeLimits}
+        onClose={() => setShowReportModal(false)}
+        onPrint={() => window.print()}
+    />
+)}
             </div>
         </div>
     );
 };
 
 export default AdminDashboard;
+// =============================================
+// APPOINTMENTS SUMMARY-ONLY REPORT
+// Adjustable coverage dates via toolbar.
+// =============================================
+const AdminAppointmentsSummaryReportModal = ({
+    reportData, dateRange, unavailableDates, dateVolumeLimits, onClose, onPrint,
+}) => {
+    // ---- Adjustable coverage dates (initialized from the dashboard range) ----
+    const [fromDate, setFromDate] = useState(dateRange?.startDate || "");
+    const [toDate, setToDate] = useState(dateRange?.endDate || "");
+
+    const todayKey = (() => {
+        const d = new Date();
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, "0");
+        const day = String(d.getDate()).padStart(2, "0");
+        return `${y}-${m}-${day}`;
+    })();
+
+    const applyPreset = (from, to) => { setFromDate(from); setToDate(to); };
+
+    // ---- Timezone-safe helpers (same approach as parent) ----
+    const toKey = (dateStr) => (dateStr ? String(dateStr).split("T")[0] : "");
+    const monthIdx = (dateStr) => {
+        const m = Number(toKey(dateStr).split("-")[1]);
+        return m >= 1 && m <= 12 ? m - 1 : -1;
+    };
+
+    // ---- Filtered data (respects the adjustable coverage dates) ----
+    const filtered = useMemo(() => {
+        return (reportData || []).filter((apt) => {
+            const key = toKey(apt.date);
+            if (fromDate && key < fromDate) return false;
+            if (toDate && key > toDate) return false;
+            return true;
+        });
+    }, [reportData, fromDate, toDate]);
+
+    const data = filtered;
+
+    const pct = (count) => (data.length ? Math.round((count / data.length) * 100) : 0);
+
+    // ---- Status counts (from filtered data) ----
+    const statusCounts = { pending: 0, approved: 0, rejected: 0, other: 0 };
+    data.forEach((apt) => {
+        const s = (apt.status || "pending").toLowerCase();
+        if (statusCounts[s] !== undefined) statusCounts[s] += 1;
+        else statusCounts.other += 1;
+    });
+    const approvalRate =
+        statusCounts.approved + statusCounts.rejected > 0
+            ? Math.round((statusCounts.approved / (statusCounts.approved + statusCounts.rejected)) * 100)
+            : 0;
+
+    // ---- Monthly totals (Jan–Dec, from filtered data) ----
+    const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const monthlyTotals = MONTHS.map((name) => ({ name, count: 0 }));
+    data.forEach((apt) => {
+        const i = monthIdx(apt.date);
+        if (i >= 0) monthlyTotals[i].count += 1;
+    });
+    const activeMonths = monthlyTotals.filter((m) => m.count > 0);
+    const peakMonth = activeMonths.length
+        ? activeMonths.reduce((a, b) => (b.count > a.count ? b : a))
+        : null;
+
+    // ---- Purpose breakdown (from filtered data) ----
+    const purposeCounts = {};
+    data.forEach((apt) => {
+        const p = apt.purpose || "Unspecified";
+        purposeCounts[p] = (purposeCounts[p] || 0) + 1;
+    });
+    const purposeData = Object.entries(purposeCounts)
+        .map(([purpose, count]) => ({ purpose, count }))
+        .sort((a, b) => b.count - a.count);
+    const topPurpose = purposeData[0] || null;
+
+    // ---- Chart data ----
+    const statusPieData = [
+        { name: "Pending", value: statusCounts.pending, fill: "#FBBF24" },
+        { name: "Approved", value: statusCounts.approved, fill: "#34D399" },
+        { name: "Rejected", value: statusCounts.rejected, fill: "#F87171" },
+    ].filter((d) => d.value > 0);
+
+    // ---- Date restrictions summary (from props, unaffected by coverage) ----
+    const unavailable = unavailableDates || [];
+    const limits = dateVolumeLimits || {};
+    const limitedDates = Object.entries(limits)
+        .map(([date, limit]) => ({ date, limit, isUnavailable: unavailable.includes(date) }))
+        .sort((a, b) => a.date.localeCompare(b.date));
+
+    // ---- Labels ----
+    const generatedAt = new Date().toLocaleString("en-US", {
+        year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit",
+    });
+    const rangeLabel =
+        fromDate || toDate
+            ? `${fromDate || "Start"} → ${toDate || "End"}`
+            : "All dates";
+
+    const Card = ({ label, value, sub, color }) => (
+        <div className={`p-4 rounded-xl border ${color}`}>
+            <p className="text-xs font-bold opacity-70">{label}</p>
+            <p className="text-2xl font-bold mt-1 truncate">{value}</p>
+            {sub && <p className="text-xs opacity-70 mt-1">{sub}</p>}
+        </div>
+    );
+
+    return (
+        <>
+            {/* Print CSS: only the report is visible in the PDF */}
+            <style>{`
+                @media print {
+                    body * { visibility: hidden; }
+                    .summary-report-print, .summary-report-print * { visibility: visible; }
+                    .summary-report-print { position: absolute; top: 0; left: 0; width: 100%; }
+                    .summary-report-print .print-hidden { display: none !important; }
+                    .summary-report-print .print-break-avoid { break-inside: avoid; }
+                }
+            `}</style>
+
+            <div className="fixed inset-0 bg-black/50 flex items-start justify-center z-50 p-4 overflow-y-auto">
+                <div className="summary-report-print bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-3xl my-8">
+                    {/* Toolbar — screen only, excluded from PDF */}
+                    <div className="print-hidden flex flex-wrap items-center justify-between gap-3 p-4 border-b border-slate-200 sticky top-0 bg-white z-10 rounded-t-2xl">
+                        <h3 className="font-bold text-slate-800">Appointments Summary Report</h3>
+
+                        {/* Adjustable dates */}
+                        <div className="flex flex-wrap items-center gap-2">
+                            <input
+                                type="date"
+                                value={fromDate}
+                                onChange={(e) => setFromDate(e.target.value)}
+                                className="px-2 py-2 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            />
+                            <span className="text-slate-400 text-sm">→</span>
+                            <input
+                                type="date"
+                                value={toDate}
+                                onChange={(e) => setToDate(e.target.value)}
+                                className="px-2 py-2 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                            />
+                            {/* Presets */}
+                            <button
+                                onClick={() => applyPreset("", "")}
+                                className="px-3 py-2 text-xs font-bold border border-slate-300 rounded-xl hover:bg-slate-100 transition"
+                            >
+                                All Time
+                            </button>
+                            <button
+                                onClick={() => applyPreset(`${todayKey.slice(0, 8)}01`, todayKey)}
+                                className="px-3 py-2 text-xs font-bold border border-slate-300 rounded-xl hover:bg-slate-100 transition"
+                            >
+                                This Month
+                            </button>
+                            <button
+                                onClick={() => applyPreset(todayKey, todayKey)}
+                                className="px-3 py-2 text-xs font-bold border border-slate-300 rounded-xl hover:bg-slate-100 transition"
+                            >
+                                Today
+                            </button>
+                        </div>
+
+                        <div className="flex gap-2">
+                            <button
+                                onClick={onPrint}
+                                className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold text-sm"
+                            >
+                                <Download className="w-4 h-4" /> Print / Save PDF
+                            </button>
+                            <button
+                                onClick={onClose}
+                                className="px-4 py-2 border border-slate-300 rounded-xl font-bold text-slate-700 text-sm hover:bg-slate-100"
+                            >
+                                Close
+                            </button>
+                        </div>
+                    </div>
+
+                    <div className="p-8 text-slate-800">
+                        {/* Header */}
+                        <div className="text-center border-b border-slate-200 pb-6 mb-8">
+                            <h1 className="text-2xl font-black text-slate-900">APPOINTMENTS SUMMARY REPORT</h1>
+                            <p className="text-sm text-slate-500 mt-2">Generated: {generatedAt}</p>
+                            <p className="text-xs text-slate-400 mt-1">Coverage: {rangeLabel}</p>
+                            <p className="text-xs text-slate-400 mt-1">Appointments in coverage: {data.length}</p>
+                        </div>
+
+                        {/* Highlights */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8 print-break-avoid">
+                            <Card label="Total Appointments" value={data.length} sub="In coverage" color="bg-blue-50 border-blue-200 text-blue-700" />
+                            <Card label="Approval Rate" value={`${approvalRate}%`} sub="Of processed" color="bg-emerald-50 border-emerald-200 text-emerald-700" />
+                            <Card
+                                label="Peak Month"
+                                value={peakMonth ? peakMonth.name : "—"}
+                                sub={peakMonth ? `${peakMonth.count} appointments` : "No data"}
+                                color="bg-violet-50 border-violet-200 text-violet-700"
+                            />
+                            <Card
+                                label="Top Purpose"
+                                value={topPurpose ? topPurpose.purpose : "—"}
+                                sub={topPurpose ? `${topPurpose.count} bookings` : "No data"}
+                                color="bg-rose-50 border-rose-200 text-rose-700"
+                            />
+                        </div>
+
+                        {/* Status overview */}
+                        <div className="mb-8 print-break-avoid">
+                            <h2 className="font-bold text-slate-800 mb-3">Status Overview</h2>
+                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                                <Card label="Pending" value={statusCounts.pending} sub={`${pct(statusCounts.pending)}% of total`} color="bg-yellow-50 border-yellow-200 text-yellow-700" />
+                                <Card label="Approved" value={statusCounts.approved} sub={`${pct(statusCounts.approved)}% of total`} color="bg-green-50 border-green-200 text-green-700" />
+                                <Card label="Rejected" value={statusCounts.rejected} sub={`${pct(statusCounts.rejected)}% of total`} color="bg-red-50 border-red-200 text-red-700" />
+                                <Card label="Other / Reset" value={statusCounts.other} sub={`${pct(statusCounts.other)}% of total`} color="bg-slate-50 border-slate-200 text-slate-700" />
+                            </div>
+                        </div>
+                       
+
+                        {/* Footer */}
+                        <div className="pt-4 border-t border-slate-200 text-center text-xs text-slate-500">
+                            <p>This report is system-generated and reflects data at the time of generation.</p>
+                            <p className="mt-1">© 2023 Your Organization Name</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </>
+    );
+};

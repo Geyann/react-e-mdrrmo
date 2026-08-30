@@ -1,11 +1,15 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useMemo } from 'react';
 import { supabase } from '../createClient';
 import {
   Users, Search, User, Shield, Mail, Lock, Trash2, Edit3,
   AlertCircle, X, Eye, EyeOff, Clock,
   UserCheck, Save, Info, Calendar, MapPin, Phone, Building2, Hash,
-  Camera, CreditCard
+  Camera, CreditCard, Download
 } from 'lucide-react';
+import {
+  PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid,
+  Tooltip, ResponsiveContainer, Legend,
+} from 'recharts';
 
 // ===== REAL storage buckets in your project =====
 const PHOTO_BUCKETS = ['pending_ids', 'profile-pics', 'id-previews', 'avatars', 'uploads'];
@@ -59,10 +63,11 @@ const AdminUserManagement = () => {
     email: '', username: '', password: '', confirmPassword: '',
     full_name: '', role: 'user', is_active: true,
   });
-  const [showPassword, setShowPassword] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState('');
+ const [showPassword, setShowPassword] = useState(false);
+const [showConfirm, setShowConfirm] = useState(false);
+const [saving, setSaving] = useState(false);
+const [error, setError] = useState('');
+const [showReport, setShowReport] = useState(false); 
 
   const hashPassword = async (password) => {
     const encoder = new TextEncoder();
@@ -348,13 +353,23 @@ const AdminUserManagement = () => {
             </h1>
             <p className="text-slate-500 mt-1">View, edit, and manage all user accounts (regular, staff, admin)</p>
           </div>
-          <button onClick={fetchAllUsers}
-            className="px-4 py-2 bg-purple-600 text-white rounded-xl font-bold hover:bg-purple-700 transition flex items-center gap-2">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-            </svg>
-            Refresh
-          </button>
+         <div className="flex items-center gap-2">
+  <button
+    type="button"
+    onClick={() => setShowReport(true)}
+    className="px-4 py-2 border border-purple-300 text-purple-700 rounded-xl font-bold hover:bg-purple-50 transition flex items-center gap-2"
+  >
+    <Download className="w-4 h-4" />
+    Summary Report
+  </button>
+  <button onClick={fetchAllUsers}
+    className="px-4 py-2 bg-purple-600 text-white rounded-xl font-bold hover:bg-purple-700 transition flex items-center gap-2">
+    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
+    </svg>
+    Refresh
+  </button>
+</div>
         </div>
 
         {/* Stats */}
@@ -736,9 +751,447 @@ const AdminUserManagement = () => {
             </form>
           </div>
         </div>
-      )}
+      )}{showReport && (
+  <UserSummaryReportModal onClose={() => setShowReport(false)} />
+)}
     </div>
   );
 };
 
 export default AdminUserManagement;
+
+// =============================================
+// USER ACCOUNTS SUMMARY-ONLY REPORT
+// Adjustable coverage dates — fetches its own data
+// from all four account tables filtered on created_at.
+// Prints aggregates only: no names, emails, or IDs.
+// =============================================
+const UserSummaryReportModal = ({ onClose }) => {
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+  const [rows, setRows] = useState([]);
+  const [fetching, setFetching] = useState(true);
+  const [fetchError, setFetchError] = useState('');
+
+  const todayKey = (() => {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  })();
+
+  const applyPreset = (from, to) => { setFromDate(from); setToDate(to); };
+
+  // ---- Fetch minimal rows from every account table (no PII) ----
+  // Selected columns only: role/status flags + timestamps. Names, emails,
+  // passwords, and IDs are never pulled into the report.
+  useEffect(() => {
+    const fetchRows = async () => {
+      setFetching(true);
+      setFetchError('');
+      try {
+        const range = (q) => {
+          let n = q;
+          if (fromDate) n = n.gte('created_at', `${fromDate}T00:00:00`);
+          if (toDate) n = n.lte('created_at', `${toDate}T23:59:59.999999`);
+          return n;
+        };
+
+        const [profilesRes, staffRes, adminRes, pendingRes] = await Promise.all([
+          range(supabase.from('profiles').select('id, role, is_active, created_at')),
+          range(supabase.from('staff_users').select('id, role, department, is_active, created_at')),
+          range(supabase.from('admin_users').select('id, role, created_at')),
+          range(supabase.from('pending_registrations').select('id, status, role, created_at')),
+        ]);
+
+        const firstError = [profilesRes, staffRes, adminRes, pendingRes].find((r) => r.error);
+        if (firstError) throw firstError.error;
+
+        const normalize = (d, table) => (d || []).map((r) => ({
+          table,
+          role: r.role,
+          status: r.status !== undefined ? r.status : (r.is_active === false ? 'inactive' : 'approved'),
+          department: r.department,
+          created_at: r.created_at,
+        }));
+
+        setRows([
+          ...normalize(profilesRes.data, 'profiles'),
+          ...normalize(staffRes.data, 'staff_users'),
+          ...normalize(adminRes.data, 'admin_users'),
+          ...normalize(pendingRes.data, 'pending_registrations'),
+        ]);
+      } catch (err) {
+        console.error('Error fetching report data:', err);
+        setFetchError(err.message);
+      } finally {
+        setFetching(false);
+      }
+    };
+    fetchRows();
+  }, [fromDate, toDate]);
+
+  // ---- All stats computed from fetched rows ----
+  const stats = useMemo(() => {
+    const countBy = (field, fallback) => {
+      const counts = {};
+      rows.forEach((r) => {
+        const key = r[field] || fallback;
+        counts[key] = (counts[key] || 0) + 1;
+      });
+      return Object.entries(counts)
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count);
+    };
+
+    const roleData = countBy('role', 'user');
+    const statusData = countBy('status', 'unknown');
+    const sourceData = countBy('table', 'other');
+    const departmentData = countBy('department', 'Not Specified');
+
+    // Registrations per month (from created_at, covering the selected range)
+    const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+    const monthly = {};
+    rows.forEach((r) => {
+      if (!r.created_at) return;
+      const d = new Date(r.created_at);
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      monthly[key] = (monthly[key] || 0) + 1;
+    });
+    const monthlyData = Object.entries(monthly)
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([key, count]) => ({
+        name: `${MONTHS[Number(key.split('-')[1]) - 1]} ${key.slice(2, 4)}`,
+        count,
+      }));
+
+    const activeCount = rows.filter((r) => r.status === 'approved' || r.status === true).length;
+    const pendingCount = rows.filter((r) => r.status === 'pending').length;
+
+    return {
+      roleData,
+      statusData,
+      sourceData,
+      departmentData,
+      monthlyData,
+      activeCount,
+      pendingCount,
+      topRole: roleData[0] || null,
+      busiestMonth: monthlyData.reduce((a, b) => (b.count > (a?.count ?? -1) ? b : a), null),
+    };
+  }, [rows]);
+
+  const pct = (count) => (rows.length ? Math.round((count / rows.length) * 100) : 0);
+
+  const PIE_COLORS = ['#8b5cf6', '#3b82f6', '#10b981', '#f59e0b', '#ec4899', '#6366f1'];
+  const BAR_COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f59e0b'];
+
+  const generatedAt = new Date().toLocaleString('en-US', {
+    year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+  const rangeLabel =
+    fromDate || toDate
+      ? `${fromDate || 'Start'} → ${toDate || 'End'}`
+      : 'All dates';
+
+  const Card = ({ label, value, sub, color }) => (
+    <div className={`p-4 rounded-xl border ${color}`}>
+      <p className="text-xs font-bold opacity-70">{label}</p>
+      <p className="text-2xl font-bold mt-1">{value}</p>
+      {sub && <p className="text-xs opacity-70 mt-1">{sub}</p>}
+    </div>
+  );
+
+  const CountTable = ({ title, data, total, max = 12 }) => (
+    <div className="print-break-avoid">
+      <h2 className="font-bold text-slate-800 mb-3">{title}</h2>
+      {data.length === 0 ? (
+        <p className="text-sm text-slate-500">No data in the covered range.</p>
+      ) : (
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr className="bg-slate-100">
+              <th className="p-2 text-left font-bold border border-slate-200 text-slate-700">Name</th>
+              <th className="p-2 text-center font-bold border border-slate-200 text-slate-700">Count</th>
+              <th className="p-2 text-center font-bold border border-slate-200 text-slate-700">Share</th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.slice(0, max).map((d) => (
+              <tr key={d.name} className="border-b border-slate-100">
+                <td className="p-2 border border-slate-200 font-semibold text-slate-700">{d.name}</td>
+                <td className="p-2 border border-slate-200 text-center text-slate-600">{d.count}</td>
+                <td className="p-2 border border-slate-200 text-center text-slate-600">{pct(d.count)}%</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {data.length > max && (
+        <p className="text-xs text-slate-500 mt-2">…and {data.length - max} more entries.</p>
+      )}
+      {total !== undefined && (
+        <p className="text-xs text-slate-400 mt-1">Total in coverage: {total}</p>
+      )}
+    </div>
+  );
+
+  return (
+    <>
+      {/* Print CSS: full-length multi-page PDF, only the report body visible */}
+      <style>{`
+        @media print {
+          @page { size: A4 portrait; margin: 12mm; }
+          body { background: #ffffff !important; }
+          body * { visibility: hidden; }
+          .report-overlay {
+            position: static !important;
+            overflow: visible !important;
+            padding: 0 !important;
+            background: none !important;
+          }
+          .report-print, .report-print * { visibility: visible; }
+          .report-print {
+            position: absolute !important;
+            top: 0 !important;
+            left: 0 !important;
+            width: 100% !important;
+            max-width: none !important;
+            max-height: none !important;
+            margin: 0 !important;
+            box-shadow: none !important;
+            border: none !important;
+            border-radius: 0 !important;
+          }
+          .report-print .print-hidden { display: none !important; }
+          .report-print .print-break-avoid { break-inside: avoid; page-break-inside: avoid; }
+          .report-print .print-section { break-inside: avoid; page-break-inside: avoid; }
+          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+        }
+      `}</style>
+
+      <div
+        className="report-overlay fixed inset-0 z-50 bg-black/60 flex items-start justify-center p-3 sm:p-4 overflow-y-auto"
+        onClick={onClose}
+      >
+        <div
+          className="report-print bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl my-8"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* ===== Toolbar (screen only) ===== */}
+          <div className="print-hidden sticky top-0 z-10 bg-white/95 backdrop-blur border-b border-slate-200 rounded-t-2xl">
+            <div className="flex items-center justify-between gap-3 px-6 pt-4 pb-3">
+              <div className="flex items-center gap-2 min-w-0">
+                <div className="w-9 h-9 rounded-xl bg-purple-100 flex items-center justify-center flex-shrink-0">
+                  <Users className="w-5 h-5 text-purple-600" />
+                </div>
+                <div className="min-w-0">
+                  <h3 className="font-bold text-slate-800 leading-tight truncate">User Accounts Summary Report</h3>
+                  <p className="text-xs text-slate-400 leading-tight">Adjust coverage, then print</p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 flex-shrink-0">
+                <button
+                  type="button"
+                  onClick={() => window.print()}
+                  disabled={fetching}
+                  className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-xl font-bold text-sm transition"
+                >
+                  <Download className="w-4 h-4" />
+                  {fetching ? 'Loading…' : 'Print / Save PDF'}
+                </button>
+                <button
+                  type="button"
+                  onClick={onClose}
+                  aria-label="Close report"
+                  className="p-2 rounded-xl hover:bg-slate-200 text-slate-500 transition"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+            </div>
+
+            {/* Coverage controls */}
+            <div className="flex flex-wrap items-center gap-2 px-6 pb-4">
+              <span className="text-xs font-bold uppercase tracking-wide text-slate-400">Coverage</span>
+              <input
+                type="date"
+                value={fromDate}
+                onChange={(e) => setFromDate(e.target.value)}
+                className="px-2 py-2 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
+              <span className="text-slate-400 text-sm">→</span>
+              <input
+                type="date"
+                value={toDate}
+                onChange={(e) => setToDate(e.target.value)}
+                className="px-2 py-2 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
+              <div className="flex items-center gap-1 ml-1 bg-slate-100 rounded-xl p-1">
+                {[
+                  { label: 'All Time', from: '', to: '' },
+                  { label: 'This Month', from: `${todayKey.slice(0, 8)}01`, to: todayKey },
+                  { label: 'Today', from: todayKey, to: todayKey },
+                ].map((p) => {
+                  const active = fromDate === p.from && toDate === p.to;
+                  return (
+                    <button
+                      key={p.label}
+                      type="button"
+                      onClick={() => applyPreset(p.from, p.to)}
+                      className={`px-3 py-1.5 text-xs font-bold rounded-lg transition ${
+                        active
+                          ? 'bg-purple-600 text-white shadow-sm'
+                          : 'text-slate-600 hover:bg-white hover:text-slate-800'
+                      }`}
+                    >
+                      {p.label}
+                    </button>
+                  );
+                })}
+              </div>
+              <span className="ml-auto text-xs font-semibold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-full">
+                {rows.length} account{rows.length === 1 ? '' : 's'} loaded
+              </span>
+            </div>
+          </div>
+
+          {/* ===== Report body ===== */}
+          <div className="p-8 text-slate-800">
+            {/* Report header */}
+            <div className="text-center border-b-2 border-slate-800 pb-5 mb-6 print-section">
+              <p className="text-xs font-bold tracking-[0.2em] text-slate-400 uppercase">E-MDRRMO</p>
+              <h1 className="text-2xl font-black text-slate-900 mt-1">USER ACCOUNTS SUMMARY REPORT</h1>
+              <div className="flex flex-wrap items-center justify-center gap-2 mt-3">
+                <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-3 py-1 rounded-full">
+                  Coverage: {rangeLabel}
+                </span>
+                <span className="text-xs font-semibold text-purple-700 bg-purple-50 px-3 py-1 rounded-full">
+                  {rows.length} account{rows.length === 1 ? '' : 's'}
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-2">Generated: {generatedAt}</p>
+            </div>
+
+            {fetchError ? (
+              <div className="p-4 mb-6 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
+                Failed to load report data: {fetchError}
+              </div>
+            ) : fetching ? (
+              <div className="py-16 text-center text-slate-500 font-semibold">
+                Loading report data…
+              </div>
+            ) : (
+              <>
+                {/* Highlights */}
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8 print-break-avoid">
+                  <Card label="Total Accounts" value={rows.length} sub="In coverage" color="bg-blue-50 border-blue-200 text-blue-700" />
+                  <Card
+                    label="Active"
+                    value={stats.activeCount}
+                    sub={`${pct(stats.activeCount)}% of total`}
+                    color="bg-green-50 border-green-200 text-green-700"
+                  />
+                  <Card
+                    label="Pending Registrations"
+                    value={stats.pendingCount}
+                    sub={stats.pendingCount > 0 ? 'Awaiting approval' : 'None pending'}
+                    color="bg-yellow-50 border-yellow-200 text-yellow-700"
+                  />
+                  <Card
+                    label="Busiest Month"
+                    value={stats.busiestMonth ? stats.busiestMonth.name : '—'}
+                    sub={stats.busiestMonth ? `${stats.busiestMonth.count} registrations` : 'No data'}
+                    color="bg-violet-50 border-violet-200 text-violet-700"
+                  />
+                </div>
+
+                {/* Role overview */}
+                <div className="mb-8 print-section">
+                  <h2 className="font-bold text-slate-800 mb-3">Role Overview</h2>
+                  {stats.roleData.length === 0 ? (
+                    <p className="text-sm text-slate-500">No accounts in the covered range.</p>
+                  ) : (
+                    <div className={`grid gap-3 ${stats.roleData.length >= 4 ? 'grid-cols-2 md:grid-cols-4' : stats.roleData.length === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
+                      {stats.roleData.map((s, i) => (
+                        <Card
+                          key={s.name}
+                          label={s.name.charAt(0).toUpperCase() + s.name.slice(1)}
+                          value={s.count}
+                          sub={`${pct(s.count)}% of total`}
+                          color={
+                            s.name === 'admin'
+                              ? 'bg-purple-50 border-purple-200 text-purple-700'
+                              : s.name === 'staff'
+                                ? 'bg-indigo-50 border-indigo-200 text-indigo-700'
+                                : 'bg-green-50 border-green-200 text-green-700'
+                          }
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+
+                {/* Role distribution (pie) */}
+                {stats.roleData.length > 0 && (
+                  <div className="mb-8 print-section">
+                    <h2 className="font-bold text-slate-800 mb-3">Role Distribution</h2>
+                    <div className="w-full h-[260px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={stats.roleData.map((r) => ({ ...r, value: r.count }))}
+                            innerRadius={60}
+                            outerRadius={95}
+                            paddingAngle={5}
+                            dataKey="value"
+                          >
+                            {stats.roleData.map((_, i) => (
+                              <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                            ))}
+                          </Pie>
+                          <Tooltip />
+                          <Legend wrapperStyle={{ paddingTop: '10px' }} />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                )}
+
+                {/* Registrations per month (bar) */}
+                {stats.monthlyData.length > 0 && (
+                  <div className="mb-8 print-section">
+                    <h2 className="font-bold text-slate-800 mb-3">Registrations per Month</h2>
+                    <div className="w-full h-[240px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={stats.monthlyData}>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e0e0e0" />
+                          <XAxis dataKey="name" fontSize={10} tickLine={false} axisLine={false} />
+                          <YAxis allowDecimals={false} fontSize={10} tickLine={false} axisLine={false} />
+                          <Tooltip cursor={{ fill: 'rgba(0,0,0,0.05)' }} />
+                          <Bar dataKey="count" fill="#6366f1" radius={[10, 10, 0, 0]} barSize={40} />
+                        </BarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </div>
+                )}
+
+                {/* Count tables */}
+                <div className="space-y-8 mb-8">
+                  <div className="print-section"><CountTable title="Accounts by Role" data={stats.roleData} total={rows.length} /></div>
+                  <div className="print-section"><CountTable title="Accounts by Status" data={stats.statusData} total={rows.length} /></div>
+                  <div className="print-section"><CountTable title="Accounts by Source Table" data={stats.sourceData} total={rows.length} /></div>
+                  <div className="print-section"><CountTable title="Staff by Department" data={stats.departmentData} max={12} /></div>
+                </div>
+
+                {/* Footer */}
+                <div className="pt-4 border-t border-slate-200 text-center text-xs text-slate-500 print-break-avoid">
+                  <p>This report is system-generated and reflects data at the time of generation. Account names and contact details are omitted by design.</p>
+                  <p className="mt-1">© 2023 Your Organization Name</p>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      </div>
+    </>
+  );
+};
