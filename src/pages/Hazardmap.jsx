@@ -595,7 +595,7 @@ const UserHazardMap = () => {
     // MOBILE: flex-col + 100dvh (fallback 100vh via h-screen) makes the map fill
     // the real viewport on phones instead of fighting the URL bar.
     <div
-      className="min-h-screen h-screen flex flex-col bg-slate-900 font-mono"
+      className="min-h-screen h-screen flex flex-col bg-slate-900 font-mono pt-15"
       style={{ height: '100dvh' }}
     >
       

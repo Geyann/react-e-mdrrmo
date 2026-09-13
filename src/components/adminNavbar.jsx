@@ -7,7 +7,7 @@ import { User2Icon, MenuIcon, XIcon } from 'lucide-react'; // Import MenuIcon an
 import { BellAlertIcon } from '@heroicons/react/16/solid'; // Keeping BellAlertIcon
 
 export default function AdminNavbar() {
-  const [isOpen, setIsOpen] = useState(false); // State to control sidebar's open/close status
+  const [isOpen, setIsOpen] = useState(true); // State to control sidebar's open/close status
   const navigate = useNavigate();
 
   const handleLogout = async () => {

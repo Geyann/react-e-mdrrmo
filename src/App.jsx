@@ -39,6 +39,7 @@ import AdminInventory from './pages/AdminInventory'
 import DynamicNavbar from './components/dynamicNavbar'
 import EditProfile from './pages/editProfile'
 import CheckUpQueue from './pages/StaffCheckUpQueue'
+import BorrowerSlip from './pages/StaffBorrowerSlip'
 
 function App() {
   const location = useLocation();
@@ -142,9 +143,9 @@ function App() {
           <Route path="/staff/checkup" element={<ProtectedRoute staffOnly={true}><CheckUp /></ProtectedRoute>} />
           <Route path="/staff/checkupqueue" element={<ProtectedRoute staffOnly={true}><CheckUpQueue /></ProtectedRoute>} />
           <Route path="/staff/inventory" element={<ProtectedRoute staffOnly={true}><StaffInventory /></ProtectedRoute>} />
-          <Route path="/staff/borrower-slip" element={<ProtectedRoute staffOnly={true}><StaffHome /></ProtectedRoute>} />
           <Route path="/staff/settings" element={<ProtectedRoute staffOnly={true}><Settings /></ProtectedRoute>} />
-          <Route path="/staff/profile" element={<ProtectedRoute staffOnly={true}><Profile /></ProtectedRoute>} />
+          <Route path="/staff/profile" element={<ProtectedRoute staffOnly={true}><Profile /></ProtectedRoute>} /> 
+          <Route path="/staff/borrower-slip" element={<ProtectedRoute staffOnly={true}><BorrowerSlip /></ProtectedRoute>} />
           <Route path="/staff/notification" element={<ProtectedRoute staffOnly={true}><StaffHome /></ProtectedRoute>} />
 
           {/* ===== EXTRA ROUTES USED BY NAVBARS (placeholders — swap real pages later) ===== */}

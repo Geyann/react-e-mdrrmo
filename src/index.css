@@ -8,3 +8,9 @@
     @apply hidden ;
   }
 }
+@media print {
+  .slip-page img {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
+  }
+}
