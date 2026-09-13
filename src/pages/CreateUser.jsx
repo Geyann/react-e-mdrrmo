@@ -81,13 +81,13 @@ export default function CreateUser() {
 
         // ===== FIXED: upload to your REAL bucket (pending_ids), not 'id-previews' =====
         const { error: uploadError } = await supabase.storage
-          .from('pending_ids')
+          .from('id-previews')
           .upload(fileName, idFile);
 
         if (uploadError) throw new Error(`Upload Failed: ${uploadError.message}`);
 
         const { data: urlData } = supabase.storage
-          .from('pending_ids')
+          .from('id-previews')
           .getPublicUrl(fileName);
 
         idPublicUrl = urlData.publicUrl;

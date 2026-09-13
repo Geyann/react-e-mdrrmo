@@ -477,6 +477,7 @@ const AdminHazardMap = () => {
   const [snackbar, setSnackbar] = useState({ show: false, message: '', type: 'info' });
   const [confirmAction, setConfirmAction] = useState(null);
   const [lightbox, setLightbox] = useState({ open: false, images: [], index: 0 });
+const [showReport, setShowReport] = useState(false);
 
   // ── Derived data ──
   const flippedBoundary = useMemo(() => naicBoundaryRaw.map(c => [c[1], c[0]]), []);
@@ -684,6 +685,7 @@ const AdminHazardMap = () => {
             <h1 className="text-lg font-semibold text-slate-900 leading-tight pl-15">Admin Hazard Map</h1>
             <p className="text-xs text-slate-600 pl-15">NAIC Area • Click a pin to view details</p>
           </div>
+          
         </div>
         
         {/* Stats */}
@@ -699,12 +701,17 @@ const AdminHazardMap = () => {
               <span className={`text-xs ${s.color}`}>{s.label}</span>
             </div>
           ))}
+          
           <button onClick={fetchReports}
             className="ml-2 p-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-md border border-slate-300 transition" title="Refresh">
             <svg className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
             </svg>
           </button>
+          <button onClick={() => setShowReport(true)}
+  className="ml-2 px-3 py-2 text-sm font-semibold rounded-md border bg-purple-600 border-purple-500 text-white hover:bg-purple-700 transition">
+  Summary Report
+</button>
         </div>
       </div>
 
@@ -956,9 +963,380 @@ const AdminHazardMap = () => {
             onOpenLightbox={(images, index) => setLightbox({ open: true, images, index })}
           />
         )}
+        {showReport && (
+  <HazardSummaryReportModal
+    reportData={reports}
+    onClose={() => setShowReport(false)}
+    onPrint={() => window.print()}
+  />
+)}
       </div>
     </div>
   );
 };
 
 export default AdminHazardMap;
+// =============================================
+// HAZARD SUMMARY-ONLY REPORT
+// Adjustable coverage dates via toolbar.
+// Filters the parent's loaded reportData client-side — no extra fetches.
+// =============================================
+const HazardSummaryReportModal = ({ reportData, onClose, onPrint }) => {
+  // ---- Adjustable coverage dates ----
+  const [fromDate, setFromDate] = useState('');
+  const [toDate, setToDate] = useState('');
+
+  const todayKey = (() => {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, '0');
+    const day = String(d.getDate()).padStart(2, '0');
+    return `${y}-${m}-${day}`;
+  })();
+
+  const applyPreset = (from, to) => { setFromDate(from); setToDate(to); };
+
+  // ---- Timezone-safe helper ----
+  const toKey = (dateStr) => (dateStr ? String(dateStr).split('T')[0] : '');
+
+  // ---- Filtered data (respects the adjustable coverage dates) ----
+  const filtered = useMemo(() => {
+    return (reportData || []).filter((r) => {
+      const key = toKey(r.date_observed);
+      if (fromDate && key < fromDate) return false;
+      if (toDate && key > toDate) return false;
+      return true;
+    });
+  }, [reportData, fromDate, toDate]);
+
+  const data = filtered;
+
+  const pct = (count) => (data.length ? Math.round((count / data.length) * 100) : 0);
+
+  const statusOf = (r) => (r.status || r.report_status || 'pending').toLowerCase();
+  const riskOf = (r) => (r.risk_level || 'Unknown').toLowerCase();
+
+  // ---- Status counts (from filtered data) ----
+  const statusCounts = { pending: 0, approved: 0, rejected: 0, other: 0 };
+  data.forEach((r) => {
+    const s = statusOf(r);
+    if (statusCounts[s] !== undefined) statusCounts[s] += 1;
+    else statusCounts.other += 1;
+  });
+
+  // ---- Risk counts (from filtered data) ----
+  const riskCounts = { critical: 0, high: 0, medium: 0, low: 0, other: 0 };
+  data.forEach((r) => {
+    const lv = riskOf(r);
+    if (riskCounts[lv] !== undefined) riskCounts[lv] += 1;
+    else riskCounts.other += 1;
+  });
+
+  // ---- Category breakdown (from filtered data) ----
+  const categoryCounts = {};
+  data.forEach((r) => {
+    const c = r.hazard_category || 'Uncategorized';
+    categoryCounts[c] = (categoryCounts[c] || 0) + 1;
+  });
+  const categoryData = Object.entries(categoryCounts)
+    .map(([name, count]) => ({ name, count }))
+    .sort((a, b) => b.count - a.count);
+  const topCategory = categoryData[0] || null;
+
+  // ---- Monthly totals (Jan–Dec, from filtered data) ----
+  const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+  const monthlyTotals = MONTHS.map((name) => ({ name, count: 0 }));
+  data.forEach((r) => {
+    const m = Number(toKey(r.date_observed).split('-')[1]);
+    if (m >= 1 && m <= 12) monthlyTotals[m - 1].count += 1;
+  });
+  const activeMonths = monthlyTotals.filter((m) => m.count > 0);
+  const peakMonth = activeMonths.length
+    ? activeMonths.reduce((a, b) => (b.count > a.count ? b : a))
+    : null;
+
+  const heatmapVisibleCount = data.filter((r) => r.show_on_heatmap !== false).length;
+
+  // ---- Labels ----
+  const generatedAt = new Date().toLocaleString('en-US', {
+    year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit',
+  });
+  const rangeLabel =
+    fromDate || toDate
+      ? `${fromDate || 'Start'} → ${toDate || 'End'}`
+      : 'All dates';
+
+  const RISK_COLORS = {
+    critical: '#dc2626',
+    high: '#ea580c',
+    medium: '#eab308',
+    low: '#22c55e',
+  };
+
+  const Card = ({ label, value, sub, color }) => (
+    <div className={`p-4 rounded-xl border ${color}`}>
+      <p className="text-xs font-bold opacity-70">{label}</p>
+      <p className="text-2xl font-bold mt-1 truncate">{value}</p>
+      {sub && <p className="text-xs opacity-70 mt-1">{sub}</p>}
+    </div>
+  );
+
+  const CountTable = ({ title, rows: tableRows }) => (
+    <div className="print-break-avoid">
+      <h2 className="font-bold text-slate-800 mb-3">{title}</h2>
+      {tableRows.length === 0 ? (
+        <p className="text-sm text-slate-500">No reports in the covered range.</p>
+      ) : (
+        <table className="w-full text-sm border-collapse">
+          <thead>
+            <tr className="bg-slate-100">
+              <th className="p-2 text-left font-bold border border-slate-200 text-slate-700">Name</th>
+              <th className="p-2 text-center font-bold border border-slate-200 text-slate-700">Count</th>
+              <th className="p-2 text-center font-bold border border-slate-200 text-slate-700">Share</th>
+            </tr>
+          </thead>
+          <tbody>
+            {tableRows.map((d) => (
+              <tr key={d.name} className="border-b border-slate-100">
+                <td className="p-2 border border-slate-200 font-semibold text-slate-700 capitalize">{d.name}</td>
+                <td className="p-2 border border-slate-200 text-center text-slate-600">{d.count}</td>
+                <td className="p-2 border border-slate-200 text-center text-slate-600">{pct(d.count)}%</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </div>
+  );
+
+  return (
+    <>
+      {/* Print CSS: only the report is visible in the PDF */}
+      <style>{`
+       @media print {
+  @page { size: A4 portrait; margin: 12mm; }
+
+  body { background: #ffffff !important; height: auto !important; overflow: visible !important; }
+  body * { visibility: hidden; }
+
+  /* Release the app shell: h-screen + overflow-hidden + relative containers clip the report */
+  .hazard-root {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    display: block !important;
+  }
+  .hazard-layout {
+    height: auto !important;
+    overflow: visible !important;
+    position: static !important;
+    display: block !important;
+  }
+
+  /* Neutralize the modal overlay + its scroll container so nothing clips */
+  .report-overlay {
+    position: static !important;
+    overflow: visible !important;
+    padding: 0 !important;
+    background: none !important;
+  }
+
+  .summary-report-print, .summary-report-print * { visibility: visible; }
+  .summary-report-print {
+    position: static !important;
+    width: 100% !important;
+    max-width: none !important;
+    max-height: none !important;
+    margin: 0 !important;
+    box-shadow: none !important;
+    border: none !important;
+    border-radius: 0 !important;
+  }
+  .summary-report-print .print-hidden { display: none !important; }
+  .summary-report-print .print-break-avoid { break-inside: avoid; page-break-inside: avoid; }
+
+  /* Detailed records: flow across pages, repeat header row each page */
+  .summary-report-print .print-flow { break-inside: auto; page-break-inside: auto; }
+  .summary-report-print .records-table { break-inside: auto; page-break-inside: auto; }
+  .summary-report-print .records-table thead { display: table-header-group; }
+  .summary-report-print .records-table tr { break-inside: avoid; page-break-inside: avoid; }
+  .summary-report-print .records-table td { word-break: break-word; }
+
+  * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+}
+      `}</style>
+
+      <div className="fixed inset-0 bg-black/50 flex items-start justify-center z-[9997] p-4 overflow-y-auto" onClick={onClose}>
+        <div className="summary-report-print bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-3xl my-8" onClick={(e) => e.stopPropagation()}>
+          {/* Toolbar — screen only, excluded from PDF */}
+          <div className="print-hidden flex flex-wrap items-center justify-between gap-3 p-4 border-b border-slate-200 sticky top-0 bg-white z-10 rounded-t-2xl">
+            <h3 className="font-bold text-slate-800">Hazard Summary Report</h3>
+
+            {/* Adjustable dates */}
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                type="date"
+                value={fromDate}
+                onChange={(e) => setFromDate(e.target.value)}
+                className="px-2 py-2 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
+              <span className="text-slate-400 text-sm">→</span>
+              <input
+                type="date"
+                value={toDate}
+                onChange={(e) => setToDate(e.target.value)}
+                className="px-2 py-2 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
+              {/* Presets */}
+              <button
+                onClick={() => applyPreset('', '')}
+                className="px-3 py-2 text-xs font-bold border border-slate-300 rounded-xl hover:bg-slate-100 transition"
+              >
+                All Time
+              </button>
+              <button
+                onClick={() => applyPreset(`${todayKey.slice(0, 8)}01`, todayKey)}
+                className="px-3 py-2 text-xs font-bold border border-slate-300 rounded-xl hover:bg-slate-100 transition"
+              >
+                This Month
+              </button>
+              <button
+                onClick={() => applyPreset(todayKey, todayKey)}
+                className="px-3 py-2 text-xs font-bold border border-slate-300 rounded-xl hover:bg-slate-100 transition"
+              >
+                Today
+              </button>
+            </div>
+
+            <div className="flex gap-2">
+              <button
+                onClick={onPrint}
+                className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold text-sm"
+              >
+                Print / Save PDF
+              </button>
+              <button
+                onClick={onClose}
+                className="px-4 py-2 border border-slate-300 rounded-xl font-bold text-slate-700 text-sm hover:bg-slate-100"
+              >
+                Close
+              </button>
+            </div>
+          </div>
+
+          <div className="p-8 text-slate-800">
+            {/* Header */}
+            <div className="text-center border-b border-slate-200 pb-6 mb-8">
+              <h1 className="text-2xl font-black text-slate-900">HAZARD REPORT SUMMARY</h1>
+              <p className="text-sm text-slate-500 mt-2">Generated: {generatedAt}</p>
+              <p className="text-xs text-slate-400 mt-1">Coverage: {rangeLabel}</p>
+              <p className="text-xs text-slate-400 mt-1">Reports in coverage: {data.length}</p>
+            </div>
+
+            {/* Highlights */}
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8 print-break-avoid">
+              <Card label="Total Reports" value={data.length} sub="In coverage" color="bg-blue-50 border-blue-200 text-blue-700" />
+              <Card label="Critical Risk" value={riskCounts.critical} sub={`${pct(riskCounts.critical)}% of total`} color="bg-red-50 border-red-200 text-red-700" />
+              <Card
+                label="Peak Month"
+                value={peakMonth ? peakMonth.name : '—'}
+                sub={peakMonth ? `${peakMonth.count} reports` : 'No data'}
+                color="bg-violet-50 border-violet-200 text-violet-700"
+              />
+              <Card
+                label="Top Category"
+                value={topCategory ? topCategory.name : '—'}
+                sub={topCategory ? `${topCategory.count} reports` : 'No data'}
+                color="bg-rose-50 border-rose-200 text-rose-700"
+              />
+            </div>
+
+            {/* Status overview */}
+            <div className="mb-8 print-break-avoid">
+              <h2 className="font-bold text-slate-800 mb-3">Status Overview</h2>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <Card label="Pending" value={statusCounts.pending} sub={`${pct(statusCounts.pending)}% of total`} color="bg-yellow-50 border-yellow-200 text-yellow-700" />
+                <Card label="Approved" value={statusCounts.approved} sub={`${pct(statusCounts.approved)}% of total`} color="bg-green-50 border-green-200 text-green-700" />
+                <Card label="Rejected" value={statusCounts.rejected} sub={`${pct(statusCounts.rejected)}% of total`} color="bg-red-50 border-red-200 text-red-700" />
+                <Card label="Other / Reset" value={statusCounts.other} sub={`${pct(statusCounts.other)}% of total`} color="bg-slate-50 border-slate-200 text-slate-700" />
+              </div>
+            </div>
+
+            {/* Risk level overview */}
+            <div className="mb-8 print-break-avoid">
+              <h2 className="font-bold text-slate-800 mb-3">Risk Level Overview</h2>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <Card label="Critical" value={riskCounts.critical} sub={`${pct(riskCounts.critical)}% of total`} color="bg-red-50 border-red-200 text-red-700" />
+                <Card label="High" value={riskCounts.high} sub={`${pct(riskCounts.high)}% of total`} color="bg-orange-50 border-orange-200 text-orange-700" />
+                <Card label="Medium" value={riskCounts.medium} sub={`${pct(riskCounts.medium)}% of total`} color="bg-yellow-50 border-yellow-200 text-yellow-700" />
+                <Card label="Low" value={riskCounts.low} sub={`${pct(riskCounts.low)}% of total`} color="bg-green-50 border-green-200 text-green-700" />
+              </div>
+            </div>
+
+            {/* Category table */}
+            <div className="mb-8">
+              <CountTable title="Reports by Hazard Category" rows={categoryData} />
+            </div>
+
+            {/* Detailed records — flows across as many pages as needed */}
+            <div className="print-flow mb-8">
+              <h2 className="font-bold text-slate-800 mb-3">
+                Detailed Records — All {data.length} Report{data.length === 1 ? '' : 's'} in Coverage
+              </h2>
+              {data.length === 0 ? (
+                <p className="text-sm text-slate-500">No reports in the covered range.</p>
+              ) : (
+                <table className="w-full text-xs border-collapse records-table">
+                  <thead>
+                    <tr className="bg-slate-100">
+                      <th className="p-2 text-left font-bold border border-slate-200 text-slate-700">#</th>
+                      <th className="p-2 text-left font-bold border border-slate-200 text-slate-700">Date Observed</th>
+                      <th className="p-2 text-left font-bold border border-slate-200 text-slate-700">Category</th>
+                      <th className="p-2 text-left font-bold border border-slate-200 text-slate-700">Risk</th>
+                      <th className="p-2 text-left font-bold border border-slate-200 text-slate-700">Status</th>
+                      <th className="p-2 text-left font-bold border border-slate-200 text-slate-700">Address</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {data.map((r, i) => {
+                      const risk = riskOf(r);
+                      return (
+                        <tr key={r.id} className="border-b border-slate-100">
+                          <td className="p-2 border border-slate-200 text-slate-500">{i + 1}</td>
+                          <td className="p-2 border border-slate-200 text-slate-700">{r.date_observed || '—'}</td>
+                          <td className="p-2 border border-slate-200 text-slate-700 capitalize">{r.hazard_category || '—'}</td>
+                          <td className="p-2 border border-slate-200 font-semibold capitalize"
+                            style={{ color: RISK_COLORS[risk] || '#3b82f6' }}>
+                            {r.risk_level || '—'}
+                          </td>
+                          <td className="p-2 border border-slate-200 text-slate-700 capitalize">{statusOf(r)}</td>
+                          <td className="p-2 border border-slate-200 text-slate-600">{r.address || '—'}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+            </div>
+
+            {/* Notes */}
+            <div className="print-break-avoid mb-8 p-4 bg-slate-50 border border-slate-200 rounded-xl">
+              <h2 className="font-bold text-slate-800 mb-2">Notes</h2>
+              <ul className="text-sm text-slate-600 list-disc list-inside space-y-1">
+                <li>{heatmapVisibleCount} of {data.length} reports are currently visible on the public heatmap.</li>
+                <li>Reporter names and contact details are intentionally excluded from this summary.</li>
+                <li>Coverage is based on each report's observed date, not submission date.</li>
+              </ul>
+            </div>
+
+            {/* Footer */}
+            <div className="pt-4 border-t border-slate-200 text-center text-xs text-slate-500">
+              <p>This report is system-generated and reflects data at the time of generation.</p>
+              <p className="mt-1">© 2023 E-MDRRMO</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+};
