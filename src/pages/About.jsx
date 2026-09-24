@@ -52,7 +52,7 @@ const thematicAreas = [
 export default function About() {
   return (
     /* Same shell as Appointment: plain light page, no dark bg, no mono font */
-    <main className="min-h-screen p-4 sm:p-10 font-sans">
+    <main className="min-h-screen p-4 sm:p-10 font-sans ">
 
       {/* ─── Gradient header — same as "Schedule an Appointment" banner ─── */}
       <div className="max-w-6xl mx-auto bg-gradient-to-r from-blue-600 to-purple-600 rounded-t-3xl shadow-xl border border-gray-200">
@@ -94,7 +94,7 @@ export default function About() {
           The Four Thematic Areas of DRRM
         </h2>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 sm:gap-8z">
           {thematicAreas.map((area) => (
             <div
               key={area.id}

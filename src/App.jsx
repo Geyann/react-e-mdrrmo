@@ -3,10 +3,11 @@ import { Route, Routes, useLocation, useNavigate, Navigate } from 'react-router-
 import { supabase } from './createClient'
 
 import AdminAppointmentDashboard from './components/AdminAppointmentDashboard'
+import { SettingsProvider } from './pages/SettingsContext';
 import Home from './pages/Home'
 import About from './pages/About'
 import Report from './pages/Report'
-import Admin from './pages/Admin'
+import Admin from './components/AdminDashboard'
 import Borrow from './pages/Borrow'
 import Appointment from './pages/appointment'
 import CheckUp from './pages/CheckUp'
@@ -79,21 +80,14 @@ function App() {
   };
 
   return (
-    <div
-      className="app"
-      style={{
-        backgroundImage: `url(${background})`,
-        backgroundRepeat: 'no-repeat',
-        backgroundSize: 'cover',
-        minHeight: '100vh',
-        maxHeight: '100vh',
-        overflowY: 'auto',
-        scrollbarWidth: 'none',
-      }}
-    >
+    <SettingsProvider>
+      <div
+        className="app app-shell"
+        style={{ '--app-bg': `url(${background})` }}
+      >
       {renderNavbar()}
 
-      <div className="content ">
+      <div className="content my-15">
         <Routes>
           {/* ===== PUBLIC ROUTES ===== */}
           <Route path="/" element={<Guest />} />
@@ -160,6 +154,7 @@ function App() {
         </Routes>
       </div>
     </div>
+    </SettingsProvider>
   )
 }
 
