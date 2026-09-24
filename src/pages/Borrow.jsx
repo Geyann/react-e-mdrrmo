@@ -21,42 +21,54 @@ const Borrow = () => {
     time: "",
   });
 
-  const [requester, setRequester] = useState(null); // { userId, fullName, contact }
+  const [requester, setRequester] = useState(null); // { userId, staffId, fullName, contact, isStaff }
   const [loadingRequester, setLoadingRequester] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
   const [success, setSuccess] = useState("");
 
-  // ============================================================
-  // Auto-detect the requester from the session (same logic as
-  // Report.jsx). requestedBy + contactNum come from the account,
-  // never typed by the user.
-  // ============================================================
   useEffect(() => {
     const loadRequester = async () => {
       try {
-        // 1) Staff / Admin session
+        // 1) Staff session → look up staff_users directly
         const storedStaff = localStorage.getItem("currentStaff");
         if (storedStaff) {
-          const parsed = JSON.parse(storedStaff);
+          const parsed = JSON.parse(staffParse(storedStaff));
           const staffCustomId = parsed.user_id || parsed.id;
 
+          // Prefer staff_users table; fall back to profiles if a profile row exists
+          const { data: staff } = await supabase
+            .from("staff_users")
+            .select("id, user_id, full_name, mobile_number, email, role, department")
+            .eq("user_id", staffCustomId)
+            .maybeSingle();
+
+          if (staff) {
+            const contact = staff.mobile_number || parsed.mobile_number || staff.email || "";
+            const fullName = staff.full_name || parsed.full_name || staff.role || "Staff";
+            setRequester({ userId: null, staffId: staff.id, fullName, contact, isStaff: true });
+            setBorrow((prev) => ({ ...prev, requestedBy: fullName, contactNum: contact }));
+            return;
+          }
+
+          // Fallback: some staff may also have a profiles row
           const { data: profile } = await supabase
             .from("profiles")
             .select("id, full_name, mobile_number, email")
             .eq("user_id", staffCustomId)
             .maybeSingle();
 
-          if (!profile?.id) {
-            throw new Error("Staff account not found in profiles — ask an admin to add your profile row.");
+          if (profile?.id) {
+            const contact = profile.mobile_number || parsed.mobile_number || profile.email || "";
+            const fullName = profile.full_name || parsed.full_name || parsed.role || "Staff";
+            setRequester({ userId: profile.id, staffId: null, fullName, contact, isStaff: true });
+            setBorrow((prev) => ({ ...prev, requestedBy: fullName, contactNum: contact }));
+            return;
           }
 
-          const contact = profile.mobile_number || parsed.mobile_number || profile.email || "";
-          const fullName = profile.full_name || parsed.full_name || parsed.role || "Staff";
-
-          setRequester({ userId: profile.id, fullName, contact });
-          setBorrow((prev) => ({ ...prev, requestedBy: fullName, contactNum: contact }));
-          return;
+          throw new Error(
+            "Staff account not found — ask an admin to add you to staff_users."
+          );
         }
 
         // 2) Regular user session
@@ -70,7 +82,9 @@ const Borrow = () => {
           ]);
 
           if (!profileData?.id) {
-            throw new Error("Your account isn't approved in profiles yet — ask an admin to approve your registration.");
+            throw new Error(
+              "Your account isn't approved in profiles yet — ask an admin to approve your registration."
+            );
           }
 
           const mobile = profileData.mobile_number || pendingData?.mobile_number || "";
@@ -80,7 +94,7 @@ const Borrow = () => {
             parsed.full_name ||
             `${parsed.first_name || ""} ${parsed.middle_name || ""} ${parsed.last_name || ""}`.trim();
 
-          setRequester({ userId: profileData.id, fullName, contact });
+          setRequester({ userId: profileData.id, staffId: null, fullName, contact, isStaff: false });
           setBorrow((prev) => ({ ...prev, requestedBy: fullName, contactNum: contact }));
           return;
         }
@@ -98,6 +112,14 @@ const Borrow = () => {
     loadRequester();
   }, [navigate]);
 
+  function staffParse(raw) {
+    try {
+      return raw;
+    } catch {
+      return "{}";
+    }
+  }
+
   function handleChange(event) {
     setBorrow((prev) => ({
       ...prev,
@@ -105,9 +127,6 @@ const Borrow = () => {
     }));
   }
 
-  // ============================================================
-  // Submit → insert into borrow-vehicle with the profile UUID
-  // ============================================================
   async function submitRequest(event) {
     event.preventDefault();
     setSubmitting(true);
@@ -115,41 +134,49 @@ const Borrow = () => {
     setSuccess("");
 
     try {
-      if (!requester?.userId) {
+      if (!requester) {
         throw new Error("No authenticated user found. Please log in.");
       }
 
-      const { error } = await supabase.from("borrow-vehicle").insert({
+      // Build the payload with the right identifier depending on account type
+      const payload = {
         dispatchNum: borrow.dispatchNum,
         departure: borrow.departure,
         arrival: borrow.arrival,
-        contactNum: requester.contact,     // auto-filled, never typed
+        contactNum: requester.contact,
         vehicle: borrow.vehicle,
-        requestedBy: requester.fullName,   // auto-filled, never typed
+        requestedBy: requester.fullName,
         purpose: borrow.purpose,
         destination: borrow.destination,
         date: borrow.date,
         time: borrow.time,
-        userId: requester.userId,          // profiles.id UUID → matches FK
-      });
+      };
 
-      if (error) throw new Error(error.message);
+      if (requester.isStaff) {
+        payload.staffId = requester.staffId; // FK → staff_users.id
+        payload.userId = null;               // staff have no profiles UUID
+      } else {
+        payload.userId = requester.userId;   // profiles.id UUID
+      }
+
+      const { error: insertError } = await supabase.from("borrow-vehicle").insert(payload);
+
+      if (insertError) throw new Error(insertError.message);
 
       setSuccess("Dispatch request submitted successfully!");
 
-      // Reset the form, keep the auto-detected requester
-      setBorrow({
+      setBorrow((prev) => ({
         dispatchNum: "",
         departure: "",
         arrival: "",
-        contactNum: requester.contact,
+        contactNum: prev.contactNum,
         vehicle: "",
-        requestedBy: requester.fullName,
+        requestedBy: prev.requestedBy,
         purpose: "",
         destination: "",
         date: "",
         time: "",
-      });
+      }));
     } catch (err) {
       console.error("Insert error:", err);
       setError(err.message || "Failed to submit the request. Please try again.");
@@ -188,7 +215,7 @@ const Borrow = () => {
   }
 
   return (
-    <div className="min-h-screen pt-10">
+    <div className="min-h-screen pt-10 ">
       <div className="bg-gradient-to-r from-blue-600 to-purple-600 max-w-3xl mx-auto rounded-t-4xl shadow-t-xl border border-b-transparent border-gray-100">
         <div className="flex flex-col items-center mb-3 pt-5">
           <Ambulance className="w-15 h-auto text-slate-200" />
@@ -206,18 +233,23 @@ const Borrow = () => {
         className="max-w-3xl mx-auto bg-white px-12 pb-10 pt-5 rounded-b-3xl shadow-b-xl border border-gray-100"
       >
         {/* Auto-detected requester banner */}
-        {requester && (
-          <div className="flex items-center gap-3 p-4 bg-blue-50 border border-blue-200 rounded-xl mb-6">
-            <User className="w-5 h-5 text-blue-600 flex-shrink-0" />
-            <div className="text-sm">
-              <p className="font-bold text-gray-800">Requesting as: {requester.fullName}</p>
-              <p className="text-gray-600">{requester.contact}</p>
-              <p className="text-xs text-gray-400">
-                Requester identity is detected automatically from your account.
-              </p>
-            </div>
+        <div className="flex items-center gap-3 p-4 bg-blue-50 border border-blue-200 rounded-xl mb-6">
+          <User className="w-5 h-5 text-blue-600 flex-shrink-0" />
+          <div className="text-sm">
+            <p className="font-bold text-gray-800">
+              Requesting as: {requester.fullName}
+              {requester.isStaff && (
+                <span className="ml-2 px-2 py-0.5 text-xs bg-purple-100 text-purple-700 rounded-full font-semibold">
+                  Staff
+                </span>
+              )}
+            </p>
+            <p className="text-gray-600">{requester.contact}</p>
+            <p className="text-xs text-gray-400">
+              Requester identity is detected automatically from your account.
+            </p>
           </div>
-        )}
+        </div>
 
         {error && (
           <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl p-4 mb-6">

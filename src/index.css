@@ -1,10 +1,212 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
 @import "tailwindcss";
 
+/* Class-based dark mode (default is prefers-color-scheme, which we don't use) */
+@custom-variant dark (&:where(.dark, .dark *));
+
 @layer base {
-  .leaflet-control-container {
-    @apply hidden ;
+  .leaflet-control-container { @apply hidden; }
+  html { color-scheme: light; }
+  html.dark { color-scheme: dark; }
+}
+
+/* ══════════════════════════════════════════════════════════════════════
+   APP SHELL
+   ══════════════════════════════════════════════════════════════════════ */
+.app-shell {
+  min-height: 100vh;
+  max-height: 100vh;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  background-image: var(--app-bg);
+  background-repeat: no-repeat;
+  background-size: cover;
+}
+.app-shell::-webkit-scrollbar { display: none; }
+
+html.dark .app-shell {
+  background-image:
+    linear-gradient(rgba(2, 6, 23, 0.80), rgba(2, 6, 23, 0.90)),
+    var(--app-bg);
+}
+html.dark body { background-color: #0b1120; color: #e2e8f0; }
+
+/* ══════════════════════════════════════════════════════════════════════
+   GLOBAL DARK THEME LAYER
+   ──────────────────────────────────────────────────────────────────────
+   Every page in this app hardcodes light-mode utilities (bg-white,
+   text-gray-800, border-gray-200…) and none use `dark:` variants. This
+   remaps them once, from the `html.dark` ancestor, so all pages, all
+   sidebars, and all React portals (document.body) follow the toggle.
+
+   Written with [class~="…"] so no "/" escaping is needed.
+   Scoped to @media screen → printing always stays light.
+
+   NEW code should prefer real `dark:` variants (see Settings.jsx).
+   ══════════════════════════════════════════════════════════════════════ */
+@media screen {
+  /* ── Surfaces ───────────────────────────────────────────────────── */
+  html.dark [class~="bg-white"]     { background-color: #0f172a !important; box-shadow: 0 0 0 1px rgba(148,163,184,.12) !important; }
+  html.dark [class~="bg-gray-50"]   { background-color: #111827 !important; }
+  html.dark [class~="bg-gray-100"]  { background-color: #1f2937 !important; }
+  html.dark [class~="bg-gray-200"]  { background-color: #1f2937 !important; }
+  html.dark [class~="bg-gray-300"]  { background-color: #334155 !important; }
+  html.dark [class~="bg-gray-400"]  { background-color: #475569 !important; }
+  html.dark [class~="bg-slate-50"]  { background-color: #0f172a !important; }
+  html.dark [class~="bg-slate-100"] { background-color: #1e293b !important; }
+  html.dark [class~="bg-slate-200"] { background-color: #1e293b !important; }
+  html.dark [class~="bg-slate-300"] { background-color: #334155 !important; }
+  html.dark [class~="bg-slate-400"] { background-color: #475569 !important; }
+  html.dark [class~="bg-slate-500"] { background-color: #475569 !important; }
+  html.dark [class~="bg-slate-700"] { background-color: #1e293b !important; }
+
+  /* ── Tinted panels / badges (keep hue, drop lightness) ──────────── */
+  html.dark [class~="bg-blue-50"]    { background-color: rgba(30,58,138,.28) !important; }
+  html.dark [class~="bg-blue-100"]   { background-color: rgba(30,58,138,.38) !important; }
+  html.dark [class~="bg-blue-200"]   { background-color: rgba(30,58,138,.50) !important; }
+  html.dark [class~="bg-green-50"]   { background-color: rgba(20,83,45,.28) !important; }
+  html.dark [class~="bg-green-100"]  { background-color: rgba(20,83,45,.38) !important; }
+  html.dark [class~="bg-green-200"]  { background-color: rgba(20,83,45,.50) !important; }
+  html.dark [class~="bg-emerald-50"] { background-color: rgba(6,78,59,.32) !important; }
+  html.dark [class~="bg-emerald-100"]{ background-color: rgba(6,78,59,.42) !important; }
+  html.dark [class~="bg-red-50"]     { background-color: rgba(127,29,29,.28) !important; }
+  html.dark [class~="bg-red-100"]    { background-color: rgba(127,29,29,.40) !important; }
+  html.dark [class~="bg-red-200"]    { background-color: rgba(127,29,29,.50) !important; }
+  html.dark [class~="bg-rose-50"]    { background-color: rgba(136,19,55,.30) !important; }
+  html.dark [class~="bg-yellow-50"]  { background-color: rgba(113,63,18,.28) !important; }
+  html.dark [class~="bg-yellow-100"] { background-color: rgba(113,63,18,.40) !important; }
+  html.dark [class~="bg-yellow-200"] { background-color: rgba(113,63,18,.50) !important; }
+  html.dark [class~="bg-amber-50"]   { background-color: rgba(120,53,15,.30) !important; }
+  html.dark [class~="bg-amber-100"]  { background-color: rgba(120,53,15,.42) !important; }
+  html.dark [class~="bg-orange-50"]  { background-color: rgba(124,45,18,.30) !important; }
+  html.dark [class~="bg-purple-50"]  { background-color: rgba(76,29,149,.32) !important; }
+  html.dark [class~="bg-purple-100"] { background-color: rgba(76,29,149,.42) !important; }
+  html.dark [class~="bg-purple-200"] { background-color: rgba(76,29,149,.52) !important; }
+  html.dark [class~="bg-indigo-50"]  { background-color: rgba(30,27,75,.34) !important; }
+  html.dark [class~="bg-indigo-100"] { background-color: rgba(30,27,75,.44) !important; }
+  html.dark [class~="bg-teal-50"]    { background-color: rgba(19,78,74,.30) !important; }
+  html.dark [class~="bg-teal-100"]   { background-color: rgba(19,78,74,.40) !important; }
+  html.dark [class~="bg-pink-50"]    { background-color: rgba(131,24,67,.30) !important; }
+  html.dark [class~="bg-pink-100"]   { background-color: rgba(131,24,67,.40) !important; }
+  html.dark [class~="bg-sky-50"]     { background-color: rgba(12,74,110,.30) !important; }
+  html.dark [class~="bg-cyan-50"]    { background-color: rgba(14,116,144,.30) !important; }
+  html.dark [class~="bg-lime-50"]    { background-color: rgba(77,124,15,.30) !important; }
+  html.dark [class~="bg-violet-50"]  { background-color: rgba(91,33,182,.32) !important; }
+
+  /* ── Primary text ───────────────────────────────────────────────── */
+  html.dark [class~="text-gray-900"]  { color: #f1f5f9 !important; }
+  html.dark [class~="text-gray-800"]  { color: #e2e8f0 !important; }
+  html.dark [class~="text-gray-700"]  { color: #cbd5e1 !important; }
+  html.dark [class~="text-gray-600"]  { color: #94a3b8 !important; }
+  html.dark [class~="text-gray-500"]  { color: #94a3b8 !important; }
+  html.dark [class~="text-gray-400"]  { color: #64748b !important; }
+  html.dark [class~="text-black"]     { color: #f8fafc !important; }
+  html.dark [class~="text-slate-900"] { color: #f1f5f9 !important; }
+  html.dark [class~="text-slate-800"] { color: #e2e8f0 !important; }
+  html.dark [class~="text-slate-700"] { color: #cbd5e1 !important; }
+  html.dark [class~="text-slate-600"] { color: #94a3b8 !important; }
+  html.dark [class~="text-slate-500"] { color: #94a3b8 !important; }
+  html.dark [class~="text-slate-400"] { color: #64748b !important; }
+  html.dark [class~="text-slate-300"] { color: #64748b !important; }
+
+  /* ── Tinted text (badges on tinted chips need to lighten) ───────── */
+  html.dark [class~="text-blue-700"]   { color: #93c5fd !important; }
+  html.dark [class~="text-blue-800"]   { color: #bfdbfe !important; }
+  html.dark [class~="text-blue-900"]   { color: #dbeafe !important; }
+  html.dark [class~="text-sky-700"]    { color: #7dd3fc !important; }
+  html.dark [class~="text-cyan-700"]   { color: #67e8f9 !important; }
+  html.dark [class~="text-green-700"]  { color: #86efac !important; }
+  html.dark [class~="text-green-800"]  { color: #bbf7d0 !important; }
+  html.dark [class~="text-green-600"]  { color: #4ade80 !important; }
+  html.dark [class~="text-emerald-700"]{ color: #6ee7b7 !important; }
+  html.dark [class~="text-emerald-800"]{ color: #a7f3d0 !important; }
+  html.dark [class~="text-teal-700"]   { color: #5eead4 !important; }
+  html.dark [class~="text-lime-700"]   { color: #bef264 !important; }
+  html.dark [class~="text-red-700"]    { color: #fca5a5 !important; }
+  html.dark [class~="text-red-800"]    { color: #fecaca !important; }
+  html.dark [class~="text-red-600"]    { color: #f87171 !important; }
+  html.dark [class~="text-rose-700"]   { color: #fda4af !important; }
+  html.dark [class~="text-orange-600"] { color: #fb923c !important; }
+  html.dark [class~="text-orange-700"] { color: #fdba74 !important; }
+  html.dark [class~="text-amber-500"]  { color: #fbbf24 !important; }
+  html.dark [class~="text-amber-600"]  { color: #fbbf24 !important; }
+  html.dark [class~="text-amber-700"]  { color: #fcd34d !important; }
+  html.dark [class~="text-yellow-600"] { color: #facc15 !important; }
+  html.dark [class~="text-yellow-700"] { color: #fcd34d !important; }
+  html.dark [class~="text-purple-700"] { color: #c4b5fd !important; }
+  html.dark [class~="text-purple-800"] { color: #ddd6fe !important; }
+  html.dark [class~="text-purple-900"] { color: #ede9fe !important; }
+  html.dark [class~="text-violet-700"] { color: #c4b5fd !important; }
+  html.dark [class~="text-indigo-700"] { color: #a5b4fc !important; }
+  html.dark [class~="text-indigo-800"] { color: #c7d2fe !important; }
+  html.dark [class~="text-pink-700"]   { color: #f9a8d4 !important; }
+  html.dark [class~="text-fuchsia-700"]{ color: #f0abfc !important; }
+
+  /* ── Borders ────────────────────────────────────────────────────── */
+  html.dark [class~="border-gray-200"]  { border-color: #334155 !important; }
+  html.dark [class~="border-gray-300"]  { border-color: #475569 !important; }
+  html.dark [class~="border-gray-400"]  { border-color: #475569 !important; }
+  html.dark [class~="border-slate-200"] { border-color: #334155 !important; }
+  html.dark [class~="border-slate-300"] { border-color: #475569 !important; }
+  html.dark [class~="border-slate-400"] { border-color: #475569 !important; }
+  html.dark [class~="border-slate-500"] { border-color: #64748b !important; }
+  html.dark [class~="border-slate-700"] { border-color: #334155 !important; }
+  html.dark [class~="border-slate-800"] { border-color: #1e293b !important; }
+  html.dark [class~="border-purple-100"]{ border-color: rgba(76,29,149,.5) !important; }
+  html.dark [class~="border-blue-100"]  { border-color: rgba(30,58,138,.5) !important; }
+  html.dark [class~="border-blue-200"]  { border-color: rgba(30,58,138,.6) !important; }
+  html.dark [class~="border-red-100"]   { border-color: rgba(127,29,29,.5) !important; }
+  html.dark [class~="border-red-200"]   { border-color: rgba(127,29,29,.6) !important; }
+  html.dark [class~="border-red-300"]   { border-color: rgba(127,29,29,.7) !important; }
+  html.dark [class~="border-red-700"]   { border-color: rgba(127,29,29,.7) !important; }
+  html.dark [class~="border-red-800"]   { border-color: rgba(127,29,29,.8) !important; }
+  html.dark [class~="border-red-900"]   { border-color: rgba(127,29,29,.8) !important; }
+  html.dark [class~="border-green-200"] { border-color: rgba(20,83,45,.6) !important; }
+  html.dark [class~="border-green-300"] { border-color: rgba(20,83,45,.7) !important; }
+  html.dark [class~="border-green-500"] { border-color: rgba(20,83,45,.7) !important; }
+  html.dark [class~="border-green-600"] { border-color: rgba(20,83,45,.7) !important; }
+  html.dark [class~="border-green-700"] { border-color: rgba(20,83,45,.7) !important; }
+  html.dark [class~="border-yellow-200"]{ border-color: rgba(113,63,18,.6) !important; }
+  html.dark [class~="border-yellow-300"]{ border-color: rgba(113,63,18,.7) !important; }
+  html.dark [class~="border-amber-200"] { border-color: rgba(120,53,15,.6) !important; }
+  html.dark [class~="border-amber-300"] { border-color: rgba(120,53,15,.7) !important; }
+  html.dark [class~="border-orange-200"]{ border-color: rgba(124,45,18,.6) !important; }
+  html.dark [class~="border-purple-200"]{ border-color: rgba(76,29,149,.6) !important; }
+  html.dark [class~="border-purple-300"]{ border-color: rgba(76,29,149,.6) !important; }
+  html.dark [class~="border-purple-400"]{ border-color: rgba(76,29,149,.7) !important; }
+  html.dark [class~="border-purple-500"]{ border-color: rgba(76,29,149,.7) !important; }
+  html.dark [class~="border-purple-700"]{ border-color: rgba(76,29,149,.7) !important; }
+  html.dark [class~="border-blue-300"]  { border-color: rgba(30,58,138,.7) !important; }
+  html.dark [class~="border-blue-500"]  { border-color: rgba(30,58,138,.7) !important; }
+  html.dark [class~="border-blue-600"]  { border-color: rgba(30,58,138,.7) !important; }
+  html.dark [class~="border-indigo-200"]{ border-color: rgba(30,27,75,.6) !important; }
+
+  /* ── Form controls ──────────────────────────────────────────────── */
+  html.dark input, html.dark textarea, html.dark select {
+    background-color: #0f172a !important;
+    color: #e2e8f0 !important;
+    border-color: #475569 !important;
+  }
+  html.dark input::placeholder, html.dark textarea::placeholder {
+    color: #64748b !important;
+  }
+  html.dark input[type="checkbox"], html.dark input[type="radio"] {
+    background-color: #1e293b !important;
+  }
+  html.dark option { background-color: #0f172a; color: #e2e8f0; }
+
+  /* ── Tables ────────────────────────────────────────────────────── */
+  html.dark [class~="divide-gray-50"]  { border-color: #1e293b !important; }
+  html.dark [class~="divide-gray-100"] { border-color: #1e293b !important; }
+  html.dark [class~="divide-slate-50"] { border-color: #1e293b !important; }
+  html.dark [class~="divide-slate-100"]{ border-color: #1e293b !important; }
+  html.dark th { color: #cbd5e1 !important; }
+}
+
+@media print {
+  html, html.dark { color-scheme: light; }
+  .slip-page img {
+    -webkit-print-color-adjust: exact;
+    print-color-adjust: exact;
   }
 }

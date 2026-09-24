@@ -2,8 +2,8 @@ import React, { useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import imgLogo from '../Images/icon.png';
 import { supabase } from '../createClient';
-import { BellIcon, User2Icon } from 'lucide-react';
 import Notification from './notification';
+import { User2Icon, MenuIcon, XIcon, LogOut } from 'lucide-react';
 
 export default function StaffNavbar() {
   const [isOpen, setIsOpen] = useState(false);
@@ -19,61 +19,119 @@ export default function StaffNavbar() {
     <Link
       to={to}
       onClick={onClick}
-      className="group relative inline-block py-2 my-2 px-2 text-gray-800 lg:text-white text-center font-semibold uppercase transition-colors text-nowrap"
+      className="relative block w-full py-3 px-6 text-left text-white text-sm font-semibold uppercase transition-colors duration-200 hover:bg-white hover:text-blue-600"
     >
-      <span className="relative z-10 transition-colors duration-300 group-hover:text-gray-600">
-        {children}
-      </span>
-      <span className="absolute rounded-md top-[2px] left-0 h-full w-full origin-top scale-0 bg-white opacity-0 transition-all duration-300 group-hover:scale-100 group-hover:opacity-100" />
+      {children}
     </Link>
   );
 
+  const links = [
+    { to: '/staff/dashboard', label: 'Dashboard' },
+    { to: '/staff/borrow', label: 'Borrow Vehicle' },
+    { to: '/staff/checkup', label: 'OPD Check Up Form' },
+    { to: '/staff/checkupqueue', label: 'OPD Check Up Queue' },
+    { to: '/staff/inventory', label: 'Inventory Management' },
+    { to: '/staff/borrower-slip', label: 'Borrower Slip' },
+    { to: '/staff/settings', label: 'Settings' },
+  ];
+
   return (
-    <header className="absolute inset-x-0 top-0 z-50 w-full border-b border-gray-500 bg-gradient-to-r from-blue-600 to-purple-600 p-3">
-      <div className="flex items-center justify-between">
-        <Link to="/staff/dashboard" title="Go to Dashboard." className="z-50">
-          <img src={imgLogo} alt="logo" className="w-16 h-12" />
-        </Link>
-
-        <button
-          className="z-50 text-2xl font-bold text-white lg:hidden"
-          onClick={() => setIsOpen(!isOpen)}
-        >
-          {isOpen ? '✖' : '☰'}
-        </button>
-
-        <nav className={`${isOpen ? 'flex' : 'hidden'} absolute top-full left-0 w-full flex-col items-center gap-2 bg-white/95 p-6 lg:static lg:flex lg:w-auto lg:flex-row lg:bg-transparent lg:p-0`}>
-          <NavLink to="/staff/borrow" onClick={() => setIsOpen(false)}>Borrow Vehicle</NavLink>
-          <NavLink to="/staff/checkup" onClick={() => setIsOpen(false)}>OPD Check Up Form</NavLink>
-          <NavLink to="/staff/checkupqueue" onClick={() => setIsOpen(false)}>OPD Check Up Queue</NavLink>
-          <NavLink to="/staff/inventory" onClick={() => setIsOpen(false)}>Inventory Management</NavLink>
-          <NavLink to="/staff/borrower-slip" onClick={() => setIsOpen(false)}>Borrower Slip</NavLink>
-          <NavLink to="/staff/settings" onClick={() => setIsOpen(false)}>Settings</NavLink>
-
-          {/* Mobile logout button */}
+    <>
+      {/* ══════════════════════════════════════════════════════════════
+          TOP NAVBAR — notifications / profile / logout on the RIGHT
+          ══════════════════════════════════════════════════════════════ */}
+      <header className="fixed top-0 left-0 right-0 h-16 z-[60] bg-gradient-to-r from-blue-600 to-purple-600 border-b border-purple-500/40 shadow-lg flex items-center justify-between gap-3 px-3 sm:px-4">
+        {/* Left: toggle + brand */}
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <button
-            onClick={handleLogout}
-            className="py-2 px-4 text-lg font-semibold uppercase text-red-600 lg:hidden"
+            type="button"
+            onClick={() => setIsOpen((o) => !o)}
+            aria-label={isOpen ? 'Close navigation menu' : 'Open navigation menu'}
+            aria-expanded={isOpen}
+            className="p-2 rounded-lg text-white hover:bg-white/15 active:scale-95 transition shrink-0"
           >
+            {isOpen ? <XIcon size={22} /> : <MenuIcon size={22} />}
+          </button>
+
+          <Link to="/staff/dashboard" className="flex items-center gap-2 min-w-0">
+            <img src={imgLogo} alt="MDRRMO logo" className="h-9 w-auto shrink-0" />
+            <span className="text-white text-base sm:text-lg font-bold truncate">
+              Staff Portal
+            </span>
+          </Link>
+        </div>
+
+        {/* Right: notification bell, profile, logout */}
+        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+          <Notification />
+
+          <Link
+            to="/staff/profile"
+            title="Profile"
+            aria-label="View profile"
+            className="p-2 rounded-xl text-white hover:bg-white/15 active:scale-95 transition"
+          >
+            <User2Icon size={22} />
+          </Link>
+
+          <button
+            type="button"
+            onClick={handleLogout}
+            className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl text-white text-sm font-bold uppercase hover:bg-white/15 active:scale-95 transition"
+          >
+            <LogOut size={18} />
             Log out
           </button>
-        </nav>
+        </div>
+      </header>
 
-        <div className="hidden items-center gap-4 lg:flex">
-          <button
-            onClick={handleLogout}
-            className="group relative inline-block py-2 px-4 text-center text-white font-semibold uppercase transition-colors"
-          >
-            <span className="text-nowrap relative z-10 transition-colors duration-300 group-hover:text-gray-700">
+      {/* ══════════════════════════════════════════════════════════════
+          OVERLAY — below the top bar so the toggle stays clickable
+          ══════════════════════════════════════════════════════════════ */}
+      {isOpen && (
+        <div
+          className="fixed top-16 left-0 right-0 bottom-0 bg-black/50 z-40"
+          onClick={() => setIsOpen(false)}
+          aria-hidden="true"
+        />
+      )}
+
+      {/* ══════════════════════════════════════════════════════════════
+          SIDEBAR — starts below the top bar
+          ══════════════════════════════════════════════════════════════ */}
+      <nav
+        className={`fixed top-16 bottom-0 left-0 w-64 z-50 bg-gradient-to-b from-blue-600 to-purple-600 shadow-xl transform transition-transform duration-300 ease-in-out ${
+          isOpen ? 'translate-x-0' : '-translate-x-full'
+        }`}
+      >
+        <div className="flex flex-col h-full overflow-y-auto">
+          <div className="py-4 px-6 border-b border-purple-400/40 shrink-0">
+            <p className="text-white/70 text-[11px] font-bold uppercase tracking-widest">
+              Operations
+            </p>
+          </div>
+
+          <div className="flex-grow flex flex-col py-2">
+            {links.map((l) => (
+              <NavLink key={l.to} to={l.to} onClick={() => setIsOpen(false)}>
+                {l.label}
+              </NavLink>
+            ))}
+          </div>
+
+          {/* Mobile-only logout */}
+          <div className="p-4 border-t border-purple-400/40 shrink-0 sm:hidden">
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-white font-semibold uppercase hover:bg-white/15 transition"
+            >
+              <LogOut size={18} />
               Log out
-            </span>
-            <span className="absolute rounded-md top-[2px] left-0 h-full w-full origin-top scale-0 bg-white opacity-0 transition-all duration-300 group-hover:scale-100 group-hover:opacity-100" />
-          </button>
-
-         <Link to="/profile" title="View Profile Picture." className="rounded-xl text-white p-2 hover:bg-white hover:text-gray-700"> <User2Icon /></Link>
-         <Notification />
-         </div>
-      </div>
-    </header>
+            </button>
+          </div>
+        </div>
+      </nav>
+    </>
   );
 }

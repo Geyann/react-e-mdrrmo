@@ -141,7 +141,7 @@ const Lightbox = ({ images, currentIndex, onClose, onPrev, onNext }) => {
 const DetailPanel = ({ report, onClose, onUpdateStatus, onToggleHeatmap, onDelete, heatmapVisible, photos, onOpenLightbox }) => {
   if (!report) return null;
 
-  const displayStatus = report.status || report.report_status || 'pending';
+  const displayStatus =  report.status || 'pending';
   const isPending = displayStatus === 'pending';
   const riskColor = HAZARD_COLORS[report.risk_level?.toLowerCase()] || '#3b82f6';
 
@@ -523,7 +523,7 @@ const [showReport, setShowReport] = useState(false);
   const stats = useMemo(() => {
     const s = { total: reports.length, pending: 0, approved: 0, rejected: 0, critical: 0, high: 0 };
     reports.forEach(r => {
-      const st = r.status || r.report_status || 'pending';
+      const st =  r.status || 'pending';
       if (st === 'pending') s.pending++;
       else if (st === 'approved') s.approved++;
       else if (st === 'rejected') s.rejected++;
@@ -536,7 +536,7 @@ const [showReport, setShowReport] = useState(false);
   // ── Filtered reports ──
   const filteredReports = useMemo(() => {
     return reports.filter(r => {
-      const st = r.status || r.report_status || 'pending';
+      const st = r.status || 'pending';
       if (showPendingOnly && st !== 'pending') return false;
       if (selectedCategory !== 'all' && r.hazard_category?.toLowerCase() !== selectedCategory) return false;
       if (selectedRisk !== 'all' && r.risk_level?.toLowerCase() !== selectedRisk) return false;
@@ -611,7 +611,7 @@ const [showReport, setShowReport] = useState(false);
   const batchApprove = useCallback(async () => {
     try {
       const pendingIds = reports
-        .filter(r => (r.status || r.report_status || 'pending') === 'pending')
+        .filter(r => ( r.status || 'pending') === 'pending')
         .map(r => r.id);
       if (pendingIds.length === 0) {
         showSnackbar('No pending reports', 'info');
@@ -800,7 +800,7 @@ const [showReport, setShowReport] = useState(false);
               <div className="space-y-2">
                 {filteredReports.map(report => {
                   const hc = HAZARD_COLORS[report.risk_level?.toLowerCase()] || '#3b82f6';
-                  const rptStatus = report.status || report.report_status || 'pending';
+                  const rptStatus =  report.status || 'pending';
                   const isPending = rptStatus === 'pending';
                   const isActive = activeReport?.id === report.id;
                   const photos = getPhotoUrls(report.hazard_photos);
@@ -923,7 +923,7 @@ const [showReport, setShowReport] = useState(false);
             {/* Markers */}
             {filteredReports.map((report) => {
               const riskColor = HAZARD_COLORS[report.risk_level?.toLowerCase()] || '#3b82f6';
-              const rptStatus = report.status || report.report_status || 'pending';
+              const rptStatus =  report.status || 'pending';
               const isPending = rptStatus === 'pending';
               const isActive = activeReport?.id === report.id;
 
@@ -1013,7 +1013,7 @@ const HazardSummaryReportModal = ({ reportData, onClose, onPrint }) => {
 
   const pct = (count) => (data.length ? Math.round((count / data.length) * 100) : 0);
 
-  const statusOf = (r) => (r.status || r.report_status || 'pending').toLowerCase();
+  const statusOf = (r) => ( r.status || 'pending').toLowerCase();
   const riskOf = (r) => (r.risk_level || 'Unknown').toLowerCase();
 
   // ---- Status counts (from filtered data) ----

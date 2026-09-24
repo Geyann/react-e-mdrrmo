@@ -3,10 +3,11 @@ import { Route, Routes, useLocation, useNavigate, Navigate } from 'react-router-
 import { supabase } from './createClient'
 
 import AdminAppointmentDashboard from './components/AdminAppointmentDashboard'
+import { SettingsProvider } from './pages/SettingsContext';
 import Home from './pages/Home'
 import About from './pages/About'
 import Report from './pages/Report'
-import Admin from './pages/Admin'
+import Admin from './components/AdminDashboard'
 import Borrow from './pages/Borrow'
 import Appointment from './pages/appointment'
 import CheckUp from './pages/CheckUp'
@@ -39,6 +40,7 @@ import AdminInventory from './pages/AdminInventory'
 import DynamicNavbar from './components/dynamicNavbar'
 import EditProfile from './pages/editProfile'
 import CheckUpQueue from './pages/StaffCheckUpQueue'
+import BorrowerSlip from './pages/StaffBorrowerSlip'
 
 function App() {
   const location = useLocation();
@@ -78,21 +80,14 @@ function App() {
   };
 
   return (
-    <div
-      className="app"
-      style={{
-        backgroundImage: `url(${background})`,
-        backgroundRepeat: 'no-repeat',
-        backgroundSize: 'cover',
-        minHeight: '100vh',
-        maxHeight: '100vh',
-        overflowY: 'auto',
-        scrollbarWidth: 'none',
-      }}
-    >
+    <SettingsProvider>
+      <div
+        className="app app-shell"
+        style={{ '--app-bg': `url(${background})` }}
+      >
       {renderNavbar()}
 
-      <div className="content ">
+      <div className="content my-15">
         <Routes>
           {/* ===== PUBLIC ROUTES ===== */}
           <Route path="/" element={<Guest />} />
@@ -142,9 +137,9 @@ function App() {
           <Route path="/staff/checkup" element={<ProtectedRoute staffOnly={true}><CheckUp /></ProtectedRoute>} />
           <Route path="/staff/checkupqueue" element={<ProtectedRoute staffOnly={true}><CheckUpQueue /></ProtectedRoute>} />
           <Route path="/staff/inventory" element={<ProtectedRoute staffOnly={true}><StaffInventory /></ProtectedRoute>} />
-          <Route path="/staff/borrower-slip" element={<ProtectedRoute staffOnly={true}><StaffHome /></ProtectedRoute>} />
           <Route path="/staff/settings" element={<ProtectedRoute staffOnly={true}><Settings /></ProtectedRoute>} />
-          <Route path="/staff/profile" element={<ProtectedRoute staffOnly={true}><Profile /></ProtectedRoute>} />
+          <Route path="/staff/profile" element={<ProtectedRoute staffOnly={true}><Profile /></ProtectedRoute>} /> 
+          <Route path="/staff/borrower-slip" element={<ProtectedRoute staffOnly={true}><BorrowerSlip /></ProtectedRoute>} />
           <Route path="/staff/notification" element={<ProtectedRoute staffOnly={true}><StaffHome /></ProtectedRoute>} />
 
           {/* ===== EXTRA ROUTES USED BY NAVBARS (placeholders — swap real pages later) ===== */}
@@ -159,6 +154,7 @@ function App() {
         </Routes>
       </div>
     </div>
+    </SettingsProvider>
   )
 }
 

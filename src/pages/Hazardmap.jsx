@@ -386,7 +386,7 @@ const CategoryFilter = ({ categories, selected, onChange, uniqueCounts }) => {
         aria-haspopup="menu"
         aria-expanded={isOpen}
         // MOBILE: min-h-11 = 44px touch target, touch-manipulation kills double-tap zoom delay
-        className="flex items-center gap-2 px-3 py-1.5 min-h-11 bg-purple-600 hover:bg-purple-600/80 border border-purple-600/60 rounded-lg text-[10px] font-bold uppercase tracking-wider text-slate-100 transition select-none touch-manipulation active:scale-95"
+        className="flex items-center gap-2 px-3 py-1.5 min-h-11 bg-purple-600 hover:bg-purple-600/80 border border-purple-600/60 rounded-lg text-[10px] font-bold uppercase tracking-wider text-white transition select-none touch-manipulation active:scale-95"
       >
         <svg className="w-3.5 h-3.5 text-slate-100" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 4a1 1 0 011-1h16a1 1 0 011 1v2.586a1 1 0 01-.293.707l-6.414 6.414a1 1 0 00-.293.707V17l-4 4v-6.586a1 1 0 00-.293-.707L3.293 7.293A1 1 0 013 6.586V4z"/>
@@ -602,7 +602,7 @@ const UserHazardMap = () => {
 
       {/* Header — MOBILE: wraps onto a second row instead of overflowing */}
       <div className="bg-slate-100 px-4 sm:px-5 pt-[max(0.75rem,env(safe-area-inset-top))] pb-3 flex flex-wrap items-center justify-between gap-x-3 gap-y-2">
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-3 pl-15">
           <div >
             <h1 className="text-lg font-bold text-gray-700 tracking-wider uppercase leading-tight">Hazard Heatmap</h1>
             <p className="text-[9px] text-slate-600 tracking-widest uppercase">NAIC Area • Pinpoint hazard locations</p>
@@ -621,7 +621,7 @@ const UserHazardMap = () => {
           <button
             onClick={() => setShowMarkers(!showMarkers)}
             aria-pressed={showMarkers}
-            className="ml-1 px-3 py-1.5 min-h-11 text-[9px] font-bold uppercase rounded-lg border bg-purple-600 border-purple-600 text-slate-300 hover:bg-purple-700 transition select-none touch-manipulation active:scale-95">
+            className="ml-1 px-3 py-1.5 min-h-11 text-[9px] font-bold uppercase rounded-lg border bg-purple-600 border-purple-600 text-white hover:bg-purple-700 transition select-none touch-manipulation active:scale-95">
             {showMarkers ? 'Hide Pins' : 'Show Pins'}
           </button>
 
@@ -629,14 +629,14 @@ const UserHazardMap = () => {
             onClick={fetchApprovedReports}
             aria-label="Refresh reports"
             className="ml-1 min-h-11 min-w-11 p-2 bg-purple-600 hover:bg-purple-700 rounded-md border border-purple-600 transition flex items-center justify-center select-none touch-manipulation active:scale-95" title="Refresh">
-            <svg className={`w-3.5 h-3.5 text-slate-300 ${loading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <svg className={`w-3.5 h-3.5 text-white ${loading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
             </svg>
           </button>
           <button
             onClick={() => setIsRealistic(!isRealistic)}
             aria-pressed={isRealistic}
-            className="ml-1 px-3 py-1.5 min-h-11 text-[9px] font-bold uppercase rounded-lg border bg-purple-600 border-purple-600 text-slate-300 hover:bg-purple-700 transition select-none touch-manipulation active:scale-95">
+            className="ml-1 px-3 py-1.5 min-h-11 text-[9px] font-bold uppercase rounded-lg border bg-purple-600 border-purple-600 text-white hover:bg-purple-700 transition select-none touch-manipulation active:scale-95">
             {isRealistic ? 'Map' : 'Satellite'}
           </button>
         </div>
@@ -673,7 +673,7 @@ const UserHazardMap = () => {
         {/* ─── Legend ─── */}
         {/* MOBILE: hidden behind a "Legend" chip by default; desktop unchanged */}
         {(isMobile ? legendOpen : true) && (
-          <div className={`absolute left-4 z-[1000] bg-slate-200 border border-slate-700/60 rounded-xl p-4 backdrop-blur-md shadow-2xl w-56 max-w-[calc(100vw-2rem)] max-h-[60vh] overflow-y-auto ${
+          <div className={`absolute left-25 bottom-20 z-[1000] bg-slate-200 border border-slate-700/60 rounded-xl p-4 backdrop-blur-md shadow-2xl w-56 max-w-[calc(100vw-2rem)] max-h-[60vh] overflow-y-auto ${
             isMobile ? 'bottom-[max(4rem,env(safe-area-inset-bottom))]' : 'bottom-6'
           }`}>
             <h3 className="text-[15px] uppercase text-slate-900 font-bold tracking-wider mb-3 flex items-center gap-1.5">
