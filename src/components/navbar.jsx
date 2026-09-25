@@ -199,7 +199,7 @@ export default function Navbar() {
   const path = location.pathname;
 
   const [isOpen, setIsOpen] = useState(false);
-  const [collapsed, setCollapsed] = useState(false);
+  const [collapsed, setCollapsed] = useState(true);
   const [hovered, setHovered] = useState(null);
 
   const isCurrent = useCallback(
@@ -409,7 +409,7 @@ export default function Navbar() {
             • lg and up → pinned, 16rem / 4rem
           ════════════════════════════════════════════════════════════ */}
       <nav
-        className={`fixed top-16 bottom-0 left-0 z-50 bg-gradient-to-b from-blue-600 to-purple-600 shadow-xl transform transition-transform transition-[width] duration-300 ease-in-out ${
+        className={`fixed top-16 bottom-0 left-0 z-5000 bg-gradient-to-b from-blue-600 to-purple-600 shadow-xl transform transition-transform transition-[width] duration-300 ease-in-out ${
           isOpen ? "translate-x-0" : "-translate-x-full"
         } lg:translate-x-0 ${collapsed ? "w-16" : "w-64"}`}
         aria-label="Main navigation"
