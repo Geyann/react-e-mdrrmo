@@ -1,333 +1,1030 @@
-import { useState } from "react";
-import { useNavigate, Link } from "react-router-dom";
-import { supabase } from "../createClient";
-import imlogo from '../Images/icon.png';
-import { 
-  User, Mail, Lock, LogIn, AlertCircle, Eye, EyeOff, ArrowLeft 
+import {
+  useEffect,
+  useState,
+} from "react";
+import {
+  Link,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
+import Icon from '../Images/logo.png';
+import {
+  AlertCircle,
+  ArrowLeft,
+  ArrowRight,
+  CheckCircle2,
+  Eye,
+  EyeOff,
+  Info,
+  Loader2,
+  LockKeyhole,
+  LogIn,
+  UserRound,
 } from "lucide-react";
+import { supabase } from "../createClient";
+
+/* ══════════════════════════════════════════════════════════════════
+   PASSWORD HELPERS
+   ══════════════════════════════════════════════════════════════════ */
+
+const PASSWORD_SALT = "hackerai-salt-2024";
+
+const clean = (value) =>
+  String(value ?? "").trim();
+
+const cleanName = (...parts) =>
+  parts
+    .filter(Boolean)
+    .map((part) => clean(part))
+    .filter(Boolean)
+    .join(" ")
+    .trim();
+
+const isUuid = (value) =>
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+    clean(value),
+  );
+
+async function hashPassword(
+  password,
+  salt = PASSWORD_SALT,
+) {
+  const encoder = new TextEncoder();
+
+  const value = salt
+    ? `${password}${salt}`
+    : password;
+
+  const data = encoder.encode(value);
+
+  const hashBuffer =
+    await crypto.subtle.digest(
+      "SHA-256",
+      data,
+    );
+
+  return Array.from(
+    new Uint8Array(hashBuffer),
+  )
+    .map((byte) =>
+      byte.toString(16).padStart(2, "0"),
+    )
+    .join("");
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   DATABASE LOOKUPS
+   ══════════════════════════════════════════════════════════════════ */
+
+async function findRegistrationByEmail(
+  email,
+) {
+  const { data, error } = await supabase
+    .from("pending_registrations")
+    .select("*")
+    .eq("email", clean(email).toLowerCase())
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data;
+}
+
+async function findRegistrationByUsername(
+  username,
+) {
+  const { data, error } = await supabase
+    .from("pending_registrations")
+    .select("*")
+    .eq("username", clean(username))
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data;
+}
+
+async function findProfileById(id) {
+  if (!id || !isUuid(id)) {
+    return null;
+  }
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq("id", id)
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data;
+}
+
+async function findProfileByEmail(
+  email,
+) {
+  if (!email) return null;
+
+  const { data, error } = await supabase
+    .from("profiles")
+    .select("*")
+    .eq(
+      "email",
+      clean(email).toLowerCase(),
+    )
+    .maybeSingle();
+
+  if (error) {
+    throw new Error(error.message);
+  }
+
+  return data;
+}
+
+async function findProfileForRegistration(
+  registration,
+) {
+  if (
+    registration?.user_id &&
+    isUuid(registration.user_id)
+  ) {
+    const profile =
+      await findProfileById(
+        registration.user_id,
+      ).catch(() => null);
+
+    if (profile) return profile;
+  }
+
+  if (registration?.email) {
+    return findProfileByEmail(
+      registration.email,
+    ).catch(() => null);
+  }
+
+  return null;
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   SESSION BUILDER
+   ══════════════════════════════════════════════════════════════════ */
+
+function buildResidentSession({
+  registration = null,
+  profile = null,
+  authUser = null,
+  fallbackEmail = "",
+}) {
+  const metadata =
+    authUser?.user_metadata || {};
+
+  const email = clean(
+    profile?.email ||
+    registration?.email ||
+    authUser?.email ||
+    fallbackEmail,
+  ).toLowerCase();
+
+  const firstName = clean(
+    profile?.first_name ||
+    registration?.first_name ||
+    metadata.first_name ||
+    metadata.given_name ||
+    "",
+  );
+
+  const middleName = clean(
+    profile?.middle_name ||
+    registration?.middle_name ||
+    "",
+  );
+
+  const lastName = clean(
+    profile?.last_name ||
+    registration?.last_name ||
+    metadata.family_name ||
+    metadata.last_name ||
+    "",
+  );
+
+  const generatedName = cleanName(
+    firstName,
+    middleName,
+    lastName,
+  );
+
+  const fullName = clean(
+    profile?.full_name ||
+    registration?.full_name ||
+    metadata.full_name ||
+    metadata.name ||
+    generatedName ||
+    email ||
+    "Resident",
+  );
+
+  const role = clean(
+    profile?.role ||
+    registration?.role ||
+    "user",
+  ).toLowerCase();
+
+  const accountStatus =
+    profile?.is_active === false
+      ? "inactive"
+      : clean(
+          registration?.status ||
+            "approved",
+        ).toLowerCase();
+
+  return {
+    id:
+      profile?.id ||
+      registration?.id ||
+      authUser?.id ||
+      null,
+
+    user_id: clean(
+      profile?.user_id ||
+      registration?.user_id ||
+      authUser?.id ||
+      "",
+    ),
+
+    username: clean(
+      profile?.username ||
+      registration?.username ||
+      metadata.username ||
+      email.split("@")[0] ||
+      "resident",
+    ).toLowerCase(),
+
+    email,
+
+    full_name: fullName,
+
+    first_name: firstName,
+
+    middle_name: middleName,
+
+    last_name: lastName,
+
+    role: role || "user",
+
+    status: accountStatus || "approved",
+
+    mobile_number: clean(
+      profile?.mobile_number ||
+      registration?.mobile_number ||
+      "",
+    ),
+
+    address: clean(
+      profile?.address ||
+      registration?.address ||
+      "",
+    ),
+  };
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   GOOGLE ICON
+   ══════════════════════════════════════════════════════════════════ */
+
+function GoogleIcon() {
+  return (
+    <svg
+      aria-hidden="true"
+      viewBox="0 0 24 24"
+      className="h-5 w-5"
+    >
+      <path
+        fill="#4285F4"
+        d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 0 1-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1Z"
+      />
+
+      <path
+        fill="#34A853"
+        d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23Z"
+      />
+
+      <path
+        fill="#FBBC05"
+        d="M5.84 14.1A7.06 7.06 0 0 1 5.84 9.9V7.06H2.18a11 11 0 0 0 0 9.88l3.66-2.84Z"
+      />
+
+      <path
+        fill="#EA4335"
+        d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52Z"
+      />
+    </svg>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   LOGIN PAGE
+   ══════════════════════════════════════════════════════════════════ */
 
 export default function LoginPage() {
-  const [identifier, setIdentifier] = useState("");
-  const [password, setPassword] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [showPassword, setShowPassword] = useState(false);
   const navigate = useNavigate();
+  const location = useLocation();
 
-  // ---- SHA-256 hash (legacy registration used this + a hardcoded salt) ----
-  const hashPassword = async (password, salt = 'hackerai-salt-2024') => {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(password + salt);
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  };
+  const routeError = clean(
+    location.state?.error || "",
+  );
 
-  // ---- Store session in the same shape ProtectedRoute/Navbar expect ----
-  const storeSession = (user) => {
-    localStorage.setItem('currentUser', JSON.stringify({
-      id: user.id,
-      username: user.username,
-      email: user.email,
-      full_name: `${user.first_name || ''} ${user.middle_name || ''} ${user.last_name || ''}`.trim(),
-      first_name: user.first_name,
-      middle_name: user.middle_name,
-      last_name: user.last_name,
-      role: user.role || 'user',
-      status: user.status,
-      user_id: user.user_id || user.id,
-    }));
-  };
+  const routeNotice = clean(
+    location.state?.message || "",
+  );
 
-  // ---- Legacy lookup on pending_registrations ----
-  const lookupLegacyUser = async (identifier) => {
-    const isEmail = identifier.includes('@');
-    const column = isEmail ? 'email' : 'username';
-    const { data, error } = await supabase
-      .from('pending_registrations')
-      .select('*')
-      .eq(column, identifier)
-      .maybeSingle();
-    if (error) throw new Error(error.message);
-    return data;
-  };
+  const [identifier, setIdentifier] =
+    useState("");
 
-  // ---- Try to migrate a legacy user INTO Supabase Auth on successful login ----
-  const migrateToSupabase = async (user, plainPassword) => {
-    try {
-      // Create the auth user if they don't already have one
-      const { data: existing } = await supabase.auth.admin
-        ? await supabase.auth.admin.getUserById(user.user_id)
-        : { data: null };
+  const [password, setPassword] = useState(
+    "",
+  );
 
-      if (!existing?.user) {
-        // Only works server-side with service_role — skip silently in browser
-        return;
-      }
-    } catch {
-      // Browser lacks admin permission — migration handled by backend script.
-      // Login still works via the legacy path below.
+  const [showPassword, setShowPassword] =
+    useState(false);
+
+  const [loading, setLoading] = useState(
+    false,
+  );
+
+  const [googleLoading, setGoogleLoading] =
+    useState(false);
+
+  const [error, setError] = useState(
+    routeError,
+  );
+
+  const [notice, setNotice] = useState(
+    routeNotice,
+  );
+
+  const isEmailInput =
+    identifier.includes("@");
+
+  useEffect(() => {
+    setError(routeError);
+    setNotice(routeNotice);
+  }, [routeError, routeNotice]);
+
+  const saveResidentSession = (
+    session,
+  ) => {
+    if (!session.id) {
+      throw new Error(
+        "Your approved account could not be resolved. Please contact the MDRRMO administrator.",
+      );
     }
+
+    window.localStorage.setItem(
+      "currentUser",
+      JSON.stringify(session),
+    );
+
+    window.sessionStorage.removeItem(
+      "mdrrmo_previous_hash",
+    );
+
+    navigate("/home", {
+      replace: true,
+    });
   };
 
-  const handleLogin = async (e) => {
-    e.preventDefault();
+  /* ══════════════════════════════════════════════════════════════
+     USERNAME / EMAIL / PASSWORD LOGIN
+  ══════════════════════════════════════════════════════════════ */
+
+  const handlePasswordLogin = async (
+    event,
+  ) => {
+    event.preventDefault();
+
+    if (
+      loading ||
+      googleLoading
+    ) {
+      return;
+    }
+
+    const loginIdentifier = clean(
+      identifier,
+    );
+
+    const plainPassword = clean(
+      password,
+    );
+
+    if (
+      !loginIdentifier ||
+      !plainPassword
+    ) {
+      setError(
+        "Enter your username or email and password.",
+      );
+      return;
+    }
+
     setLoading(true);
     setError("");
+    setNotice("");
 
     try {
-      const hashedPassword = await hashPassword(password);
+      const isEmail =
+        loginIdentifier.includes("@");
 
-      // ---------- PATH 1: Supabase Auth (migrated / OAuth users) ----------
-      const { data: authData, error: authError } = await supabase.auth.signInWithPassword({
-        email: identifier.includes('@') ? identifier : `${identifier}@placeholder.invalid`,
-        password,
-      });
+      const normalizedEmail =
+        loginIdentifier.toLowerCase();
 
-      // If Supabase authenticated them, use the session directly
-      if (authData?.session && !authError) {
-        const meta = authData.user?.user_metadata || {};
-        // Pull the legacy profile if one exists for this email
-        let legacy = null;
-        if (authData.user?.email) {
-          legacy = await lookupLegacyUser(authData.user.email).catch(() => null);
+      let authResult = null;
+
+      /*
+       * First attempt Supabase Auth for migrated
+       * and Google/OAuth accounts that also have
+       * a password.
+       */
+      if (isEmail) {
+        const result =
+          await supabase.auth.signInWithPassword({
+            email: normalizedEmail,
+            password: plainPassword,
+          });
+
+        if (
+          !result.error &&
+          result.data?.session
+        ) {
+          authResult = result.data;
+        }
+      }
+
+      /*
+       * Fall back to the approved local
+       * pending_registrations account.
+       */
+      const registration = isEmail
+        ? await findRegistrationByEmail(
+            normalizedEmail,
+          )
+        : await findRegistrationByUsername(
+            loginIdentifier,
+          );
+
+      if (registration) {
+        const status = clean(
+          registration.status,
+        ).toLowerCase();
+
+        if (status === "pending") {
+          if (authResult?.session) {
+            await supabase.auth.signOut();
+          }
+
+          throw new Error(
+            "Your account is still pending administrator approval.",
+          );
         }
 
-        storeSession({
-          id: authData.user.id,
-          username: meta.username || legacy?.username || authData.user.email?.split('@')[0],
-          email: authData.user.email,
-          first_name: meta.first_name || legacy?.first_name || '',
-          middle_name: meta.middle_name || legacy?.middle_name || '',
-          last_name: meta.last_name || legacy?.last_name || '',
-          role: meta.role || legacy?.role || 'user',
-          status: 'approved',
-          user_id: authData.user.id,
-        });
-        navigate("/home");
-        return;
-      }
+        if (status === "rejected") {
+          if (authResult?.session) {
+            await supabase.auth.signOut();
+          }
 
-      // ---------- PATH 2: Legacy users in pending_registrations ----------
-      const user = await lookupLegacyUser(identifier);
+          throw new Error(
+            "Your registration was rejected. Please contact the MDRRMO office.",
+          );
+        }
 
-      if (!user) {
-        setError(
-          identifier.includes('@')
-            ? "Email not found. Please check your email or create an account."
-            : "Username not found. Please check your username or create an account."
+        if (
+          status &&
+          status !== "approved"
+        ) {
+          throw new Error(
+            "Your account is not available for login.",
+          );
+        }
+
+        if (!authResult?.session) {
+          const saltedHash =
+            await hashPassword(
+              plainPassword,
+            );
+
+          const unsaltedHash =
+            await hashPassword(
+              plainPassword,
+              "",
+            );
+
+          const storedPassword = clean(
+            registration.password,
+          );
+
+          if (
+            !storedPassword ||
+            (storedPassword !== saltedHash &&
+              storedPassword !== unsaltedHash)
+          ) {
+            throw new Error(
+              "Incorrect username or password.",
+            );
+          }
+        }
+
+        const profile =
+          await findProfileForRegistration(
+            registration,
+          );
+
+        if (
+          profile?.is_active === false
+        ) {
+          if (authResult?.session) {
+            await supabase.auth.signOut();
+          }
+
+          throw new Error(
+            "Your account has been deactivated. Contact the MDRRMO administrator.",
+          );
+        }
+
+        const residentSession =
+          buildResidentSession({
+            registration,
+            profile,
+            authUser:
+              authResult?.user || null,
+            fallbackEmail:
+              registration.email,
+          });
+
+        saveResidentSession(
+          residentSession,
         );
+
         return;
       }
 
-      // Compare salted hash, then unsalted as a fallback
-      const matches = 
-        user.password === hashedPassword ||
-        user.password === await hashPassword(password, '');
+      /*
+       * The account may exist only as an
+       * approved Supabase profile.
+       */
+      if (authResult?.session) {
+        const profile =
+          await findProfileById(
+            authResult.user.id,
+          ).catch(() => null);
 
-      if (!matches) {
-        setError("Incorrect password. Please try again.");
+        if (
+          !profile ||
+          profile.is_active === false
+        ) {
+          await supabase.auth.signOut();
+
+          throw new Error(
+            "Your account has not been approved yet.",
+          );
+        }
+
+        const role = clean(
+          profile.role || "user",
+        ).toLowerCase();
+
+        if (
+          ![
+            "user",
+            "resident",
+          ].includes(role)
+        ) {
+          await supabase.auth.signOut();
+
+          throw new Error(
+            "Use the staff or administrator portal to sign in with this account.",
+          );
+        }
+
+        const residentSession =
+          buildResidentSession({
+            registration: null,
+            profile,
+            authUser: authResult.user,
+            fallbackEmail:
+              authResult.user.email || "",
+          });
+
+        saveResidentSession(
+          residentSession,
+        );
+
         return;
       }
 
-      // Account status gates
-      if (user.status === 'pending') {
-        setError("Your account is still pending admin approval. Please wait for confirmation.");
-        return;
-      }
-      if (user.status === 'rejected') {
-        setError("Your registration was rejected by the admin. Please contact support.");
-        return;
-      }
-      if (user.status !== 'approved') {
-        setError("Unable to login. Unknown account status.");
-        return;
-      }
+      throw new Error(
+        isEmail
+          ? "Email not found. Check your account or create an account."
+          : "Username not found. Check your account or create an account.",
+      );
+    } catch (loginError) {
+      console.error(
+        "Resident login error:",
+        loginError,
+      );
 
-      // Migrate silently in the background (best-effort)
-      if (!user.user_id) {
-        migrateToSupabase(user, password); // non-blocking
-      }
-
-      storeSession(user);
-      navigate("/home");
-    } catch (err) {
-      setError(err.message || "Login failed. Please try again.");
+      setError(
+        loginError?.message ||
+          "Login failed. Please try again.",
+      );
     } finally {
       setLoading(false);
     }
   };
 
-  // ---- Google OAuth ----
+  /* ══════════════════════════════════════════════════════════════
+     GOOGLE LOGIN
+  ══════════════════════════════════════════════════════════════ */
+
   const handleGoogleLogin = async () => {
+    if (
+      loading ||
+      googleLoading
+    ) {
+      return;
+    }
+
     setGoogleLoading(true);
     setError("");
+    setNotice("");
+
     try {
-      const { error } = await supabase.auth.signInWithOAuth({
-        provider: 'google',
-        options: {
-          redirectTo: `${window.location.origin}/auth/callback`,
-        },
-      });
-      if (error) throw new Error(error.message);
-      // Browser redirects to Google — no navigation needed here
-    } catch (err) {
-      setError(err.message || "Google login failed. Please try again.");
+      const redirectTo =
+        `${window.location.origin}/auth/callback`;
+
+      const { error: oauthError } =
+        await supabase.auth.signInWithOAuth({
+          provider: "google",
+          options: {
+            redirectTo,
+          },
+        });
+
+      if (oauthError) {
+        throw oauthError;
+      }
+    } catch (oauthError) {
+      console.error(
+        "Google login error:",
+        oauthError,
+      );
+
+      setError(
+        oauthError?.message ||
+          "Google login could not be started.",
+      );
+
       setGoogleLoading(false);
     }
   };
 
-  const isEmailInput = identifier.includes('@');
+  /* ══════════════════════════════════════════════════════════════
+     RENDER
+  ══════════════════════════════════════════════════════════════ */
 
   return (
-    <div className="min-h-screen min-w-screen flex items-center justify-center p-4 mt-[-50px]">
+    <main className="relative min-h-screen overflow-hidden bg-gradient-to-br from-blue-700 via-blue-600 to-purple-700 px-4 py-6 sm:px-6 lg:px-8">
+      {/* Decorative background */}
+      <div
+        aria-hidden="true"
+        className="absolute -left-32 -top-32 h-96 w-96 rounded-full bg-blue-400/30 blur-3xl"
+      />
+
+      <div
+        aria-hidden="true"
+        className="absolute -bottom-40 -right-24 h-[30rem] w-[30rem] rounded-full bg-purple-400/35 blur-3xl"
+      />
+
+      <div
+        aria-hidden="true"
+        className="absolute inset-0 opacity-[0.08] [background-image:linear-gradient(rgba(255,255,255,0.7)_1px,transparent_1px),linear-gradient(90deg,rgba(255,255,255,0.7)_1px,transparent_1px)] [background-size:48px_48px]"
+      />
+
+      {/* Back button */}
       <button
-        onClick={() => navigate('/')}
-        className="absolute top-6 left-6 flex items-center gap-2 text-gray-600 hover:text-purple-600 transition font-semibold z-10"
+        type="button"
+        onClick={() => navigate("/")}
+        className="absolute left-4 top-4 z-20 inline-flex items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-bold text-white backdrop-blur-md transition hover:bg-white/20 sm:left-7 sm:top-7"
       >
-        <ArrowLeft className="w-5 h-5" />
+        <ArrowLeft className="h-4 w-4" />
         Back to Home
       </button>
 
-      <div className="w-full max-w-md">
-        <div className="bg-white rounded-3xl shadow-xl border border-gray-200 overflow-hidden">
-          <div className="bg-gradient-to-r from-blue-600 to-purple-600 p-8 text-center">
-            <img src={imlogo} alt="logo" className="w-25 h-25 object-contain mx-auto mb-4 bg-indigo-600 rounded-4xl p-2 shadow-lg" />
-            <h2 className="text-2xl font-bold text-white flex items-center justify-center gap-2">
-              <LogIn className="w-6 h-6" />
-              User Login
-            </h2>
-            <p className="text-blue-200 text-sm mt-1">Sign in with your username or email</p>
-          </div>
+      <div className="relative z-10 mx-auto flex min-h-[calc(100vh-3rem)] w-full max-w-6xl items-center justify-center py-16">
+        <div className="grid w-full overflow-hidden rounded-[2rem] border border-white/20 bg-white shadow-2xl shadow-blue-950/30 lg:grid-cols-[1.05fr_0.95fr]">
+          {/* Brand panel */}
+          <section className="relative overflow-hidden bg-gradient-to-br from-blue-700 via-blue-600 to-purple-700 p-8 text-white sm:p-10 lg:p-12">
+            <div
+              aria-hidden="true"
+              className="absolute -right-20 -top-20 h-64 w-64 rounded-full bg-white/10 blur-2xl"
+            />
 
-          <div className="p-8">
-            {error && (
-              <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
-                <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-                <p className="text-red-700 text-sm font-medium">{error}</p>
-              </div>
-            )}
+            <div
+              aria-hidden="true"
+              className="absolute -bottom-20 -left-16 h-56 w-56 rounded-full bg-purple-400/20 blur-2xl"
+            />
 
-            <form onSubmit={handleLogin} className="flex flex-col gap-5">
-              <div className="flex flex-col gap-1.5">
-                <label htmlFor="identifier" className="text-sm font-bold text-gray-700">
-                  {isEmailInput ? (
-                    <Mail className="w-4 h-4 inline mr-1 text-blue-600" />
-                  ) : (
-                    <User className="w-4 h-4 inline mr-1 text-blue-600" />
-                  )}
-                  Username or Email
-                </label>
-                <input 
-                  id="identifier"
-                  className="w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition bg-gray-50"
-                  type="text" 
-                  value={identifier}
-                  onChange={(e) => setIdentifier(e.target.value)}
-                  placeholder="Enter username or email address"
-                  required
-                  autoComplete="username"
-                />
-                <p className="text-xs text-gray-400 mt-1">
-                  Use your <span className="font-semibold">username</span> or <span className="font-semibold">email address</span> to login
-                </p>
-              </div>
-              
-              <div className="flex flex-col gap-1.5">
-                <label htmlFor="password" className="text-sm font-bold text-gray-700">
-                  <Lock className="w-4 h-4 inline mr-1 text-blue-600" />
-                  Password
-                </label>
-                <div className="relative">
-                  <input 
-                    id="password"
-                    className="w-full p-3 pr-12 border border-gray-300 rounded-xl focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition bg-gray-50"
-                    type={showPassword ? "text" : "password"} 
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Enter your password" 
-                    required
-                    autoComplete="current-password"
+            <div className="relative flex h-full flex-col">
+              <div className="flex items-center gap-3">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/20 bg-white/15 shadow-lg backdrop-blur-md">
+                  <img
+                    src={Icon}
+                    alt="SafeResponse Logo"
+                    className="h-8 w-8"
                   />
-                  <button
-                    type="button"
-                    onClick={() => setShowPassword(!showPassword)}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-500 hover:text-gray-700"
-                  >
-                    {showPassword ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
-                  </button>
+                </div>
+
+                <div>
+                  <p className="text-xl font-black">
+                    SafeResponse
+                  </p>
+
+                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-100">
+                    Naic Community Portal
+                  </p>
                 </div>
               </div>
 
-              <button 
-                className="w-full mt-2 bg-gradient-to-r from-blue-600 to-purple-600 text-white font-bold py-3.5 rounded-xl hover:from-blue-700 hover:to-purple-700 transition shadow-lg disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2" 
-                type="submit"
-                disabled={loading || googleLoading}
-              >
-                {loading ? (
-                  <>
-                    <svg className="animate-spin h-5 w-5 text-white" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                      <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                      <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                    </svg>
-                    LOGGING IN...
-                  </>
-                ) : (
-                  <>
-                    <LogIn className="w-5 h-5" />
-                    Login
-                  </>
-                )}
-              </button>
-            </form>
+              <div className="mt-12 lg:mt-20">
+                <span className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-bold text-blue-50">
+                  <CheckCircle2 className="h-4 w-4" />
+                  Community safety access
+                </span>
 
-            {/* Divider */}
-            <div className="flex items-center gap-3 my-2">
-              <div className="flex-1 h-px bg-gray-200" />
-              <span className="text-xs text-gray-400 font-medium">OR</span>
-              <div className="flex-1 h-px bg-gray-200" />
+                <h1 className="mt-5 text-3xl font-black leading-tight tracking-tight sm:text-4xl">
+                  Welcome back to your
+                  safer community.
+                </h1>
+
+                <p className="mt-4 max-w-md text-sm leading-6 text-blue-50/80 sm:text-base">
+                  Sign in to request emergency assistance,
+                  monitor your submitted reports, and access
+                  public safety information.
+                </p>
+              </div>
+
+              <div className="mt-10 space-y-3 lg:mt-auto">
+                {[
+                  "Submit and monitor emergency requests",
+                  "View public hazard hotspot information",
+                  "Access incident and hazard trends",
+                ].map((item) => (
+                  <div
+                    key={item}
+                    className="flex items-start gap-3 text-sm text-blue-50/90"
+                  >
+                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
+                    <span>{item}</span>
+                  </div>
+                ))}
+              </div>
             </div>
+          </section>
 
-            {/* Google OAuth */}
-            <button
-              onClick={handleGoogleLogin}
-              disabled={loading || googleLoading}
-              className="w-full border border-gray-300 rounded-xl py-3 font-bold text-gray-700 hover:bg-gray-50 transition disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-            >
-              {googleLoading ? (
-                <svg className="animate-spin h-5 w-5 text-gray-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
-                  <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>
-                  <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4zm2 5.291A7.962 7.962 0 014 12H0c0 3.042 1.135 5.824 3 7.938l3-2.647z"></path>
-                </svg>
-              ) : (
-                <svg className="w-5 h-5" viewBox="0 0 24 24">
-  <path fill="#4285F4" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92a5.06 5.06 0 01-2.2 3.32v2.77h3.57c2.08-1.92 3.27-4.74 3.27-8.1z"/>
-  <path fill="#34A853" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z"/>
-  <path fill="#FBBC05" d="M5.84 14.1a7.06 7.06 0 010-4.2V7.06H2.18a11 11 0 000 9.88l3.66-2.84z"/>
-  <path fill="#EA4335" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.06l3.66 2.84c.87-2.6 3.3-4.52 6.16-4.52z"/>
-</svg>
+          {/* Form panel */}
+          <section className="p-6 sm:p-10 lg:p-12">
+            <div className="mx-auto max-w-md">
+              <div className="mb-8">
+                <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-purple-600 text-white shadow-lg shadow-blue-600/20">
+                  <LogIn className="h-6 w-6" />
+                </div>
+
+                <h2 className="text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">
+                  Resident login
+                </h2>
+
+                <p className="mt-2 text-sm leading-6 text-slate-500">
+                  Enter your username, email address, and
+                  password to continue.
+                </p>
+              </div>
+
+              {/* Error */}
+              {error && (
+                <div
+                  role="alert"
+                  className="mb-5 flex items-start gap-3 rounded-2xl border border-red-200 bg-red-50 p-4"
+                >
+                  <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
+
+                  <p className="text-sm font-semibold leading-5 text-red-700">
+                    {error}
+                  </p>
+                </div>
               )}
-              Continue with Google
-            </button>
 
-            <div className="mt-2 text-center">
-              <p className="text-sm text-gray-500">
-                Don't have an account?{' '}
-                <Link to="/register" className="text-blue-600 font-bold hover:text-blue-700 hover:underline transition">
-                  Create Account
+              {/* Notice */}
+              {notice && (
+                <div
+                  role="status"
+                  className="mb-5 flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4"
+                >
+                  <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
+
+                  <p className="text-sm font-semibold leading-5 text-emerald-700">
+                    {notice}
+                  </p>
+                </div>
+              )}
+
+              <form
+                onSubmit={handlePasswordLogin}
+                className="space-y-5"
+              >
+                {/* Username or email */}
+                <div>
+                  <label
+                    htmlFor="resident-identifier"
+                    className="mb-2 block text-sm font-bold text-slate-700"
+                  >
+                    Username or Email
+                  </label>
+
+                  <div className="relative">
+                    <UserRound className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+
+                    <input
+                      id="resident-identifier"
+                      type="text"
+                      value={identifier}
+                      onChange={(event) =>
+                        setIdentifier(
+                          event.target.value,
+                        )
+                      }
+                      placeholder={
+                        isEmailInput
+                          ? "name@example.com"
+                          : "Enter your username"
+                      }
+                      autoComplete="username"
+                      required
+                      className="w-full rounded-2xl border border-slate-300 bg-slate-50 py-3.5 pl-12 pr-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-purple-500 focus:bg-white focus:ring-4 focus:ring-purple-500/10"
+                    />
+                  </div>
+                </div>
+
+                {/* Password */}
+                <div>
+                  <label
+                    htmlFor="resident-password"
+                    className="mb-2 block text-sm font-bold text-slate-700"
+                  >
+                    Password
+                  </label>
+
+                  <div className="relative">
+                    <LockKeyhole className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+
+                    <input
+                      id="resident-password"
+                      type={
+                        showPassword
+                          ? "text"
+                          : "password"
+                      }
+                      value={password}
+                      onChange={(event) =>
+                        setPassword(
+                          event.target.value,
+                        )
+                      }
+                      placeholder="Enter your password"
+                      autoComplete="current-password"
+                      required
+                      className="w-full rounded-2xl border border-slate-300 bg-slate-50 py-3.5 pl-12 pr-12 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-purple-500 focus:bg-white focus:ring-4 focus:ring-purple-500/10"
+                    />
+
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setShowPassword(
+                          (visible) => !visible,
+                        )
+                      }
+                      aria-label={
+                        showPassword
+                          ? "Hide password"
+                          : "Show password"
+                      }
+                      className="absolute right-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+                    >
+                      {showPassword ? (
+                        <EyeOff className="h-5 w-5" />
+                      ) : (
+                        <Eye className="h-5 w-5" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Submit */}
+                <button
+                  type="submit"
+                  disabled={
+                    loading ||
+                    googleLoading
+                  }
+                  className="group inline-flex min-h-14 w-full items-center justify-center gap-3 rounded-2xl bg-gradient-to-r from-blue-600 to-purple-600 px-5 py-3.5 text-sm font-black text-white shadow-xl shadow-blue-600/20 transition hover:-translate-y-0.5 hover:from-blue-700 hover:to-purple-700 hover:shadow-2xl disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
+                >
+                  {loading ? (
+                    <>
+                      <Loader2 className="h-5 w-5 animate-spin" />
+                      Signing in...
+                    </>
+                  ) : (
+                    <>
+                      <LogIn className="h-5 w-5" />
+                      Sign In
+                      <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-1" />
+                    </>
+                  )}
+                </button>
+              </form>
+
+              {/* Divider */}
+              <div className="my-6 flex items-center gap-3">
+                <div className="h-px flex-1 bg-slate-200" />
+
+                <span className="text-[10px] font-black uppercase tracking-[0.2em] text-slate-400">
+                  or continue with
+                </span>
+
+                <div className="h-px flex-1 bg-slate-200" />
+              </div>
+
+              {/* Google */}
+              <button
+                type="button"
+                onClick={handleGoogleLogin}
+                disabled={
+                  loading ||
+                  googleLoading
+                }
+                className="inline-flex min-h-14 w-full items-center justify-center gap-3 rounded-2xl border border-slate-300 bg-white px-5 py-3.5 text-sm font-black text-slate-700 shadow-sm transition hover:-translate-y-0.5 hover:border-slate-400 hover:bg-slate-50 hover:shadow-lg disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:translate-y-0"
+              >
+                {googleLoading ? (
+                  <Loader2 className="h-5 w-5 animate-spin text-blue-600" />
+                ) : (
+                  <GoogleIcon />
+                )}
+
+                {googleLoading
+                  ? "Opening Google..."
+                  : "Continue with Google"}
+              </button>
+
+              {/* Information */}
+              <div className="mt-6 flex items-start gap-3 rounded-2xl border border-blue-100 bg-blue-50 p-4">
+                <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
+
+                <p className="text-xs leading-5 text-blue-800">
+                  Google accounts must first be approved
+                  by an administrator before accessing the
+                  resident portal.
+                </p>
+              </div>
+
+              {/* Registration */}
+              <p className="mt-7 text-center text-sm text-slate-500">
+                Do not have an account?{" "}
+                <Link
+                  to="/register"
+                  className="font-black text-blue-700 underline decoration-blue-300 underline-offset-4 transition hover:text-purple-700"
+                >
+                  Create an account
                 </Link>
               </p>
-              <p className="text-sm text-gray-500">
-                Are you {' '}
-                <Link to="/admin" className="text-blue-600 font-bold hover:text-blue-700 hover:underline transition">
-                  Admin?
+
+              {/* Personnel login */}
+              <p className="mt-5 text-center text-sm text-slate-500">
+                Authorized staff member?{" "}
+                <Link
+                  to="/admin"
+                  className="font-black text-purple-700 underline decoration-purple-300 underline-offset-4 transition hover:text-blue-700"
+                >
+                  Staff login
                 </Link>
               </p>
             </div>
-          </div>
+          </section>
         </div>
       </div>
-    </div>
+    </main>
   );
 }

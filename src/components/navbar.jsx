@@ -1,504 +1,379 @@
-"use client";
-
-import { useCallback, useEffect, useRef, useState } from "react";
-import { Link, useLocation, useNavigate } from "react-router-dom";
-import { createPortal } from "react-dom";
-import imgLogo from "../Images/icon.png";
-import { supabase } from "../createClient";
 import {
-  User2Icon,
-  MenuIcon,
-  XIcon,
-  LogOut,
+  useEffect,
+  useState,
+} from "react";
+import {
+  Link,
+  NavLink,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
+import {
+  CalendarCheck2,
+  ClipboardList,
+  Info,
   LayoutDashboard,
+  LogOut,
+  Map,
+  Menu,
+  Settings as SettingsIcon,
   Siren,
+  Stethoscope,
+  TrendingUp,
   TriangleAlert,
   Truck,
-  CalendarCheck2,
-  Stethoscope,
-  ClipboardList,
-  MapPinned,
-  TrendingUp,
-  Info,
-  Settings as SettingsIcon,
-  PanelLeftClose,
-  PanelLeftOpen,
+  UserRound,
+  X,
 } from "lucide-react";
+
+import { supabase } from "../createClient";
+import imgLogo from "../Images/icon.png";
 import Notification from "./notification";
 
-/* =============================================================
- *  NAVIGATION CONFIG
- * ============================================================= */
-
-const USER_GROUPS = [
+const USER_LINKS = [
   {
-    label: "Services",
-    links: [
-      { to: "/home", label: "Dashboard", icon: LayoutDashboard },
-      { to: "/hazard-report", label: "Hazard Report", icon: TriangleAlert },
-      { to: "/report", label: "Report Incident", icon: Siren },
-      { to: "/borrow", label: "Borrow Vehicle", icon: Truck },
-      { to: "/appointment", label: "Book Appointment", icon: CalendarCheck2 },
-      { to: "/checkup", label: "OPD Check-up", icon: Stethoscope },
-    ],
+    to: "/home",
+    label: "Dashboard",
+    icon: LayoutDashboard,
   },
   {
-    label: "My Records",
-    links: [
-      { to: "/track", label: "My Requests", icon: ClipboardList },
-      { to: "/hazardmap", label: "Hazard Map", icon: MapPinned },
-      { to: "/yearly-incident-trends", label: "Incident Trends", icon: TrendingUp },
-    ],
+    to: "/hazard-report",
+    label: "Hazard Report",
+    icon: TriangleAlert,
   },
   {
-    label: "Account",
-    links: [
-      { to: "/about", label: "About", icon: Info },
-      { to: "/settings", label: "Settings", icon: SettingsIcon },
-    ],
+    to: "/report",
+    label: "Report Incident",
+    icon: Siren,
+  },
+  {
+    to: "/borrow",
+    label: "Borrow Vehicle",
+    icon: Truck,
+  },
+  {
+    to: "/appointment",
+    label: "Book Appointment",
+    icon: CalendarCheck2,
+  },
+  {
+    to: "/checkup",
+    label: "OPD Check-Up",
+    icon: Stethoscope,
+  },
+  {
+    to: "/track",
+    label: "My Requests",
+    icon: ClipboardList,
+  },
+  {
+    to: "/hazardmap",
+    label: "Hazard Map",
+    icon: Map,
+  },
+  {
+    to: "/yearly-incident-trends",
+    label: "Incident Trends",
+    icon: TrendingUp,
+  },
+  {
+    to: "/about",
+    label: "About",
+    icon: Info,
+  },
+  {
+    to: "/settings",
+    label: "Settings",
+    icon: SettingsIcon,
   },
 ];
 
-const SIDEBAR_COLLAPSED_KEY = "mdrrmo_sidebar_collapsed";
-const SIDEBAR_EVENT = "mdrrmo:sidebar-toggle";
-
-/* =============================================================
- *  FLOATING LABEL
- *  Rendered into document.body because the sidebar clips overflow
- *  to allow vertical scrolling. Fixed positioning keeps it clear of
- *  the nav and gives it the correct stacking order.
- * ============================================================= */
-
-const FloatingLabel = ({ data }) => {
-  if (!data) return null;
-  if (typeof document === "undefined") return null;
-
-  const { label, top, left, muted } = data;
-
-  return createPortal(
-    <div
-      role="tooltip"
-      className="fixed z-[99999] pointer-events-none select-none"
-      style={{ top, left }}
-    >
-      <div
-        className={`relative px-3 py-1.5 rounded-lg shadow-xl border text-xs font-bold uppercase tracking-wide whitespace-nowrap ${
-          muted
-            ? "bg-white text-blue-700 border-blue-200"
-            : "bg-slate-900 text-white border-slate-700"
-        }`}
-      >
-        {label}
-        {muted && (
-          <span className="ml-2 font-normal normal-case opacity-60">
-            — current
-          </span>
-        )}
-        {/* Arrow */}
-        <span
-          className={`absolute left-0 top-1/2 -translate-y-1/2 -translate-x-1/2 w-2 h-2 rotate-45 border-b border-l ${
-            muted
-              ? "bg-white border-blue-200"
-              : "bg-slate-900 border-slate-700"
-          }`}
-        />
-      </div>
-    </div>,
-    document.body
+function getPageTitle(pathname) {
+  const active = USER_LINKS.find(
+    (link) => link.to === pathname,
   );
-};
 
-/* =============================================================
- *  SIDE LINK
- *     current page → static, never clickable
- *     expanded      → icon + inline label
- *     collapsed     → icon only + floating label on hover/focus
- * ============================================================= */
-
-const SideLink = ({
-  to,
-  label,
-  icon: Icon,
-  current,
-  onClick,
-  collapsed,
-  onShowLabel,
-  onHideLabel,
-}) => {
-  const ref = useRef(null);
-
-  const reveal = () => {
-    if (!collapsed || !ref.current) return;
-    const r = ref.current.getBoundingClientRect();
-    onShowLabel({
-      label,
-      top: r.top + r.height / 2,
-      left: r.right + 10,
-      muted: current,
-    });
-  };
-
-  const conceal = () => onHideLabel();
-
-  useEffect(() => {
-    return () => onHideLabel();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  const base =
-    "relative flex w-full items-center gap-3 py-3 px-6 text-left text-sm font-semibold uppercase transition-colors duration-200 outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-inset";
-
-  if (current) {
-    return (
-      <span
-        ref={ref}
-        onMouseEnter={reveal}
-        onMouseLeave={conceal}
-        onFocus={reveal}
-        onBlur={conceal}
-        aria-current="page"
-        aria-label={`${label} — current page`}
-        className={`${base} bg-white text-blue-700 cursor-default ${
-          collapsed ? "justify-center px-0" : ""
-        }`}
-      >
-        <Icon size={18} className="flex-shrink-0" />
-        {!collapsed && <span className="truncate">{label}</span>}
-      </span>
-    );
-  }
-
-  return (
-    <Link
-      ref={ref}
-      to={to}
-      onClick={onClick}
-      onMouseEnter={reveal}
-      onMouseLeave={conceal}
-      onFocus={reveal}
-      onBlur={conceal}
-      title={collapsed ? undefined : label}
-      aria-label={label}
-      className={`${base} text-white hover:bg-white hover:text-blue-600 ${
-        collapsed ? "justify-center px-0" : ""
-      }`}
-    >
-      <Icon size={18} className="flex-shrink-0" />
-      {!collapsed && <span className="truncate">{label}</span>}
-    </Link>
-  );
-};
-
-/* =============================================================
- *  COMPONENT
- * ============================================================= */
+  return active?.label || "Resident Portal";
+}
 
 export default function Navbar() {
-  const location = useLocation();
   const navigate = useNavigate();
-  const path = location.pathname;
+  const location = useLocation();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
 
-  const [isOpen, setIsOpen] = useState(false);
-  const [collapsed, setCollapsed] = useState(true);
-  const [hovered, setHovered] = useState(null);
-
-  const isCurrent = useCallback(
-    (to) => Boolean(to) && to === path,
-    [path]
+  const pageTitle = getPageTitle(
+    location.pathname,
   );
 
-  const close = useCallback(() => setIsOpen(false), []);
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [location.pathname]);
 
-  const toggleMobile = useCallback(() => {
-    setIsOpen((o) => !o);
-  }, []);
+  useEffect(() => {
+    if (!menuOpen) {
+      return undefined;
+    }
 
-  const toggleCollapse = useCallback(() => {
-    setCollapsed((c) => {
-      const next = !c;
-      window.dispatchEvent(
-        new CustomEvent(SIDEBAR_EVENT, {
-          detail: { collapsed: next },
-        })
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape") {
+        setMenuOpen(false);
+      }
+    };
+
+    window.addEventListener(
+      "keydown",
+      closeOnEscape,
+    );
+
+    return () => {
+      window.removeEventListener(
+        "keydown",
+        closeOnEscape,
       );
-      return next;
-    });
-  }, []);
+    };
+  }, [menuOpen]);
 
-  const showLabel = useCallback((data) => setHovered(data), []);
-  const hideLabel = useCallback(() => setHovered(null), []);
+  const handleLogout = async () => {
+    if (loggingOut) return;
 
-  /* ── Logout ────────────────────────────────────────────────────
-     Session keys only. Preferences and notification read-state stay. */
-  const handleLogout = useCallback(async () => {
+    const confirmed = window.confirm(
+      "Sign out of SafeResponse?",
+    );
+
+    if (!confirmed) return;
+
+    setLoggingOut(true);
+
     try {
       await supabase.auth.signOut();
     } catch {
-      /* no Supabase session */
+      // The local session can still be removed
+      // when no Supabase Auth session exists.
     }
-    try {
-      localStorage.removeItem("currentUser");
-      localStorage.removeItem("currentStaff");
-    } catch {
-      /* private mode */
-    }
-    setIsOpen(false);
-    navigate("/login", { replace: true });
-  }, [navigate]);
 
-  /* Close the drawer and any tooltip on navigation */
-  useEffect(() => {
-    setIsOpen(false);
-    setHovered(null);
-  }, [path]);
+    localStorage.removeItem(
+      "currentUser",
+    );
 
-  /* Escape closes the drawer and dismisses the tooltip */
-  useEffect(() => {
-    const onKey = (e) => {
-      if (e.key !== "Escape") return;
-      if (isOpen) setIsOpen(false);
-      setHovered(null);
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [isOpen]);
+    navigate("/login", {
+      replace: true,
+    });
+  };
 
-  /* Restore the saved collapse preference */
-  useEffect(() => {
-    try {
-      setCollapsed(
-        localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1"
-      );
-    } catch {
-      setCollapsed(false);
-    }
-  }, []);
+  const getRailClass = ({ isActive }) =>
+    [
+      "group relative flex h-12 w-12 items-center justify-center rounded-2xl transition",
+      isActive
+        ? "bg-white text-purple-700 shadow-lg"
+        : "text-white/80 hover:bg-white/15 hover:text-white",
+    ].join(" ");
 
-  /* Persist the collapse preference */
-  useEffect(() => {
-    try {
-      localStorage.setItem(
-        SIDEBAR_COLLAPSED_KEY,
-        collapsed ? "1" : "0"
-      );
-    } catch {
-      /* private mode */
-    }
-  }, [collapsed]);
-
-  /* Shared brand markup */
-  const brandInner = (
-    <>
-      <img
-        src={imgLogo}
-        alt="MDRRMO logo"
-        className="h-9 w-auto shrink-0"
-      />
-      <span className="hidden sm:inline text-white text-base sm:text-lg font-bold truncate">
-        SafeResponse
-      </span>
-    </>
-  );
+  const getMobileClass = ({ isActive }) =>
+    [
+      "flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-sm font-bold transition",
+      isActive
+        ? "bg-white text-purple-700 shadow-lg"
+        : "text-white hover:bg-white/15",
+    ].join(" ");
 
   return (
     <>
-      {/* ════════════════════════════════════════════════════════════
-          TOP BAR
-          ════════════════════════════════════════════════════════════ */}
-      <header className="fixed top-0 left-0 right-0 h-16 z-[60] bg-gradient-to-r from-blue-600 to-purple-600 border-b border-purple-500/40 shadow-lg flex items-center justify-between gap-3 px-3 sm:px-4">
-        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-          {/* Mobile burger */}
-          <button
-            type="button"
-            onClick={toggleMobile}
-            aria-label={
-              isOpen ? "Close navigation menu" : "Open navigation menu"
-            }
-            aria-expanded={isOpen}
-            className="lg:hidden p-2 rounded-lg text-white hover:bg-white/15 active:scale-95 transition shrink-0"
-          >
-            {isOpen ? <XIcon size={22} /> : <MenuIcon size={22} />}
-          </button>
+      {/* ═══════════════════════════════════════════════════════
+          TOP NAVIGATION
+      ═══════════════════════════════════════════════════════ */}
 
-          {/* Desktop collapse burger */}
-          <button
-            type="button"
-            onClick={toggleCollapse}
-            aria-label={
-              collapsed ? "Expand sidebar" : "Collapse sidebar"
-            }
-            aria-expanded={!collapsed}
-            className="hidden lg:flex p-2 rounded-lg text-white hover:bg-white/15 active:scale-95 transition shrink-0"
-          >
-            {collapsed ? (
-              <PanelLeftOpen size={20} />
-            ) : (
-              <PanelLeftClose size={20} />
-            )}
-          </button>
-
-          {/* Brand */}
-          {isCurrent("/home") ? (
-            <span
-              title="SafeResponse — current page"
-              className="flex items-center gap-2 min-w-0"
+      <header className="fixed inset-x-0 top-0 z-[1000] h-16 border-b border-white/20 bg-gradient-to-r from-blue-600 via-blue-600 to-purple-600 shadow-xl shadow-purple-950/15">
+        <div className="flex h-full items-center justify-between gap-3 px-3 sm:px-5">
+          {/* Left */}
+          <div className="flex min-w-0 items-center gap-3">
+            <button
+              type="button"
+              onClick={() =>
+                setMenuOpen((open) => !open)
+              }
+              aria-label={
+                menuOpen
+                  ? "Close user menu"
+                  : "Open user menu"
+              }
+              aria-expanded={menuOpen}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white transition hover:bg-white/15 lg:hidden"
             >
-              {brandInner}
-            </span>
-          ) : (
+              {menuOpen ? (
+                <X className="h-5 w-5" />
+              ) : (
+                <Menu className="h-5 w-5" />
+              )}
+            </button>
+
             <Link
               to="/home"
-              title="Go to Dashboard"
-              className="flex items-center gap-2 min-w-0 shrink-0"
+              className="flex min-w-0 items-center gap-2.5"
             >
-              {brandInner}
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/15 shadow-inner ring-1 ring-white/20">
+                <img
+                  src={imgLogo}
+                  alt="MDRRMO logo"
+                  className="h-8 w-8 object-contain"
+                />
+              </div>
+
+              <div className="min-w-0">
+                <p className="truncate text-sm font-black text-white sm:text-base">
+                  {pageTitle}
+                </p>
+
+                <p className="hidden text-[10px] font-semibold uppercase tracking-[0.18em] text-blue-100 sm:block">
+                  Resident Portal
+                </p>
+              </div>
             </Link>
-          )}
-        </div>
+          </div>
 
-        {/* Right cluster */}
-        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-          <Notification />
+          {/* Right */}
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+            <Notification />
 
-          {isCurrent("/profile") ? (
-            <span
-              title="Profile — current page"
-              aria-label="Profile — current page"
-              className="p-2 rounded-xl text-white bg-white/20 cursor-default"
-            >
-              <User2Icon size={22} />
-            </span>
-          ) : (
             <Link
               to="/profile"
               title="Profile"
-              aria-label="View profile"
-              className="p-2 rounded-xl text-white hover:bg-white/15 active:scale-95 transition"
+              aria-label="Open user profile"
+              className="flex h-10 w-10 items-center justify-center rounded-xl text-white transition hover:bg-white/15"
             >
-              <User2Icon size={22} />
+              <UserRound className="h-5 w-5" />
             </Link>
-          )}
 
-          <button
-            type="button"
-            onClick={handleLogout}
-            aria-label="Log out"
-            className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl text-white text-sm font-bold uppercase hover:bg-white/15 active:scale-95 transition"
-            title="Log out"
-          >
-            <LogOut size={18} />
-            Log out
-          </button>
-        </div>
-      </header>
-
-      {/* ════════════════════════════════════════════════════════════
-          OVERLAY — mobile only
-          ════════════════════════════════════════════════════════════ */}
-      {isOpen && (
-        <div
-          className="fixed top-16 left-0 right-0 bottom-0 bg-black/50 z-40 lg:hidden"
-          onClick={close}
-          aria-hidden="true"
-        />
-      )}
-
-      {/* ════════════════════════════════════════════════════════════
-          LEFT SIDEBAR
-            • below lg  → off-canvas
-            • lg and up → pinned, 16rem / 4rem
-          ════════════════════════════════════════════════════════════ */}
-      <nav
-        className={`fixed top-16 bottom-0 left-0 z-5000 bg-gradient-to-b from-blue-600 to-purple-600 shadow-xl transform transition-transform transition-[width] duration-300 ease-in-out ${
-          isOpen ? "translate-x-0" : "-translate-x-full"
-        } lg:translate-x-0 ${collapsed ? "w-16" : "w-64"}`}
-        aria-label="Main navigation"
-      >
-        <div className="flex flex-col h-full overflow-y-auto overflow-x-hidden">
-          {USER_GROUPS.map((group, gi) => (
-            <div
-              key={group.label}
-              className={`shrink-0 ${
-                collapsed && gi > 0
-                  ? "border-t border-white/15"
-                  : ""
-              }`}
-            >
-              {!collapsed && (
-                <div className="py-4 px-6 border-b border-purple-400/40">
-                  <p className="text-white/70 text-[11px] font-bold uppercase tracking-widest">
-                    {group.label}
-                  </p>
-                </div>
-              )}
-
-              {/* Group tooltip when collapsed — anchor is the divider */}
-              {collapsed && gi > 0 && (
-                <div
-                  className="h-0"
-                  aria-hidden="true"
-                />
-              )}
-
-              <div className="flex flex-col py-1">
-                {group.links.map((l) => (
-                  <SideLink
-                    key={l.to}
-                    to={l.to}
-                    label={l.label}
-                    icon={l.icon}
-                    current={isCurrent(l.to)}
-                    onClick={close}
-                    collapsed={collapsed}
-                    onShowLabel={showLabel}
-                    onHideLabel={hideLabel}
-                  />
-                ))}
-              </div>
-            </div>
-          ))}
-
-          {/* Mobile-only logout */}
-          <div className="p-4 border-t border-purple-400/40 shrink-0 sm:hidden mt-auto">
             <button
               type="button"
               onClick={handleLogout}
-              aria-label="Log out"
-              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-white font-semibold uppercase hover:bg-white/15 transition"
+              disabled={loggingOut}
+              className="hidden items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-white/20 disabled:opacity-50 sm:flex"
             >
-              <LogOut size={18} />
-              Log out
+              <LogOut className="h-4 w-4" />
+
+              {loggingOut
+                ? "Signing out..."
+                : "Sign out"}
             </button>
           </div>
         </div>
-      </nav>
+      </header>
 
-      {/* ════════════════════════════════════════════════════════════
-          SIDEBAR FOOTER — desktop collapse control
-          ════════════════════════════════════════════════════════════ */}
-      <button
-        type="button"
-        onClick={toggleCollapse}
-        aria-label={
-          collapsed ? "Expand sidebar" : "Collapse sidebar"
-        }
-        className={`hidden lg:flex fixed bottom-0 left-0 z-[55] h-11 items-center justify-center gap-2 text-white/80 hover:text-white hover:bg-white/10 transition ${
-          collapsed ? "w-16" : "w-64"
-        }`}
-      >
-        <PanelLeftClose
-          size={18}
-          className={collapsed ? "rotate-180" : ""}
+      {/* ═══════════════════════════════════════════════════════
+          MOBILE OVERLAY
+      ═══════════════════════════════════════════════════════ */}
+
+      {menuOpen && (
+        <button
+          type="button"
+          aria-label="Close user menu overlay"
+          onClick={() => setMenuOpen(false)}
+          className="fixed inset-0 top-16 z-[1010] bg-slate-950/65 backdrop-blur-sm lg:hidden"
         />
-        {!collapsed && (
-          <span className="text-[11px] font-bold uppercase tracking-wider">
-            Collapse
-          </span>
-        )}
-      </button>
+      )}
 
-      {/* Hover label for the collapsed rail */}
-      <FloatingLabel data={hovered} />
+      {/* ═══════════════════════════════════════════════════════
+          MOBILE DRAWER
+      ═══════════════════════════════════════════════════════ */}
+
+      <aside
+        className={[
+          "fixed bottom-0 left-0 top-16 z-[1020] w-72 overflow-y-auto bg-gradient-to-b from-blue-600 via-blue-600 to-purple-700 p-4 shadow-2xl transition-transform duration-300 lg:hidden",
+          menuOpen
+            ? "translate-x-0"
+            : "-translate-x-full",
+        ].join(" ")}
+        aria-label="Resident navigation"
+      >
+        <div className="mb-4 rounded-2xl border border-white/20 bg-white/10 p-4 text-white">
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-100">
+            Community Portal
+          </p>
+
+          <p className="mt-1 text-sm font-black">
+            SafeResponse Services
+          </p>
+        </div>
+
+        <nav className="space-y-1.5">
+          {USER_LINKS.map((link) => {
+            const Icon = link.icon;
+
+            return (
+              <NavLink
+                key={link.to}
+                to={link.to}
+                className={getMobileClass}
+                title={link.label}
+              >
+                <Icon className="h-5 w-5 shrink-0" />
+
+                <span className="truncate">
+                  {link.label}
+                </span>
+              </NavLink>
+            );
+          })}
+        </nav>
+
+        <button
+          type="button"
+          onClick={handleLogout}
+          disabled={loggingOut}
+          className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl border border-white/20 bg-white/10 px-4 py-3 text-sm font-bold text-white transition hover:bg-white/20 disabled:opacity-50"
+        >
+          <LogOut className="h-4 w-4" />
+
+          {loggingOut
+            ? "Signing out..."
+            : "Sign out"}
+        </button>
+      </aside>
+
+      {/* ═══════════════════════════════════════════════════════
+          DESKTOP NAVIGATION RAIL
+      ═══════════════════════════════════════════════════════ */}
+
+      <nav
+        aria-label="Resident desktop navigation"
+        className="fixed bottom-0 left-0 top-16 z-[900] hidden w-20 flex-col items-center overflow-y-auto border-r border-white/15 bg-gradient-to-b from-blue-600 via-blue-600 to-purple-700 py-4 shadow-2xl shadow-purple-950/20 lg:flex"
+      >
+        
+
+        <div className="flex w-full flex-1 flex-col items-center gap-2 px-2">
+          {USER_LINKS.map((link) => {
+            const Icon = link.icon;
+
+            return (
+              <NavLink
+                key={link.to}
+                to={link.to}
+                className={getRailClass}
+                title={link.label}
+                aria-label={link.label}
+              >
+                <Icon className="h-5 w-5" />
+
+                <span className="pointer-events-none absolute left-[4.5rem] z-[1100] hidden whitespace-nowrap rounded-lg bg-slate-950 px-3 py-2 text-xs font-bold text-white opacity-0 shadow-xl transition group-hover:opacity-100 lg:block">
+                  {link.label}
+                </span>
+              </NavLink>
+            );
+          })}
+        </div>
+
+        <button
+          type="button"
+          onClick={handleLogout}
+          disabled={loggingOut}
+          title="Sign out"
+          aria-label="Sign out"
+          className="mt-3 flex h-12 w-12 items-center justify-center rounded-2xl text-white transition hover:bg-white/15 disabled:opacity-50"
+        >
+          <LogOut className="h-5 w-5" />
+        </button>
+      </nav>
     </>
   );
 }

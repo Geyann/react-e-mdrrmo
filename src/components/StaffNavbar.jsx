@@ -1,136 +1,359 @@
-import React, { useState } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
-import imgLogo from '../Images/icon.png';
-import { supabase } from '../createClient';
-import Notification from './notification';
-import { User2Icon, MenuIcon, XIcon, LogOut } from 'lucide-react';
+import {
+  useEffect,
+  useState,
+} from "react";
+import {
+  Link,
+  NavLink,
+  useLocation,
+  useNavigate,
+} from "react-router-dom";
+import {
+  ClipboardCheck,
+  ClipboardList,
+  FileText,
+  LayoutDashboard,
+  LogOut,
+  Menu,
+  Package,
+  Settings as SettingsIcon,
+  ShieldCheck,
+  Stethoscope,
+  Truck,
+  UserRound,
+  Wrench,
+  X,
+} from "lucide-react";
 
-export default function StaffNavbar() {
-  const [isOpen, setIsOpen] = useState(false);
-  const navigate = useNavigate();
+import { supabase } from "../createClient";
+import imgLogo from "../Images/icon.png";
+import Notification from "./notification";
 
-  const handleLogout = async () => {
-    await supabase.auth.signOut();
-    localStorage.clear();
-    navigate('/admin');
-  };
+const STAFF_LINKS = [
+  {
+    to: "/staff/dashboard",
+    label: "Dashboard",
+    icon: LayoutDashboard,
+  },
+  {
+    to: "/staff/checkup",
+    label: "OPD Check-Up",
+    icon: Stethoscope,
+  },
+  {
+    to: "/staff/checkupqueue",
+    label: "Check-Up Queue",
+    icon: ClipboardCheck,
+  },
+  {
+    to: "/staff/borrow",
+    label: "Vehicles",
+    icon: Truck,
+  },
+  {
+    to: "/staff/borrower-slip",
+    label: "Borrower Slip",
+    icon: ClipboardList,
+  },
+  {
+    to: "/staff/inventory",
+    label: "Inventory",
+    icon: Package,
+  },
+  {
+    to: "/staff/settings",
+    label: "Settings",
+    icon: SettingsIcon,
+  },
+];
 
-  const NavLink = ({ to, children, onClick }) => (
-    <Link
-      to={to}
-      onClick={onClick}
-      className="relative block w-full py-3 px-6 text-left text-white text-sm font-semibold uppercase transition-colors duration-200 hover:bg-white hover:text-blue-600"
-    >
-      {children}
-    </Link>
+function getPageTitle(pathname) {
+  const active = STAFF_LINKS.find(
+    (link) => link.to === pathname,
   );
 
-  const links = [
-    { to: '/staff/dashboard', label: 'Dashboard' },
-    { to: '/staff/borrow', label: 'Borrow Vehicle' },
-    { to: '/staff/checkup', label: 'OPD Check Up Form' },
-    { to: '/staff/checkupqueue', label: 'OPD Check Up Queue' },
-    { to: '/staff/inventory', label: 'Inventory Management' },
-    { to: '/staff/borrower-slip', label: 'Borrower Slip' },
-    { to: '/staff/settings', label: 'Settings' },
-  ];
+  return active?.label || "Staff Portal";
+}
+
+export default function StaffNavbar() {
+  const navigate = useNavigate();
+  const location = useLocation();
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  const pageTitle = getPageTitle(
+    location.pathname,
+  );
+
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [location.pathname]);
+
+  useEffect(() => {
+    if (!menuOpen) {
+      return undefined;
+    }
+
+    const closeOnEscape = (event) => {
+      if (event.key === "Escape") {
+        setMenuOpen(false);
+      }
+    };
+
+    window.addEventListener(
+      "keydown",
+      closeOnEscape,
+    );
+
+    return () => {
+      window.removeEventListener(
+        "keydown",
+        closeOnEscape,
+      );
+    };
+  }, [menuOpen]);
+
+  const handleLogout = async () => {
+    if (loggingOut) return;
+
+    const confirmed = window.confirm(
+      "Sign out of the staff portal?",
+    );
+
+    if (!confirmed) return;
+
+    setLoggingOut(true);
+
+    try {
+      await supabase.auth.signOut();
+    } catch {
+      // Manual staff sessions can still be cleared
+      // when there is no Supabase Auth session.
+    }
+
+    localStorage.removeItem(
+      "currentStaff",
+    );
+
+    navigate("/admin", {
+      replace: true,
+    });
+  };
+
+  const getRailClass = ({ isActive }) =>
+    [
+      "group relative flex h-12 w-12 items-center justify-center rounded-2xl transition",
+      isActive
+        ? "bg-white text-purple-700 shadow-lg"
+        : "text-white/80 hover:bg-white/15 hover:text-white",
+    ].join(" ");
+
+  const getMobileClass = ({ isActive }) =>
+    [
+      "flex w-full items-center gap-3 rounded-2xl px-4 py-3 text-sm font-bold transition",
+      isActive
+        ? "bg-white text-purple-700 shadow-lg"
+        : "text-white hover:bg-white/15",
+    ].join(" ");
 
   return (
     <>
-      {/* ══════════════════════════════════════════════════════════════
-          TOP NAVBAR — notifications / profile / logout on the RIGHT
-          ══════════════════════════════════════════════════════════════ */}
-      <header className="fixed top-0 left-0 right-0 h-16 z-[60] bg-gradient-to-r from-blue-600 to-purple-600 border-b border-purple-500/40 shadow-lg flex items-center justify-between gap-3 px-3 sm:px-4">
-        {/* Left: toggle + brand */}
-        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-          <button
-            type="button"
-            onClick={() => setIsOpen((o) => !o)}
-            aria-label={isOpen ? 'Close navigation menu' : 'Open navigation menu'}
-            aria-expanded={isOpen}
-            className="p-2 rounded-lg text-white hover:bg-white/15 active:scale-95 transition shrink-0"
-          >
-            {isOpen ? <XIcon size={22} /> : <MenuIcon size={22} />}
-          </button>
+      {/* ═══════════════════════════════════════════════════════
+          TOP NAVIGATION
+      ═══════════════════════════════════════════════════════ */}
 
-          <Link to="/staff/dashboard" className="flex items-center gap-2 min-w-0">
-            <img src={imgLogo} alt="MDRRMO logo" className="h-9 w-auto shrink-0" />
-            <span className="text-white text-base sm:text-lg font-bold truncate">
-              Staff Portal
-            </span>
-          </Link>
-        </div>
+      <header className="fixed inset-x-0 top-0 z-[1000] h-16 border-b border-white/20 bg-gradient-to-r from-blue-600 via-blue-600 to-purple-600 shadow-xl shadow-purple-950/15">
+        <div className="flex h-full items-center justify-between gap-3 px-3 sm:px-5">
+          {/* Left */}
+          <div className="flex min-w-0 items-center gap-3">
+            <button
+              type="button"
+              onClick={() =>
+                setMenuOpen((open) => !open)
+              }
+              aria-label={
+                menuOpen
+                  ? "Close staff menu"
+                  : "Open staff menu"
+              }
+              aria-expanded={menuOpen}
+              className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white transition hover:bg-white/15 lg:hidden"
+            >
+              {menuOpen ? (
+                <X className="h-5 w-5" />
+              ) : (
+                <Menu className="h-5 w-5" />
+              )}
+            </button>
 
-        {/* Right: notification bell, profile, logout */}
-        <div className="flex items-center gap-1 sm:gap-2 shrink-0">
-          <Notification />
+            <Link
+              to="/staff/dashboard"
+              className="flex min-w-0 items-center gap-2.5"
+            >
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/15 shadow-inner ring-1 ring-white/20">
+                <img
+                  src={imgLogo}
+                  alt="MDRRMO logo"
+                  className="h-8 w-8 object-contain"
+                />
+              </div>
 
-          <Link
-            to="/staff/profile"
-            title="Profile"
-            aria-label="View profile"
-            className="p-2 rounded-xl text-white hover:bg-white/15 active:scale-95 transition"
-          >
-            <User2Icon size={22} />
-          </Link>
+              <div className="min-w-0">
+                <p className="truncate text-sm font-black text-white sm:text-base">
+                  {pageTitle}
+                </p>
 
-          <button
-            type="button"
-            onClick={handleLogout}
-            className="hidden sm:flex items-center gap-1.5 px-3 py-2 rounded-xl text-white text-sm font-bold uppercase hover:bg-white/15 active:scale-95 transition"
-          >
-            <LogOut size={18} />
-            Log out
-          </button>
-        </div>
-      </header>
-
-      {/* ══════════════════════════════════════════════════════════════
-          OVERLAY — below the top bar so the toggle stays clickable
-          ══════════════════════════════════════════════════════════════ */}
-      {isOpen && (
-        <div
-          className="fixed top-16 left-0 right-0 bottom-0 bg-black/50 z-40"
-          onClick={() => setIsOpen(false)}
-          aria-hidden="true"
-        />
-      )}
-
-      {/* ══════════════════════════════════════════════════════════════
-          SIDEBAR — starts below the top bar
-          ══════════════════════════════════════════════════════════════ */}
-      <nav
-        className={`fixed top-16 bottom-0 left-0 w-64 z-50 bg-gradient-to-b from-blue-600 to-purple-600 shadow-xl transform transition-transform duration-300 ease-in-out ${
-          isOpen ? 'translate-x-0' : '-translate-x-full'
-        }`}
-      >
-        <div className="flex flex-col h-full overflow-y-auto">
-          <div className="py-4 px-6 border-b border-purple-400/40 shrink-0">
-            <p className="text-white/70 text-[11px] font-bold uppercase tracking-widest">
-              Operations
-            </p>
+                <p className="hidden text-[10px] font-semibold uppercase tracking-[0.18em] text-blue-100 sm:block">
+                  Staff Operations Portal
+                </p>
+              </div>
+            </Link>
           </div>
 
-          <div className="flex-grow flex flex-col py-2">
-            {links.map((l) => (
-              <NavLink key={l.to} to={l.to} onClick={() => setIsOpen(false)}>
-                {l.label}
-              </NavLink>
-            ))}
-          </div>
+          {/* Right */}
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+            <Notification />
 
-          {/* Mobile-only logout */}
-          <div className="p-4 border-t border-purple-400/40 shrink-0 sm:hidden">
+            <Link
+              to="/staff/profile"
+              title="Profile"
+              aria-label="Open staff profile"
+              className="flex h-10 w-10 items-center justify-center rounded-xl text-white transition hover:bg-white/15"
+            >
+              <UserRound className="h-5 w-5" />
+            </Link>
+
             <button
               type="button"
               onClick={handleLogout}
-              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-white font-semibold uppercase hover:bg-white/15 transition"
+              disabled={loggingOut}
+              className="hidden items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-white/20 disabled:opacity-50 sm:flex"
             >
-              <LogOut size={18} />
-              Log out
+              <LogOut className="h-4 w-4" />
+
+              {loggingOut
+                ? "Signing out..."
+                : "Sign out"}
             </button>
           </div>
         </div>
+      </header>
+
+      {/* ═══════════════════════════════════════════════════════
+          MOBILE OVERLAY
+      ═══════════════════════════════════════════════════════ */}
+
+      {menuOpen && (
+        <button
+          type="button"
+          aria-label="Close staff menu overlay"
+          onClick={() => setMenuOpen(false)}
+          className="fixed inset-0 top-16 z-[1010] bg-slate-950/65 backdrop-blur-sm lg:hidden"
+        />
+      )}
+
+      {/* ═══════════════════════════════════════════════════════
+          MOBILE DRAWER
+      ═══════════════════════════════════════════════════════ */}
+
+      <aside
+        className={[
+          "fixed bottom-0 left-0 top-16 z-[1020] w-72 overflow-y-auto bg-gradient-to-b from-blue-600 via-blue-600 to-purple-700 p-4 shadow-2xl transition-transform duration-300 lg:hidden",
+          menuOpen
+            ? "translate-x-0"
+            : "-translate-x-full",
+        ].join(" ")}
+        aria-label="Staff navigation"
+      >
+        <div className="mb-4 rounded-2xl border border-white/20 bg-white/10 p-4 text-white">
+          <p className="text-xs font-bold uppercase tracking-[0.18em] text-blue-100">
+            Operations
+          </p>
+
+          <p className="mt-1 text-sm font-black">
+            MDRRMO Staff Services
+          </p>
+        </div>
+
+        <nav className="space-y-1.5">
+          {STAFF_LINKS.map((link) => {
+            const Icon = link.icon;
+
+            return (
+              <NavLink
+                key={link.to}
+                to={link.to}
+                className={getMobileClass}
+                title={link.label}
+              >
+                <Icon className="h-5 w-5 shrink-0" />
+
+                <span className="truncate">
+                  {link.label}
+                </span>
+              </NavLink>
+            );
+          })}
+        </nav>
+
+        <button
+          type="button"
+          onClick={handleLogout}
+          disabled={loggingOut}
+          className="mt-5 flex w-full items-center justify-center gap-2 rounded-2xl border border-white/20 bg-white/10 px-4 py-3 text-sm font-bold text-white transition hover:bg-white/20 disabled:opacity-50"
+        >
+          <LogOut className="h-4 w-4" />
+
+          {loggingOut
+            ? "Signing out..."
+            : "Sign out"}
+        </button>
+      </aside>
+
+      {/* ═══════════════════════════════════════════════════════
+          DESKTOP NAVIGATION RAIL
+      ═══════════════════════════════════════════════════════ */}
+
+      <nav
+        aria-label="Staff desktop navigation"
+        className="fixed bottom-0 left-0 top-16 z-[900] hidden w-20 flex-col items-center overflow-y-auto border-r border-white/15 bg-gradient-to-b from-blue-600 via-blue-600 to-purple-700 py-4 shadow-2xl shadow-purple-950/20 lg:flex"
+      >
+        <div className="mb-4 flex h-11 w-11 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/20">
+          <ShieldCheck className="h-6 w-6 text-white" />
+        </div>
+
+        <div className="flex w-full flex-1 flex-col items-center gap-2 px-2">
+          {STAFF_LINKS.map((link) => {
+            const Icon = link.icon;
+
+            return (
+              <NavLink
+                key={link.to}
+                to={link.to}
+                className={getRailClass}
+                title={link.label}
+                aria-label={link.label}
+              >
+                <Icon className="h-5 w-5" />
+
+                <span className="pointer-events-none absolute left-[4.5rem] z-[1100] hidden whitespace-nowrap rounded-lg bg-slate-950 px-3 py-2 text-xs font-bold text-white opacity-0 shadow-xl transition group-hover:opacity-100 lg:block">
+                  {link.label}
+                </span>
+              </NavLink>
+            );
+          })}
+        </div>
+
+        <button
+          type="button"
+          onClick={handleLogout}
+          disabled={loggingOut}
+          title="Sign out"
+          aria-label="Sign out"
+          className="mt-3 flex h-12 w-12 items-center justify-center rounded-2xl text-white transition hover:bg-white/15 disabled:opacity-50"
+        >
+          <LogOut className="h-5 w-5" />
+        </button>
       </nav>
     </>
   );
