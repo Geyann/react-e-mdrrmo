@@ -137,19 +137,20 @@ export default function CreateUser() {
   const labelClass = "text-sm font-bold text-gray-700";
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 to-purple-50 py-10 px-4">
-      <div className="max-w-3xl mx-auto">
-        <button
+    <div className="min-h-screen  pt-5 px-4 mt-[-60px]">
+      <button
           onClick={() => navigate(-1)}
           className="flex items-center gap-2 text-gray-600 hover:text-purple-600 transition mb-4 font-semibold"
         >
           <ArrowLeft className="w-5 h-5" />
           Back
-        </button>
+        </button> <div className="max-w-3xl mx-auto">
+       
 
         <div className="bg-white rounded-3xl shadow-xl border border-gray-200 overflow-hidden">
           <div className="bg-gradient-to-r from-purple-600 to-blue-600 p-8 text-center">
-            <img src={imlogo} alt="Logo" className="w-24 h-24 object-contain mx-auto mb-4 bg-white rounded-full p-2 shadow-lg" />
+            
+            <img src={imlogo} alt="Logo" className="w-30 h-30 object-contain mx-auto mb-4 bg-indigo-600 rounded-4xl p-4 shadow-lg" />
             <h2 className="text-2xl font-bold text-white flex items-center justify-center gap-2">
               <UserPlus className="w-6 h-6" />
               Create Account

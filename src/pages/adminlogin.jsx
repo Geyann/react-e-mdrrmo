@@ -125,7 +125,7 @@ export default function AdminLogin() {
       </button>
 
       <div className="w-full max-w-md">
-        <div className="bg-white rounded-3xl shadow-2xl overflow-hidden">
+        <div className="bg-white rounded-3xl shadow-2xl overflow-hidden mt-[-100px]">
           {/* Header */}
           <div className="bg-gradient-to-r from-purple-600 to-indigo-600 p-8 text-center">
             <img
@@ -239,15 +239,7 @@ export default function AdminLogin() {
                   User Login
                 </button>
               </p>
-              <p className="text-sm text-gray-500 mt-1">
-                No account yet?{' '}
-                <button
-                  onClick={() => navigate('/admin/register')}
-                  className="text-purple-600 font-bold hover:text-purple-700 hover:underline transition"
-                >
-                  Register here
-                </button>
-              </p>
+            
             </div>
           </div>
         </div>

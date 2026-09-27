@@ -1,1012 +1,2139 @@
-"use client";
-import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
-import { supabase } from '../createClient';
 import {
-  Truck, Plus, Search, FileText, Printer, AlertTriangle, CheckCircle,
-  XCircle, Eye, ArrowLeft, Calendar, Clock, User, UserPlus
-} from 'lucide-react';
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { useNavigate } from "react-router-dom";
+import { supabase } from "../createClient";
+import {
+  AlertTriangle,
+  Ambulance,
+  ArrowLeft,
+  CalendarClock,
+  CheckCircle,
+  ClipboardCheck,
+  Clock3,
+  Edit3,
+  Eye,
+  FileText,
+  Loader2,
+  Package,
+  Plus,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+  Truck,
+  Wrench,
+  X,
+  XCircle,
+} from "lucide-react";
+import InventoryManager from "../components/InventoryManager";
+import InventoryReportPreview from "../components/InventoryReportPreview";
+
+const TOOL_CATEGORIES = [
+  "Stretcher",
+  "Wheelchair",
+  "Splint",
+  "Backboard",
+  "Cervical Collar",
+  "Oxygen Equipment",
+  "Rescue Tool",
+  "Communication",
+  "Other",
+];
+
+const SUPPLY_CATEGORIES = [
+  "Bandage",
+  "Medication",
+  "IV Fluid",
+  "Glove",
+  "Mask",
+  "Disinfectant",
+  "Syringe",
+  "Other",
+];
+
+const formatDateTime = (value) => {
+  if (!value) return "—";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+
+  return date.toLocaleString("en-PH", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+};
+
+const formatDate = (value) => {
+  if (!value) return "—";
+
+  const date = new Date(value);
+
+  if (Number.isNaN(date.getTime())) {
+    return String(value);
+  }
+
+  return date.toLocaleDateString("en-PH", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+  });
+};
+
+const reportStatusClass = (status) => {
+  const map = {
+    pending_approval:
+      "bg-yellow-100 text-yellow-700 border-yellow-200",
+    approved:
+      "bg-emerald-100 text-emerald-700 border-emerald-200",
+    rejected:
+      "bg-red-100 text-red-700 border-red-200",
+  };
+
+  return (
+    map[status] ||
+    "bg-slate-100 text-slate-700 border-slate-200"
+  );
+};
+
+const prettyReportStatus = (status) => {
+  const value = String(status || "pending_approval")
+    .replace(/_/g, " ")
+    .trim();
+
+  return value
+    .split(" ")
+    .map(
+      (word) =>
+        word.charAt(0).toUpperCase() + word.slice(1),
+    )
+    .join(" ");
+};
+
+const makeAmbulanceForm = () => ({
+  unit_number: "",
+  plate_number: "",
+  model: "",
+  year: String(new Date().getFullYear()),
+  status: "available",
+  mileage: "0",
+  last_maintenance: "",
+  next_maintenance: "",
+  notes: "",
+  assigned_driver: "",
+  driver_contact: "",
+});
 
 export default function AdminInventory() {
   const navigate = useNavigate();
-  const [adminProfile, setAdminProfile] = useState(null);
-  const [activeTab, setActiveTab] = useState('ambulances');
-  const [loading, setLoading] = useState(true);
 
+  const [adminProfile, setAdminProfile] = useState(null);
+  const [authUuid, setAuthUuid] = useState(null);
+  const [authorized, setAuthorized] = useState(false);
+
+  const [activeTab, setActiveTab] = useState("tools");
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState("");
+
+  const [tools, setTools] = useState([]);
+  const [supplies, setSupplies] = useState([]);
   const [ambulances, setAmbulances] = useState([]);
-  const [ambulanceUsage, setAmbulanceUsage] = useState([]);
+  const [usageLogs, setUsageLogs] = useState([]);
   const [reports, setReports] = useState([]);
 
-  const [searchTerm, setSearchTerm] = useState('');
-  const [previewReport, setPreviewReport] = useState(null);
+  const loadSequence = useRef(0);
+
+  /* ── Resolve current administrator ──────────────────────────── */
 
   useEffect(() => {
-    loadAdminProfile();
-    loadData();
-  }, []);
-
-  // Only Admin gets into this page — Staff is routed to StaffInventory.jsx instead
-  const loadAdminProfile = () => {
-    const storedStaff = localStorage.getItem('currentStaff');
-    if (!storedStaff) {
-      navigate('/admin/login');
-      return;
-    }
     try {
-      const parsed = JSON.parse(storedStaff);
-      if ((parsed.role || '').toLowerCase() !== 'admin') {
-        navigate('/staff/inventory', { replace: true, state: { error: "You don't have access to admin inventory." } });
+      const raw = localStorage.getItem("currentStaff");
+
+      if (!raw) {
+        navigate("/admin", { replace: true });
         return;
       }
-      setAdminProfile(parsed);
-    } catch {
-      navigate('/admin/login');
-    }
-  };
 
-  const loadData = async () => {
+      const profile = JSON.parse(raw);
+      const role = String(profile.role || "").toLowerCase();
+
+      if (role !== "admin") {
+        navigate("/staff/dashboard", {
+          replace: true,
+        });
+        return;
+      }
+
+      if (profile.is_active === false) {
+        localStorage.removeItem("currentStaff");
+        navigate("/admin", { replace: true });
+        return;
+      }
+
+      if (!profile.id || !profile.user_id) {
+        navigate("/admin", { replace: true });
+        return;
+      }
+
+      setAdminProfile(profile);
+      setAuthorized(true);
+    } catch {
+      localStorage.removeItem("currentStaff");
+      navigate("/admin", { replace: true });
+    }
+  }, [navigate]);
+
+  /* ── Resolve a real Supabase Auth UUID when available ────────── */
+
+  useEffect(() => {
+    let active = true;
+
+    const resolveAuthUser = async () => {
+      try {
+        const { data, error } = await supabase.auth.getUser();
+
+        if (
+          active &&
+          !error &&
+          data?.user?.id
+        ) {
+          setAuthUuid(data.user.id);
+        }
+      } catch {
+        // Manual admin sessions have no Supabase Auth UUID.
+      }
+    };
+
+    resolveAuthUser();
+
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  /* ── Load all administration data ───────────────────────────── */
+
+  const loadData = useCallback(async (loadingState = false) => {
+    const sequence = ++loadSequence.current;
+
+    if (loadingState) {
+      setLoading(true);
+    } else {
+      setRefreshing(true);
+    }
+
+    setError("");
+
     try {
-      const [ambRes, usageRes, reportsRes] = await Promise.all([
-        supabase.from('ambulances').select('*').order('unit_number'),
-        supabase.from('ambulance_usage').select('*, ambulances(*)').order('created_at', { ascending: false }),
-        supabase.from('inventory_reports').select('*').order('created_at', { ascending: false }).limit(50),
+      const [
+        toolsResult,
+        suppliesResult,
+        ambulancesResult,
+        usageResult,
+        reportsResult,
+      ] = await Promise.all([
+        supabase
+          .from("tools_inventory")
+          .select("*")
+          .order("name", { ascending: true }),
+
+        supabase
+          .from("medical_supplies")
+          .select("*")
+          .order("name", { ascending: true }),
+
+        supabase
+          .from("ambulances")
+          .select("*")
+          .order("unit_number", { ascending: true }),
+
+        supabase
+          .from("ambulance_usage")
+          .select("*, ambulances(*)")
+          .order("created_at", { ascending: false }),
+
+        supabase
+          .from("inventory_reports")
+          .select("*")
+          .order("created_at", { ascending: false })
+          .limit(200),
       ]);
 
-      if (ambRes.data) setAmbulances(ambRes.data);
-      if (usageRes.data) setAmbulanceUsage(usageRes.data);
-      if (reportsRes.data) setReports(reportsRes.data);
+      if (sequence !== loadSequence.current) return;
+
+      const failed = [];
+
+      if (toolsResult.error) {
+        failed.push("tools inventory");
+      } else {
+        setTools(toolsResult.data || []);
+      }
+
+      if (suppliesResult.error) {
+        failed.push("medical supplies");
+      } else {
+        setSupplies(suppliesResult.data || []);
+      }
+
+      if (ambulancesResult.error) {
+        failed.push("ambulances");
+      } else {
+        setAmbulances(ambulancesResult.data || []);
+      }
+
+      if (usageResult.error) {
+        failed.push("ambulance usage");
+      } else {
+        setUsageLogs(usageResult.data || []);
+      }
+
+      if (reportsResult.error) {
+        failed.push("inventory reports");
+      } else {
+        setReports(reportsResult.data || []);
+      }
+
+      if (failed.length > 0) {
+        setError(
+          `Some inventory sections could not be loaded: ${failed.join(
+            ", ",
+          )}. Check your Supabase policies.`,
+        );
+      }
     } catch (err) {
-      console.error('Error loading data:', err);
+      console.error("Error loading admin inventory:", err);
+
+      if (sequence === loadSequence.current) {
+        setError(
+          err?.message ||
+            "Failed to load administration inventory.",
+        );
+      }
     } finally {
-      setLoading(false);
+      if (sequence === loadSequence.current) {
+        setLoading(false);
+        setRefreshing(false);
+      }
     }
-  };
+  }, []);
 
-  const stats = {
-    totalAmbulances: ambulances.length,
-    availableAmbulances: ambulances.filter(a => a.status === 'available').length,
-    inService: ambulances.filter(a => a.status === 'in_service').length,
-    underMaintenance: ambulances.filter(a => a.status === 'maintenance').length,
-    unassigned: ambulances.filter(a => !a.assigned_driver).length,
-    pendingReports: reports.filter(r => r.status === 'pending_approval').length,
-  };
+  useEffect(() => {
+    if (!authorized) return;
 
-  if (loading) {
+    loadData(true);
+  }, [authorized, loadData]);
+
+  /* ── Realtime synchronization ───────────────────────────────── */
+
+  useEffect(() => {
+    if (!authorized) return undefined;
+
+    const channel = supabase
+      .channel("admin-inventory-live")
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "tools_inventory",
+        },
+        () => loadData(false),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "medical_supplies",
+        },
+        () => loadData(false),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "ambulances",
+        },
+        () => loadData(false),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "ambulance_usage",
+        },
+        () => loadData(false),
+      )
+      .on(
+        "postgres_changes",
+        {
+          event: "*",
+          schema: "public",
+          table: "inventory_reports",
+        },
+        () => loadData(false),
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [authorized, loadData]);
+
+  const lowStockItems = useMemo(
+    () =>
+      [...tools, ...supplies].filter(
+        (item) =>
+          Number(item.quantity) <=
+          Number(item.min_quantity),
+      ),
+    [tools, supplies],
+  );
+
+  const pendingReports = useMemo(
+    () =>
+      reports.filter(
+        (report) =>
+          report.status === "pending_approval",
+      ),
+    [reports],
+  );
+
+  if (!authorized) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-indigo-900 to-slate-900 flex items-center justify-center">
-        <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-indigo-400"></div>
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
+        <Loader2 className="h-10 w-10 animate-spin text-purple-600" />
       </div>
     );
   }
 
+  const tabs = [
+    {
+      id: "tools",
+      label: "Shared Tools",
+      icon: Wrench,
+      count: tools.length,
+    },
+    {
+      id: "supplies",
+      label: "Shared Supplies",
+      icon: Package,
+      count: supplies.length,
+    },
+    {
+      id: "ambulances",
+      label: "Ambulances",
+      icon: Ambulance,
+      count: ambulances.length,
+    },
+    {
+      id: "usage",
+      label: "Usage Log",
+      icon: Clock3,
+      count: usageLogs.length,
+    },
+    {
+      id: "reports",
+      label: "Staff Reports",
+      icon: ClipboardCheck,
+      count: pendingReports.length,
+    },
+  ];
+
   return (
-    <div className="min-h-screen bg-gray-50">
-      <div className="bg-gradient-to-r from-indigo-700 to-purple-700 text-white shadow-lg">
-        <div className="max-w-7xl mx-auto px-4">
-          <div className="flex items-center justify-between h-16">
+    <div className="min-h-screen bg-slate-50 pb-16 pt-24">
+      <div className="mx-auto max-w-7xl px-4 sm:px-6">
+        <header className="overflow-hidden rounded-3xl bg-gradient-to-r from-indigo-700 to-purple-700 text-white shadow-xl">
+          <div className="flex flex-col gap-4 p-6 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex items-center gap-3">
-              <button onClick={() => navigate('/admin/dashboard')} className="hover:bg-white/10 p-2 rounded-lg transition">
-                <ArrowLeft className="w-5 h-5" />
+              <button
+                type="button"
+                onClick={() =>
+                  navigate("/admin/dashboard")
+                }
+                aria-label="Back to dashboard"
+                className="rounded-xl p-2 transition hover:bg-white/10"
+              >
+                <ArrowLeft className="h-5 w-5" />
               </button>
-              <Truck className="w-6 h-6" />
-              <h1 className="text-xl font-bold">MDRRMO Fleet & Reports Administration</h1>
+
+              <ShieldCheck className="h-8 w-8" />
+
+              <div>
+                <h1 className="text-2xl font-black">
+                  Inventory Administration
+                </h1>
+                <p className="text-sm text-indigo-100">
+                  Shared stock, ambulance fleet, usage, and staff
+                  report approvals
+                </p>
+              </div>
             </div>
-            <div className="flex items-center gap-4">
-              <span className="text-sm text-indigo-200">
-                {adminProfile?.full_name} ({adminProfile?.role})
-              </span>
+
+            <div className="flex items-center gap-3">
+              <div className="text-right text-sm">
+                <p className="font-bold">
+                  {adminProfile?.full_name}
+                </p>
+                <p className="text-xs text-indigo-200">
+                  Administrator
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={() => loadData(false)}
+                disabled={refreshing}
+                className="flex items-center gap-2 rounded-xl bg-white/15 px-4 py-2 font-bold transition hover:bg-white/25 disabled:opacity-50"
+              >
+                <RefreshCw
+                  className={`h-4 w-4 ${
+                    refreshing ? "animate-spin" : ""
+                  }`}
+                />
+                Refresh
+              </button>
             </div>
           </div>
 
-          <div className="flex gap-1 pb-0 overflow-x-auto">
-            {[
-              { id: 'ambulances', label: 'Ambulances', icon: Truck },
-              { id: 'usage', label: 'Usage Log', icon: Clock },
-              { id: 'staffReports', label: 'Staff Reports', icon: FileText, badge: stats.pendingReports },
-            ].map(tab => (
+          <div className="flex gap-1 overflow-x-auto px-4">
+            {tabs.map((tab) => (
               <button
                 key={tab.id}
+                type="button"
                 onClick={() => setActiveTab(tab.id)}
-                className={`flex items-center gap-2 px-4 py-3 text-sm font-medium transition rounded-t-lg relative ${
-                  activeTab === tab.id ? 'bg-white text-indigo-700' : 'text-indigo-200 hover:bg-white/10'
+                className={`flex shrink-0 items-center gap-2 rounded-t-xl px-4 py-3 text-sm font-bold transition ${
+                  activeTab === tab.id
+                    ? "bg-white text-indigo-700"
+                    : "text-indigo-100 hover:bg-white/10"
                 }`}
               >
-                <tab.icon className="w-4 h-4" />
+                <tab.icon className="h-4 w-4" />
                 {tab.label}
-                {!!tab.badge && (
-                  <span className="ml-1 bg-red-500 text-white text-xs font-bold rounded-full px-1.5 py-0.5">
-                    {tab.badge}
+
+                {tab.count > 0 && (
+                  <span
+                    className={`rounded-full px-2 py-0.5 text-[10px] ${
+                      activeTab === tab.id
+                        ? "bg-indigo-100 text-indigo-700"
+                        : "bg-white/15"
+                    }`}
+                  >
+                    {tab.count}
                   </span>
                 )}
               </button>
             ))}
           </div>
+        </header>
+
+        <div className="mt-6 grid grid-cols-2 gap-3 lg:grid-cols-4">
+          {[
+            {
+              label: "Shared Items",
+              value: tools.length + supplies.length,
+              className:
+                "border-blue-200 bg-blue-50 text-blue-700",
+              icon: Package,
+            },
+            {
+              label: "Low Stock",
+              value: lowStockItems.length,
+              className:
+                "border-red-200 bg-red-50 text-red-700",
+              icon: AlertTriangle,
+            },
+            {
+              label: "Ambulances",
+              value: ambulances.length,
+              className:
+                "border-indigo-200 bg-indigo-50 text-indigo-700",
+              icon: Ambulance,
+            },
+            {
+              label: "Pending Reports",
+              value: pendingReports.length,
+              className:
+                "border-yellow-200 bg-yellow-50 text-yellow-700",
+              icon: FileText,
+            },
+          ].map((stat) => (
+            <div
+              key={stat.label}
+              className={`rounded-xl border p-4 shadow-sm ${stat.className}`}
+            >
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-xs font-bold opacity-70">
+                    {stat.label}
+                  </p>
+                  <p className="mt-1 text-2xl font-black">
+                    {stat.value}
+                  </p>
+                </div>
+
+                <stat.icon className="h-7 w-7 opacity-70" />
+              </div>
+            </div>
+          ))}
+        </div>
+
+        {error && (
+          <div
+            role="alert"
+            className="mt-5 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4"
+          >
+            <AlertTriangle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
+            <p className="text-sm text-red-700">{error}</p>
+          </div>
+        )}
+
+        <main className="mt-6">
+          {loading ? (
+            <div className="flex min-h-80 items-center justify-center rounded-2xl border border-slate-200 bg-white">
+              <div className="text-center">
+                <Loader2 className="mx-auto h-10 w-10 animate-spin text-indigo-600" />
+                <p className="mt-3 font-semibold text-slate-500">
+                  Loading inventory...
+                </p>
+              </div>
+            </div>
+          ) : activeTab === "tools" ? (
+            <InventoryManager
+              key="admin-tools"
+              tableName="tools_inventory"
+              title="Shared Tools & Equipment"
+              description="These are the same records used by Staff Inventory."
+              icon={Wrench}
+              items={tools}
+              setItems={setTools}
+              categories={TOOL_CATEGORIES}
+              onDataChanged={() => loadData(false)}
+            />
+          ) : activeTab === "supplies" ? (
+            <InventoryManager
+              key="admin-supplies"
+              tableName="medical_supplies"
+              title="Shared Medical Supplies"
+              description="Stock changes are synchronized with the staff inventory page."
+              icon={Package}
+              items={supplies}
+              setItems={setSupplies}
+              categories={SUPPLY_CATEGORIES}
+              onDataChanged={() => loadData(false)}
+            />
+          ) : activeTab === "ambulances" ? (
+            <AmbulancesPanel
+              ambulances={ambulances}
+              setAmbulances={setAmbulances}
+              usageLogs={usageLogs}
+              onDataChanged={() => loadData(false)}
+            />
+          ) : activeTab === "usage" ? (
+            <UsagePanel
+              usageLogs={usageLogs}
+              setUsageLogs={setUsageLogs}
+              ambulances={ambulances}
+              adminProfile={adminProfile}
+              authUuid={authUuid}
+              onDataChanged={() => loadData(false)}
+            />
+          ) : (
+            <StaffReportsPanel
+              reports={reports}
+              setReports={setReports}
+              adminProfile={adminProfile}
+              authUuid={authUuid}
+              onDataChanged={() => loadData(false)}
+            />
+          )}
+        </main>
+      </div>
+    </div>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   AMBULANCES
+   ══════════════════════════════════════════════════════════════════ */
+
+function AmbulancesPanel({
+  ambulances,
+  setAmbulances,
+  usageLogs,
+  onDataChanged,
+}) {
+  const [showModal, setShowModal] = useState(false);
+  const [editingAmbulance, setEditingAmbulance] = useState(null);
+  const [form, setForm] = useState(makeAmbulanceForm);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+
+  const usageCounts = useMemo(() => {
+    const counts = {};
+
+    usageLogs.forEach((log) => {
+      if (log.ambulance_id === null) return;
+
+      const key = String(log.ambulance_id);
+      counts[key] = (counts[key] || 0) + 1;
+    });
+
+    return counts;
+  }, [usageLogs]);
+
+  const openCreate = () => {
+    setEditingAmbulance(null);
+    setForm(makeAmbulanceForm());
+    setError("");
+    setShowModal(true);
+  };
+
+  const openEdit = (ambulance) => {
+    setEditingAmbulance(ambulance);
+    setForm({
+      unit_number: ambulance.unit_number || "",
+      plate_number: ambulance.plate_number || "",
+      model: ambulance.model || "",
+      year: String(ambulance.year || ""),
+      status: ambulance.status || "available",
+      mileage: String(ambulance.mileage ?? 0),
+      last_maintenance:
+        ambulance.last_maintenance
+          ? String(
+              ambulance.last_maintenance,
+            ).slice(0, 10)
+          : "",
+      next_maintenance:
+        ambulance.next_maintenance
+          ? String(
+              ambulance.next_maintenance,
+            ).slice(0, 10)
+          : "",
+      notes: ambulance.notes || "",
+      assigned_driver:
+        ambulance.assigned_driver || "",
+      driver_contact:
+        ambulance.driver_contact || "",
+    });
+    setError("");
+    setShowModal(true);
+  };
+
+  const handleChange = (event) => {
+    const { name, value } = event.target;
+
+    setForm((previous) => ({
+      ...previous,
+      [name]: value,
+    }));
+  };
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+
+    if (saving) return;
+
+    setSaving(true);
+    setError("");
+
+    const payload = {
+      unit_number: form.unit_number.trim(),
+      plate_number: form.plate_number.trim(),
+      model: form.model.trim() || null,
+      year: form.year ? Number(form.year) : null,
+      status: form.status,
+      mileage: Number(form.mileage || 0),
+      last_maintenance:
+        form.last_maintenance || null,
+      next_maintenance:
+        form.next_maintenance || null,
+      notes: form.notes.trim() || null,
+      assigned_driver:
+        form.assigned_driver.trim() || null,
+      driver_contact:
+        form.driver_contact.trim() || null,
+      updated_at: new Date().toISOString(),
+    };
+
+    try {
+      const result = editingAmbulance
+        ? await supabase
+            .from("ambulances")
+            .update(payload)
+            .eq("id", editingAmbulance.id)
+            .select("*")
+            .single()
+        : await supabase
+            .from("ambulances")
+            .insert([payload])
+            .select("*")
+            .single();
+
+      if (result.error) {
+        throw result.error;
+      }
+
+      setAmbulances((previous) =>
+        editingAmbulance
+          ? previous.map((item) =>
+              item.id === result.data.id
+                ? result.data
+                : item,
+            )
+          : [result.data, ...previous],
+      );
+
+      setShowModal(false);
+      setEditingAmbulance(null);
+      onDataChanged?.();
+    } catch (err) {
+      setError(
+        err?.message ||
+          "Failed to save the ambulance.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleDelete = async (ambulance) => {
+    const usageCount =
+      usageCounts[String(ambulance.id)] || 0;
+
+    if (usageCount > 0) {
+      setError(
+        `${ambulance.unit_number} cannot be deleted because it has ${usageCount} usage record(s). Set it to out_of_service instead.`,
+      );
+      return;
+    }
+
+    if (
+      !window.confirm(
+        `Delete ambulance ${ambulance.unit_number}?`,
+      )
+    ) {
+      return;
+    }
+
+    setError("");
+
+    try {
+      const { error: deleteError } = await supabase
+        .from("ambulances")
+        .delete()
+        .eq("id", ambulance.id);
+
+      if (deleteError) {
+        throw deleteError;
+      }
+
+      setAmbulances((previous) =>
+        previous.filter(
+          (item) => item.id !== ambulance.id,
+        ),
+      );
+
+      onDataChanged?.();
+    } catch (err) {
+      setError(
+        err?.message ||
+          "Failed to delete the ambulance.",
+      );
+    }
+  };
+
+  const statusClass = (status) => {
+    const map = {
+      available:
+        "bg-emerald-100 text-emerald-700",
+      in_service:
+        "bg-blue-100 text-blue-700",
+      maintenance:
+        "bg-amber-100 text-amber-700",
+      out_of_service:
+        "bg-red-100 text-red-700",
+    };
+
+    return (
+      map[status] ||
+      "bg-slate-100 text-slate-700"
+    );
+  };
+
+  return (
+    <section className="space-y-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-800">
+            Ambulance Fleet
+          </h2>
+          <p className="text-sm text-slate-500">
+            Manage fleet status, maintenance, and drivers.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={openCreate}
+          className="flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 font-bold text-white hover:bg-indigo-700"
+        >
+          <Plus className="h-4 w-4" />
+          Add Ambulance
+        </button>
+      </div>
+
+      {error && (
+        <div
+          role="alert"
+          className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"
+        >
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+          <p>{error}</p>
+        </div>
+      )}
+
+      {ambulances.length === 0 ? (
+        <div className="rounded-2xl border border-dashed border-slate-300 bg-white py-16 text-center">
+          <Ambulance className="mx-auto h-12 w-12 text-slate-300" />
+          <p className="mt-3 font-semibold text-slate-500">
+            No ambulances registered.
+          </p>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+          {ambulances.map((ambulance) => (
+            <article
+              key={ambulance.id}
+              className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm"
+            >
+              <div
+                className={`h-2 ${
+                  ambulance.status === "available"
+                    ? "bg-emerald-500"
+                    : ambulance.status === "in_service"
+                      ? "bg-blue-500"
+                      : ambulance.status === "maintenance"
+                        ? "bg-amber-500"
+                        : "bg-red-500"
+                }`}
+              />
+
+              <div className="p-5">
+                <div className="flex items-start justify-between gap-3">
+                  <div>
+                    <h3 className="text-lg font-black text-slate-800">
+                      {ambulance.unit_number}
+                    </h3>
+                    <p className="font-mono text-sm text-slate-500">
+                      {ambulance.plate_number}
+                    </p>
+                  </div>
+
+                  <span
+                    className={`rounded-full px-2 py-1 text-xs font-bold ${statusClass(
+                      ambulance.status,
+                    )}`}
+                  >
+                    {String(
+                      ambulance.status || "available",
+                    )
+                      .replace(/_/g, " ")}
+                  </span>
+                </div>
+
+                <div className="mt-4 space-y-2 text-sm text-slate-600">
+                  {ambulance.model && (
+                    <p>
+                      <strong>Model:</strong>{" "}
+                      {ambulance.model} ({ambulance.year})
+                    </p>
+                  )}
+
+                  <p>
+                    <strong>Mileage:</strong>{" "}
+                    {Number(
+                      ambulance.mileage || 0,
+                    ).toLocaleString()} km
+                  </p>
+
+                  {ambulance.next_maintenance && (
+                    <p className="flex items-center gap-2">
+                      <CalendarClock className="h-4 w-4 text-amber-500" />
+                      Next maintenance:{" "}
+                      {formatDate(
+                        ambulance.next_maintenance,
+                      )}
+                    </p>
+                  )}
+
+                  <p>
+                    <strong>Driver:</strong>{" "}
+                    {ambulance.assigned_driver ||
+                      "Not assigned"}
+                  </p>
+
+                  {ambulance.driver_contact && (
+                    <p>
+                      <strong>Contact:</strong>{" "}
+                      {ambulance.driver_contact}
+                    </p>
+                  )}
+
+                  <p className="text-xs text-slate-400">
+                    Usage records:{" "}
+                    {usageCounts[
+                      String(ambulance.id)
+                    ] || 0}
+                  </p>
+                </div>
+
+                <div className="mt-4 flex gap-4 border-t border-slate-100 pt-4">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      openEdit(ambulance)
+                    }
+                    className="flex items-center gap-1 text-sm font-bold text-indigo-600 hover:underline"
+                  >
+                    <Edit3 className="h-4 w-4" />
+                    Edit
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      handleDelete(ambulance)
+                    }
+                    className="ml-auto flex items-center gap-1 text-sm font-bold text-red-600 hover:underline"
+                  >
+                    <XCircle className="h-4 w-4" />
+                    Delete
+                  </button>
+                </div>
+              </div>
+            </article>
+          ))}
+        </div>
+      )}
+
+      {showModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50 p-4"
+          onClick={() =>
+            !saving && setShowModal(false)
+          }
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white shadow-2xl"
+            onClick={(event) =>
+              event.stopPropagation()
+            }
+          >
+            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+              <h3 className="text-xl font-bold text-slate-800">
+                {editingAmbulance
+                  ? "Edit Ambulance"
+                  : "Add Ambulance"}
+              </h3>
+
+              <button
+                type="button"
+                onClick={() =>
+                  setShowModal(false)
+                }
+                disabled={saving}
+                aria-label="Close"
+                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form
+              onSubmit={handleSubmit}
+              className="space-y-4 p-6"
+            >
+              {error && (
+                <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                  {error}
+                </div>
+              )}
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-semibold text-slate-700">
+                    Unit Number *
+                  </label>
+                  <input
+                    required
+                    value={form.unit_number}
+                    onChange={handleChange}
+                    name="unit_number"
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-sm font-semibold text-slate-700">
+                    Plate Number *
+                  </label>
+                  <input
+                    required
+                    value={form.plate_number}
+                    onChange={handleChange}
+                    name="plate_number"
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-sm font-semibold text-slate-700">
+                    Model
+                  </label>
+                  <input
+                    value={form.model}
+                    onChange={handleChange}
+                    name="model"
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-sm font-semibold text-slate-700">
+                    Year
+                  </label>
+                  <input
+                    type="number"
+                    value={form.year}
+                    onChange={handleChange}
+                    name="year"
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-sm font-semibold text-slate-700">
+                    Status
+                  </label>
+                  <select
+                    value={form.status}
+                    onChange={handleChange}
+                    name="status"
+                    className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500"
+                  >
+                    <option value="available">
+                      Available
+                    </option>
+                    <option value="in_service">
+                      In Service
+                    </option>
+                    <option value="maintenance">
+                      Maintenance
+                    </option>
+                    <option value="out_of_service">
+                      Out of Service
+                    </option>
+                  </select>
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-sm font-semibold text-slate-700">
+                    Mileage
+                  </label>
+                  <input
+                    type="number"
+                    min="0"
+                    value={form.mileage}
+                    onChange={handleChange}
+                    name="mileage"
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-sm font-semibold text-slate-700">
+                    Last Maintenance
+                  </label>
+                  <input
+                    type="date"
+                    value={form.last_maintenance}
+                    onChange={handleChange}
+                    name="last_maintenance"
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-sm font-semibold text-slate-700">
+                    Next Maintenance
+                  </label>
+                  <input
+                    type="date"
+                    value={form.next_maintenance}
+                    onChange={handleChange}
+                    name="next_maintenance"
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-sm font-semibold text-slate-700">
+                    Driver Name
+                  </label>
+                  <input
+                    value={form.assigned_driver}
+                    onChange={handleChange}
+                    name="assigned_driver"
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-sm font-semibold text-slate-700">
+                    Driver Contact
+                  </label>
+                  <input
+                    value={form.driver_contact}
+                    onChange={handleChange}
+                    name="driver_contact"
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-semibold text-slate-700">
+                  Notes
+                </label>
+                <textarea
+                  rows={3}
+                  value={form.notes}
+                  onChange={handleChange}
+                  name="notes"
+                  className="w-full resize-none rounded-lg border border-slate-300 px-3 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setShowModal(false)
+                  }
+                  disabled={saving}
+                  className="rounded-lg border border-slate-300 px-4 py-2.5 font-bold text-slate-700 hover:bg-slate-50"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2.5 font-bold text-white hover:bg-indigo-700 disabled:opacity-50"
+                >
+                  {saving ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <CheckCircle className="h-4 w-4" />
+                  )}
+
+                  {saving
+                    ? "Saving..."
+                    : editingAmbulance
+                      ? "Update"
+                      : "Add Ambulance"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   AMBULANCE USAGE
+   ══════════════════════════════════════════════════════════════════ */
+
+function UsagePanel({
+  usageLogs,
+  setUsageLogs,
+  ambulances,
+  adminProfile,
+  authUuid,
+  onDataChanged,
+}) {
+  const [showModal, setShowModal] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [error, setError] = useState("");
+
+  const [form, setForm] = useState({
+    ambulance_id: "",
+    purpose: "",
+    destination: "",
+    departure_time: "",
+    return_time: "",
+    notes: "",
+    status: "completed",
+  });
+
+  const availableAmbulances = ambulances.filter(
+    (ambulance) => ambulance.status === "available",
+  );
+
+  const filtered = useMemo(() => {
+    const query = searchTerm.trim().toLowerCase();
+
+    return usageLogs.filter((log) => {
+      if (!query) return true;
+
+      return [
+        log.ambulances?.unit_number,
+        log.ambulances?.plate_number,
+        log.purpose,
+        log.destination,
+        log.staff_name,
+        log.status,
+      ]
+        .filter(Boolean)
+        .map((value) =>
+          String(value).toLowerCase(),
+        )
+        .join(" ")
+        .includes(query);
+    });
+  }, [usageLogs, searchTerm]);
+
+  const handleSubmit = async (event) => {
+    event.preventDefault();
+
+    if (saving) return;
+
+    if (!form.ambulance_id) {
+      setError("Select an ambulance.");
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+
+    try {
+      const payload = {
+        ambulance_id: form.ambulance_id,
+        purpose: form.purpose.trim(),
+        destination:
+          form.destination.trim() || null,
+        departure_time:
+          form.departure_time || null,
+        return_time: form.return_time || null,
+        staff_id: authUuid || null,
+        staff_name:
+          adminProfile?.full_name || "Administrator",
+        notes: form.notes.trim() || null,
+        status: form.status,
+      };
+
+      const { data, error: insertError } =
+        await supabase
+          .from("ambulance_usage")
+          .insert([payload])
+          .select("*, ambulances(*)")
+          .single();
+
+      if (insertError) {
+        throw insertError;
+      }
+
+      const nextAmbulanceStatus =
+        form.status === "in_progress"
+          ? "in_service"
+          : "available";
+
+      const { error: fleetError } = await supabase
+        .from("ambulances")
+        .update({
+          status: nextAmbulanceStatus,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", form.ambulance_id);
+
+      setUsageLogs((previous) => [
+        data,
+        ...previous,
+      ]);
+
+      setForm({
+        ambulance_id: "",
+        purpose: "",
+        destination: "",
+        departure_time: "",
+        return_time: "",
+        notes: "",
+        status: "completed",
+      });
+
+      setShowModal(false);
+
+      if (fleetError) {
+        setError(
+          `Usage was saved, but the ambulance status could not be updated: ${fleetError.message}`,
+        );
+      }
+
+      onDataChanged?.();
+    } catch (err) {
+      setError(
+        err?.message ||
+          "Failed to save the usage log.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <section className="space-y-5">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div>
+          <h2 className="text-2xl font-bold text-slate-800">
+            Ambulance Usage Log
+          </h2>
+          <p className="text-sm text-slate-500">
+            Record dispatch and return activity.
+          </p>
+        </div>
+
+        <button
+          type="button"
+          onClick={() => {
+            setError("");
+            setShowModal(true);
+          }}
+          disabled={availableAmbulances.length === 0}
+          className="flex items-center justify-center gap-2 rounded-lg bg-indigo-600 px-4 py-2 font-bold text-white hover:bg-indigo-700 disabled:opacity-50"
+        >
+          <Plus className="h-4 w-4" />
+          Log Usage
+        </button>
+      </div>
+
+      {error && (
+        <div
+          role="alert"
+          className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"
+        >
+          {error}
+        </div>
+      )}
+
+      <div className="relative max-w-md">
+        <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+        <input
+          type="search"
+          value={searchTerm}
+          onChange={(event) =>
+            setSearchTerm(event.target.value)
+          }
+          placeholder="Search usage..."
+          className="w-full rounded-lg border border-slate-300 bg-white py-2 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
+        />
+      </div>
+
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[900px] text-sm">
+            <thead className="bg-slate-50">
+              <tr className="text-left text-slate-500">
+                <th className="p-4 font-medium">Date</th>
+                <th className="p-4 font-medium">
+                  Ambulance
+                </th>
+                <th className="p-4 font-medium">
+                  Purpose
+                </th>
+                <th className="p-4 font-medium">
+                  Destination
+                </th>
+                <th className="p-4 font-medium">
+                  Staff
+                </th>
+                <th className="p-4 font-medium">
+                  Status
+                </th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {filtered.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={6}
+                    className="p-10 text-center text-slate-400"
+                  >
+                    No ambulance usage records found.
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((entry) => (
+                  <tr
+                    key={entry.id}
+                    className="border-t border-slate-100"
+                  >
+                    <td className="p-4 text-slate-500">
+                      {formatDateTime(
+                        entry.created_at,
+                      )}
+                    </td>
+                    <td className="p-4 font-bold">
+                      {entry.ambulances?.unit_number ||
+                        "—"}
+                      <p className="font-mono text-xs font-normal text-slate-400">
+                        {entry.ambulances?.plate_number ||
+                          ""}
+                      </p>
+                    </td>
+                    <td className="p-4">
+                      {entry.purpose || "—"}
+                    </td>
+                    <td className="p-4">
+                      {entry.destination || "—"}
+                    </td>
+                    <td className="p-4">
+                      {entry.staff_name || "—"}
+                    </td>
+                    <td className="p-4">
+                      <span className="rounded-full bg-slate-100 px-2 py-1 text-xs font-bold text-slate-700">
+                        {String(
+                          entry.status ||
+                            "completed",
+                        ).replace(/_/g, " ")}
+                      </span>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 
-      <div className="max-w-7xl mx-auto px-4 py-6">
-        {activeTab === 'ambulances' && (
-          <AmbulancesTab
-            ambulances={ambulances}
-            setAmbulances={setAmbulances}
-            searchTerm={searchTerm}
-            setSearchTerm={setSearchTerm}
-            supabase={supabase}
-            stats={stats}
-          />
-        )}
+      {showModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50 p-4"
+          onClick={() =>
+            !saving && setShowModal(false)
+          }
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white shadow-2xl"
+            onClick={(event) =>
+              event.stopPropagation()
+            }
+          >
+            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+              <h3 className="text-xl font-bold text-slate-800">
+                Log Ambulance Usage
+              </h3>
 
-        {activeTab === 'usage' && (
-          <UsageLogTab
-            usage={ambulanceUsage}
-            setUsage={setAmbulanceUsage}
-            ambulances={ambulances}
-            searchTerm={searchTerm}
-            setSearchTerm={setSearchTerm}
-            supabase={supabase}
-            adminProfile={adminProfile}
-          />
-        )}
+              <button
+                type="button"
+                onClick={() =>
+                  setShowModal(false)
+                }
+                disabled={saving}
+                aria-label="Close"
+                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
 
-        {activeTab === 'staffReports' && (
-          <StaffReportsTab
-            reports={reports}
-            setReports={setReports}
-            supabase={supabase}
-            adminProfile={adminProfile}
-            onPreview={(r) => setPreviewReport(r)}
+            <form
+              onSubmit={handleSubmit}
+              className="space-y-4 p-6"
+            >
+              {error && (
+                <div className="rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700">
+                  {error}
+                </div>
+              )}
+
+              <div>
+                <label className="mb-1 block text-sm font-semibold text-slate-700">
+                  Ambulance *
+                </label>
+
+                <select
+                  required
+                  value={form.ambulance_id}
+                  onChange={(event) =>
+                    setForm((previous) => ({
+                      ...previous,
+                      ambulance_id:
+                        event.target.value,
+                    }))
+                  }
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="">
+                    Select ambulance...
+                  </option>
+
+                  {availableAmbulances.map(
+                    (ambulance) => (
+                      <option
+                        key={ambulance.id}
+                        value={ambulance.id}
+                      >
+                        {ambulance.unit_number} —{" "}
+                        {ambulance.plate_number}
+                      </option>
+                    ),
+                  )}
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-semibold text-slate-700">
+                  Purpose *
+                </label>
+                <input
+                  required
+                  value={form.purpose}
+                  onChange={(event) =>
+                    setForm((previous) => ({
+                      ...previous,
+                      purpose: event.target.value,
+                    }))
+                  }
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-semibold text-slate-700">
+                  Destination
+                </label>
+                <input
+                  value={form.destination}
+                  onChange={(event) =>
+                    setForm((previous) => ({
+                      ...previous,
+                      destination:
+                        event.target.value,
+                    }))
+                  }
+                  className="w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <div>
+                  <label className="mb-1 block text-sm font-semibold text-slate-700">
+                    Departure *
+                  </label>
+                  <input
+                    required
+                    type="datetime-local"
+                    value={form.departure_time}
+                    onChange={(event) =>
+                      setForm((previous) => ({
+                        ...previous,
+                        departure_time:
+                          event.target.value,
+                      }))
+                    }
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+
+                <div>
+                  <label className="mb-1 block text-sm font-semibold text-slate-700">
+                    Return
+                  </label>
+                  <input
+                    type="datetime-local"
+                    value={form.return_time}
+                    onChange={(event) =>
+                      setForm((previous) => ({
+                        ...previous,
+                        return_time:
+                          event.target.value,
+                      }))
+                    }
+                    className="w-full rounded-lg border border-slate-300 px-3 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500"
+                  />
+                </div>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-semibold text-slate-700">
+                  Status
+                </label>
+                <select
+                  value={form.status}
+                  onChange={(event) =>
+                    setForm((previous) => ({
+                      ...previous,
+                      status: event.target.value,
+                    }))
+                  }
+                  className="w-full rounded-lg border border-slate-300 bg-white px-3 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="in_progress">
+                    In Progress
+                  </option>
+                  <option value="completed">
+                    Completed
+                  </option>
+                  <option value="cancelled">
+                    Cancelled
+                  </option>
+                </select>
+              </div>
+
+              <div>
+                <label className="mb-1 block text-sm font-semibold text-slate-700">
+                  Notes
+                </label>
+                <textarea
+                  rows={3}
+                  value={form.notes}
+                  onChange={(event) =>
+                    setForm((previous) => ({
+                      ...previous,
+                      notes: event.target.value,
+                    }))
+                  }
+                  className="w-full resize-none rounded-lg border border-slate-300 px-3 py-2.5 outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() =>
+                    setShowModal(false)
+                  }
+                  disabled={saving}
+                  className="rounded-lg border border-slate-300 px-4 py-2.5 font-bold text-slate-700"
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  disabled={saving}
+                  className="flex items-center gap-2 rounded-lg bg-indigo-600 px-5 py-2.5 font-bold text-white disabled:opacity-50"
+                >
+                  {saving ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Truck className="h-4 w-4" />
+                  )}
+
+                  {saving
+                    ? "Saving..."
+                    : "Save Usage"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+    </section>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   STAFF REPORT REVIEW
+   ══════════════════════════════════════════════════════════════════ */
+
+function StaffReportsPanel({
+  reports,
+  setReports,
+  adminProfile,
+  authUuid,
+  onDataChanged,
+}) {
+  const [statusFilter, setStatusFilter] =
+    useState("pending_approval");
+  const [searchTerm, setSearchTerm] = useState("");
+  const [previewReport, setPreviewReport] =
+    useState(null);
+  const [savingId, setSavingId] = useState(null);
+  const [error, setError] = useState("");
+
+  const filtered = useMemo(() => {
+    const query = searchTerm.trim().toLowerCase();
+
+    return reports.filter((report) => {
+      const matchesStatus =
+        statusFilter === "all" ||
+        report.status === statusFilter;
+
+      const matchesSearch =
+        !query ||
+        [
+          report.title,
+          report.report_type,
+          report.generated_by_name,
+        ]
+          .filter(Boolean)
+          .map((value) =>
+            String(value).toLowerCase(),
+          )
+          .join(" ")
+          .includes(query);
+
+      return matchesStatus && matchesSearch;
+    });
+  }, [reports, searchTerm, statusFilter]);
+
+  const updateStatus = async (
+    report,
+    status,
+    adminNotes = null,
+  ) => {
+    if (savingId !== null) return;
+
+    const action =
+      status === "approved"
+        ? "approve"
+        : "reject";
+
+    if (
+      !window.confirm(
+        `Are you sure you want to ${action} report "${report.title}"?`,
+      )
+    ) {
+      return;
+    }
+
+    setSavingId(report.id);
+    setError("");
+
+    try {
+      const { data, error: updateError } =
+        await supabase
+          .from("inventory_reports")
+          .update({
+            status,
+            admin_notes: adminNotes,
+            reviewed_by: authUuid || null,
+            reviewed_by_name:
+              adminProfile?.full_name ||
+              "Administrator",
+            reviewed_at: new Date().toISOString(),
+          })
+          .eq("id", report.id)
+          .select("*")
+          .single();
+
+      if (updateError) {
+        throw updateError;
+      }
+
+      setReports((previous) =>
+        previous.map((item) =>
+          item.id === data.id ? data : item,
+        ),
+      );
+
+      window.dispatchEvent(
+        new Event("mdrrmo:notif-refresh"),
+      );
+
+      onDataChanged?.();
+    } catch (err) {
+      setError(
+        err?.message ||
+          "Failed to update the report.",
+      );
+    } finally {
+      setSavingId(null);
+    }
+  };
+
+  return (
+    <section className="space-y-5">
+      <div>
+        <h2 className="text-2xl font-bold text-slate-800">
+          Staff Inventory Reports
+        </h2>
+        <p className="text-sm text-slate-500">
+          Review the inventory snapshots generated by staff.
+          Approval confirms the report but does not change stock.
+        </p>
+      </div>
+
+      {error && (
+        <div
+          role="alert"
+          className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"
+        >
+          {error}
+        </div>
+      )}
+
+      <div className="grid grid-cols-3 gap-3">
+        {[
+          {
+            label: "Pending",
+            value: reports.filter(
+              (report) =>
+                report.status ===
+                "pending_approval",
+            ).length,
+            className:
+              "border-yellow-200 bg-yellow-50 text-yellow-700",
+          },
+          {
+            label: "Approved",
+            value: reports.filter(
+              (report) =>
+                report.status === "approved",
+            ).length,
+            className:
+              "border-emerald-200 bg-emerald-50 text-emerald-700",
+          },
+          {
+            label: "Rejected",
+            value: reports.filter(
+              (report) =>
+                report.status === "rejected",
+            ).length,
+            className:
+              "border-red-200 bg-red-50 text-red-700",
+          },
+        ].map((stat) => (
+          <div
+            key={stat.label}
+            className={`rounded-xl border p-4 ${stat.className}`}
+          >
+            <p className="text-xs font-bold opacity-70">
+              {stat.label}
+            </p>
+            <p className="mt-1 text-2xl font-black">
+              {stat.value}
+            </p>
+          </div>
+        ))}
+      </div>
+
+      <div className="flex flex-col gap-3 rounded-2xl border border-slate-200 bg-white p-4 sm:flex-row">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+          <input
+            type="search"
+            value={searchTerm}
+            onChange={(event) =>
+              setSearchTerm(event.target.value)
+            }
+            placeholder="Search report or staff name..."
+            className="w-full rounded-lg border border-slate-300 py-2 pl-9 pr-3 text-sm outline-none focus:ring-2 focus:ring-indigo-500"
           />
-        )}
+        </div>
+
+        <select
+          value={statusFilter}
+          onChange={(event) =>
+            setStatusFilter(event.target.value)
+          }
+          className="rounded-lg border border-slate-300 bg-white px-4 py-2 text-sm font-semibold"
+        >
+          <option value="pending_approval">
+            Pending Approval
+          </option>
+          <option value="approved">
+            Approved
+          </option>
+          <option value="rejected">
+            Rejected
+          </option>
+          <option value="all">
+            All Reports
+          </option>
+        </select>
+      </div>
+
+      <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
+        <div className="overflow-x-auto">
+          <table className="w-full min-w-[800px] text-sm">
+            <thead className="bg-slate-50">
+              <tr className="text-left text-slate-500">
+                <th className="p-4 font-medium">
+                  Report
+                </th>
+                <th className="p-4 font-medium">
+                  Submitted By
+                </th>
+                <th className="p-4 font-medium">
+                  Date
+                </th>
+                <th className="p-4 font-medium">
+                  Status
+                </th>
+                <th className="p-4 font-medium">
+                  Actions
+                </th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {filtered.length === 0 ? (
+                <tr>
+                  <td
+                    colSpan={5}
+                    className="p-10 text-center text-slate-400"
+                  >
+                    No reports found.
+                  </td>
+                </tr>
+              ) : (
+                filtered.map((report) => (
+                  <tr
+                    key={report.id}
+                    className="border-t border-slate-100"
+                  >
+                    <td className="p-4">
+                      <p className="font-bold text-slate-800">
+                        {report.title}
+                      </p>
+                      <p className="text-xs text-slate-400">
+                        {String(
+                          report.report_type ||
+                            "",
+                        ).replace(/_/g, " ")}
+                      </p>
+                    </td>
+
+                    <td className="p-4">
+                      {report.generated_by_name ||
+                        "Staff member"}
+                    </td>
+
+                    <td className="p-4 text-slate-500">
+                      {formatDateTime(
+                        report.created_at,
+                      )}
+                    </td>
+
+                    <td className="p-4">
+                      <span
+                        className={`rounded-full border px-2 py-1 text-xs font-bold ${reportStatusClass(
+                          report.status,
+                        )}`}
+                      >
+                        {prettyReportStatus(
+                          report.status,
+                        )}
+                      </span>
+                    </td>
+
+                    <td className="p-4">
+                      <div className="flex flex-wrap gap-2">
+                        <button
+                          type="button"
+                          onClick={() =>
+                            setPreviewReport(report)
+                          }
+                          className="flex items-center gap-1 text-indigo-600 hover:underline"
+                        >
+                          <Eye className="h-4 w-4" />
+                          View
+                        </button>
+
+                        {report.status ===
+                          "pending_approval" && (
+                          <>
+                            <button
+                              type="button"
+                              onClick={() =>
+                                updateStatus(
+                                  report,
+                                  "approved",
+                                )
+                              }
+                              disabled={
+                                savingId ===
+                                report.id
+                              }
+                              className="flex items-center gap-1 font-bold text-emerald-600 hover:underline disabled:opacity-50"
+                            >
+                              {savingId ===
+                              report.id ? (
+                                <Loader2 className="h-4 w-4 animate-spin" />
+                              ) : (
+                                <CheckCircle className="h-4 w-4" />
+                              )}
+                              Approve
+                            </button>
+
+                            <button
+                              type="button"
+                              onClick={() => {
+                                const reason =
+                                  window.prompt(
+                                    "Reason for rejecting this report (optional):",
+                                  );
+
+                                if (reason === null) {
+                                  return;
+                                }
+
+                                updateStatus(
+                                  report,
+                                  "rejected",
+                                  reason || null,
+                                );
+                              }}
+                              disabled={
+                                savingId ===
+                                report.id
+                              }
+                              className="flex items-center gap-1 font-bold text-red-600 hover:underline disabled:opacity-50"
+                            >
+                              <XCircle className="h-4 w-4" />
+                              Reject
+                            </button>
+                          </>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
       </div>
 
       {previewReport && (
-        <ReportPreviewModal
+        <InventoryReportPreview
           report={previewReport}
           onClose={() => setPreviewReport(null)}
-          onPrint={() => window.print()}
         />
       )}
-    </div>
-  );
-}
-
-// =============================================
-// AMBULANCES TAB (moved from staff — now includes driver assignment)
-// =============================================
-function AmbulancesTab({ ambulances, setAmbulances, searchTerm, setSearchTerm, supabase, stats }) {
-  const [showForm, setShowForm] = useState(false);
-  const [editAmbulance, setEditAmbulance] = useState(null);
-  const [assignTarget, setAssignTarget] = useState(null); // ambulance being assigned a driver
-  const [form, setForm] = useState({
-    unit_number: '', plate_number: '', model: '', year: new Date().getFullYear().toString(),
-    status: 'available', mileage: '0', last_maintenance: '', next_maintenance: '', notes: '',
-    assigned_driver: '', driver_contact: '',
-  });
-
-  const filtered = ambulances.filter(a =>
-    a.unit_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    a.plate_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    a.model?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    a.assigned_driver?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      const payload = { ...form, mileage: parseInt(form.mileage) };
-      if (editAmbulance) {
-        const { error } = await supabase.from('ambulances').update(payload).eq('id', editAmbulance.id);
-        if (error) throw error;
-      } else {
-        const { error } = await supabase.from('ambulances').insert([payload]);
-        if (error) throw error;
-      }
-      const { data } = await supabase.from('ambulances').select('*').order('unit_number');
-      setAmbulances(data);
-      setShowForm(false);
-      setEditAmbulance(null);
-      resetForm();
-    } catch (err) {
-      alert('Error: ' + err.message);
-    }
-  };
-
-  const handleDelete = async (id) => {
-    if (!confirm('Delete this ambulance? This will also permanently delete all of its usage log history.')) return;
-    await supabase.from('ambulances').delete().eq('id', id);
-    setAmbulances(ambulances.filter(a => a.id !== id));
-  };
-
-  const resetForm = () => {
-    setForm({
-      unit_number: '', plate_number: '', model: '', year: new Date().getFullYear().toString(),
-      status: 'available', mileage: '0', last_maintenance: '', next_maintenance: '', notes: '',
-      assigned_driver: '', driver_contact: '',
-    });
-  };
-
-  const openEdit = (amb) => {
-    setEditAmbulance(amb);
-    setForm({
-      unit_number: amb.unit_number, plate_number: amb.plate_number, model: amb.model || '',
-      year: amb.year?.toString() || '', status: amb.status, mileage: amb.mileage?.toString() || '0',
-      last_maintenance: amb.last_maintenance || '', next_maintenance: amb.next_maintenance || '',
-      notes: amb.notes || '', assigned_driver: amb.assigned_driver || '', driver_contact: amb.driver_contact || '',
-    });
-    setShowForm(true);
-  };
-
-  // Quick driver assignment — updates just assigned_driver/driver_contact
-  // without opening the full edit form.
-  const handleAssignDriver = async (ambulanceId, driverName, driverContact) => {
-    try {
-      const { error } = await supabase
-        .from('ambulances')
-        .update({ assigned_driver: driverName || null, driver_contact: driverContact || null })
-        .eq('id', ambulanceId);
-      if (error) throw error;
-
-      setAmbulances(ambulances.map(a =>
-        a.id === ambulanceId ? { ...a, assigned_driver: driverName || null, driver_contact: driverContact || null } : a
-      ));
-      setAssignTarget(null);
-    } catch (err) {
-      alert('Error assigning driver: ' + err.message);
-    }
-  };
-
-  return (
-    <div className="space-y-4">
-      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-        <div className="bg-white rounded-xl shadow-sm p-5 border-l-4 border-green-500">
-          <p className="text-sm text-gray-500">Available</p>
-          <p className="text-2xl font-bold text-gray-800">{stats.availableAmbulances}</p>
-        </div>
-        <div className="bg-white rounded-xl shadow-sm p-5 border-l-4 border-blue-500">
-          <p className="text-sm text-gray-500">In Service</p>
-          <p className="text-2xl font-bold text-gray-800">{stats.inService}</p>
-        </div>
-        <div className="bg-white rounded-xl shadow-sm p-5 border-l-4 border-yellow-500">
-          <p className="text-sm text-gray-500">Under Maintenance</p>
-          <p className="text-2xl font-bold text-gray-800">{stats.underMaintenance}</p>
-        </div>
-        <div className="bg-white rounded-xl shadow-sm p-5 border-l-4 border-red-500">
-          <p className="text-sm text-gray-500">Unassigned (no driver)</p>
-          <p className="text-2xl font-bold text-gray-800">{stats.unassigned}</p>
-        </div>
-      </div>
-
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-gray-800">Ambulance Fleet</h2>
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search ambulances or drivers..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-            />
-          </div>
-          <button
-            onClick={() => { setShowForm(true); setEditAmbulance(null); resetForm(); }}
-            className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition font-medium text-sm"
-          >
-            <Plus className="w-4 h-4" />
-            Add Ambulance
-          </button>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-        {filtered.map(amb => (
-          <div key={amb.id} className="bg-white rounded-xl shadow-sm overflow-hidden hover:shadow-md transition">
-            <div className={`h-2 ${
-              amb.status === 'available' ? 'bg-green-500' :
-              amb.status === 'in_service' ? 'bg-blue-500' :
-              amb.status === 'maintenance' ? 'bg-yellow-500' : 'bg-red-500'
-            }`} />
-            <div className="p-5">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="text-lg font-bold text-gray-800">{amb.unit_number}</h3>
-                <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                  amb.status === 'available' ? 'bg-green-100 text-green-700' :
-                  amb.status === 'in_service' ? 'bg-blue-100 text-blue-700' :
-                  amb.status === 'maintenance' ? 'bg-yellow-100 text-yellow-700' :
-                  'bg-red-100 text-red-700'
-                }`}>
-                  {amb.status.replace('_', ' ')}
-                </span>
-              </div>
-              <div className="space-y-1 text-sm text-gray-600">
-                <p><span className="font-medium">Plate:</span> {amb.plate_number}</p>
-                {amb.model && <p><span className="font-medium">Model:</span> {amb.model} ({amb.year})</p>}
-                <p><span className="font-medium">Mileage:</span> {amb.mileage?.toLocaleString()} km</p>
-                {amb.next_maintenance && (
-                  <p className="flex items-center gap-1">
-                    <Calendar className="w-3 h-3 text-yellow-500" />
-                    <span className="font-medium">Next Maint:</span> {new Date(amb.next_maintenance).toLocaleDateString()}
-                  </p>
-                )}
-              </div>
-
-              {/* Driver assignment block */}
-              <div className={`mt-3 pt-3 border-t rounded-lg ${amb.assigned_driver ? '' : 'bg-red-50 -mx-5 px-5 pb-2'}`}>
-                {amb.assigned_driver ? (
-                  <div className="flex items-center gap-2 text-sm">
-                    <User className="w-4 h-4 text-indigo-600 flex-shrink-0" />
-                    <div>
-                      <p className="font-medium text-gray-800">{amb.assigned_driver}</p>
-                      {amb.driver_contact && <p className="text-xs text-gray-500">{amb.driver_contact}</p>}
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-sm text-red-600 font-medium flex items-center gap-1">
-                    <AlertTriangle className="w-4 h-4" /> No driver assigned
-                  </p>
-                )}
-                <button
-                  onClick={() => setAssignTarget(amb)}
-                  className="mt-2 flex items-center gap-1.5 text-indigo-600 text-xs font-semibold hover:underline"
-                >
-                  <UserPlus className="w-3.5 h-3.5" />
-                  {amb.assigned_driver ? 'Reassign Driver' : 'Assign Driver'}
-                </button>
-              </div>
-
-              <div className="flex gap-2 mt-3 pt-3 border-t">
-                <button onClick={() => openEdit(amb)} className="text-indigo-600 text-sm font-medium hover:underline">Edit</button>
-                <button onClick={() => handleDelete(amb.id)} className="text-red-600 text-sm font-medium hover:underline ml-auto">Delete</button>
-              </div>
-            </div>
-          </div>
-        ))}
-        {filtered.length === 0 && (
-          <div className="col-span-full text-center py-12 text-gray-400">
-            <Truck className="w-12 h-12 mx-auto mb-3 opacity-50" />
-            <p>No ambulances found</p>
-          </div>
-        )}
-      </div>
-
-      {/* Quick Assign Driver Modal */}
-      {assignTarget && (
-        <AssignDriverModal
-          ambulance={assignTarget}
-          onClose={() => setAssignTarget(null)}
-          onSave={handleAssignDriver}
-        />
-      )}
-
-      {/* Add/Edit Ambulance Modal */}
-      {showForm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6 max-h-[90vh] overflow-y-auto">
-            <h3 className="text-xl font-bold text-gray-800 mb-4">
-              {editAmbulance ? 'Edit Ambulance' : 'Add New Ambulance'}
-            </h3>
-            <form onSubmit={handleSubmit} className="space-y-3">
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-sm font-medium text-gray-700">Unit Number *</label>
-                  <input type="text" required value={form.unit_number}
-                    onChange={e => setForm({...form, unit_number: e.target.value})}
-                    className="w-full p-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-700">Plate Number *</label>
-                  <input type="text" required value={form.plate_number}
-                    onChange={e => setForm({...form, plate_number: e.target.value})}
-                    className="w-full p-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-sm font-medium text-gray-700">Model</label>
-                  <input type="text" value={form.model}
-                    onChange={e => setForm({...form, model: e.target.value})}
-                    className="w-full p-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-700">Year</label>
-                  <input type="number" value={form.year}
-                    onChange={e => setForm({...form, year: e.target.value})}
-                    className="w-full p-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-sm font-medium text-gray-700">Status</label>
-                  <select value={form.status}
-                    onChange={e => setForm({...form, status: e.target.value})}
-                    className="w-full p-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
-                    <option value="available">Available</option>
-                    <option value="in_service">In Service</option>
-                    <option value="maintenance">Under Maintenance</option>
-                    <option value="out_of_service">Out of Service</option>
-                  </select>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-700">Mileage (km)</label>
-                  <input type="number" value={form.mileage}
-                    onChange={e => setForm({...form, mileage: e.target.value})}
-                    className="w-full p-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
-                </div>
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-sm font-medium text-gray-700">Last Maintenance</label>
-                  <input type="date" value={form.last_maintenance}
-                    onChange={e => setForm({...form, last_maintenance: e.target.value})}
-                    className="w-full p-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-700">Next Maintenance</label>
-                  <input type="date" value={form.next_maintenance}
-                    onChange={e => setForm({...form, next_maintenance: e.target.value})}
-                    className="w-full p-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
-                </div>
-              </div>
-
-              {/* Driver assignment fields */}
-              <div className="grid grid-cols-2 gap-3 pt-2 border-t">
-                <div className="col-span-2 pt-2">
-                  <label className="text-xs font-bold text-gray-500 uppercase">Assigned Driver</label>
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-700">Driver Name</label>
-                  <input type="text" value={form.assigned_driver}
-                    onChange={e => setForm({...form, assigned_driver: e.target.value})}
-                    placeholder="e.g. Juan Dela Cruz"
-                    className="w-full p-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-700">Driver Contact</label>
-                  <input type="text" value={form.driver_contact}
-                    onChange={e => setForm({...form, driver_contact: e.target.value})}
-                    placeholder="09XXXXXXXXX"
-                    className="w-full p-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
-                </div>
-              </div>
-
-              <div>
-                <label className="text-sm font-medium text-gray-700">Notes</label>
-                <textarea value={form.notes} rows={2}
-                  onChange={e => setForm({...form, notes: e.target.value})}
-                  className="w-full p-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
-              </div>
-              <div className="flex gap-2 pt-2">
-                <button type="submit" className="flex-1 bg-indigo-600 text-white py-2.5 rounded-lg hover:bg-indigo-700 font-medium">
-                  {editAmbulance ? 'Update' : 'Add Ambulance'}
-                </button>
-                <button type="button" onClick={() => { setShowForm(false); setEditAmbulance(null); }}
-                  className="px-4 py-2.5 border rounded-lg hover:bg-gray-50 font-medium">Cancel</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// =============================================
-// QUICK ASSIGN DRIVER MODAL
-// =============================================
-function AssignDriverModal({ ambulance, onClose, onSave }) {
-  const [driverName, setDriverName] = useState(ambulance.assigned_driver || '');
-  const [driverContact, setDriverContact] = useState(ambulance.driver_contact || '');
-  const [saving, setSaving] = useState(false);
-
-  const handleSave = async () => {
-    if (!driverName.trim()) {
-      alert('Please enter a driver name');
-      return;
-    }
-    setSaving(true);
-    await onSave(ambulance.id, driverName.trim(), driverContact.trim());
-    setSaving(false);
-  };
-
-  const handleUnassign = async () => {
-    setSaving(true);
-    await onSave(ambulance.id, '', '');
-    setSaving(false);
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl max-w-sm w-full p-6">
-        <h3 className="text-lg font-bold text-gray-800 mb-1">Assign Driver</h3>
-        <p className="text-sm text-gray-500 mb-4">{ambulance.unit_number} · {ambulance.plate_number}</p>
-
-        <div className="space-y-3">
-          <div>
-            <label className="text-sm font-medium text-gray-700">Driver Name *</label>
-            <input type="text" value={driverName} onChange={e => setDriverName(e.target.value)}
-              placeholder="e.g. Juan Dela Cruz"
-              className="w-full p-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
-          </div>
-          <div>
-            <label className="text-sm font-medium text-gray-700">Contact Number</label>
-            <input type="text" value={driverContact} onChange={e => setDriverContact(e.target.value)}
-              placeholder="09XXXXXXXXX"
-              className="w-full p-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
-          </div>
-        </div>
-
-        <div className="flex gap-2 pt-5">
-          <button onClick={handleSave} disabled={saving}
-            className="flex-1 bg-indigo-600 text-white py-2.5 rounded-lg hover:bg-indigo-700 font-medium disabled:opacity-50">
-            {saving ? 'Saving...' : 'Save'}
-          </button>
-          <button type="button" onClick={onClose}
-            className="px-4 py-2.5 border rounded-lg hover:bg-gray-50 font-medium">Cancel</button>
-        </div>
-        {ambulance.assigned_driver && (
-          <button onClick={handleUnassign} disabled={saving}
-            className="w-full mt-2 text-red-600 text-sm font-medium hover:underline disabled:opacity-50">
-            Remove current assignment
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// =============================================
-// USAGE LOG TAB (moved from staff)
-// =============================================
-function UsageLogTab({ usage, setUsage, ambulances, searchTerm, setSearchTerm, supabase, adminProfile }) {
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({
-    ambulance_id: '', purpose: '', destination: '', departure_time: '', return_time: '',
-    staff_name: adminProfile?.full_name || '', notes: '', status: 'completed',
-  });
-
-  const filtered = usage.filter(u =>
-    u.ambulances?.unit_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    u.purpose?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-    u.staff_name?.toLowerCase().includes(searchTerm.toLowerCase())
-  );
-
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      const { error } = await supabase.from('ambulance_usage').insert([{ ...form, staff_id: adminProfile?.user_id }]);
-      if (error) throw error;
-
-      await supabase.from('ambulances').update({ status: 'available' }).eq('id', form.ambulance_id);
-
-      const { data } = await supabase.from('ambulance_usage').select('*, ambulances(*)').order('created_at', { ascending: false });
-      setUsage(data);
-      setShowForm(false);
-      setForm({ ambulance_id: '', purpose: '', destination: '', departure_time: '', return_time: '', staff_name: adminProfile?.full_name || '', notes: '', status: 'completed' });
-    } catch (err) {
-      alert('Error: ' + err.message);
-    }
-  };
-
-  return (
-    <div className="space-y-4">
-      <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold text-gray-800">Ambulance Usage Log</h2>
-        <div className="flex items-center gap-3">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-            <input
-              type="text"
-              placeholder="Search usage..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="pl-10 pr-4 py-2 border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-            />
-          </div>
-          <button onClick={() => setShowForm(true)}
-            className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 transition font-medium text-sm">
-            <Plus className="w-4 h-4" />
-            Log Usage
-          </button>
-        </div>
-      </div>
-
-      <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50">
-              <tr className="text-left text-gray-500">
-                <th className="p-4 font-medium">Date</th>
-                <th className="p-4 font-medium">Ambulance</th>
-                <th className="p-4 font-medium">Driver</th>
-                <th className="p-4 font-medium">Purpose</th>
-                <th className="p-4 font-medium">Destination</th>
-                <th className="p-4 font-medium">Staff</th>
-                <th className="p-4 font-medium">Duration</th>
-                <th className="p-4 font-medium">Status</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(entry => (
-                <tr key={entry.id} className="border-b border-gray-100 hover:bg-gray-50">
-                  <td className="p-4">{new Date(entry.created_at).toLocaleDateString()}</td>
-                  <td className="p-4 font-medium">{entry.ambulances?.unit_number}</td>
-                  <td className="p-4">{entry.ambulances?.assigned_driver || '—'}</td>
-                  <td className="p-4">{entry.purpose}</td>
-                  <td className="p-4">{entry.destination}</td>
-                  <td className="p-4">{entry.staff_name}</td>
-                  <td className="p-4">
-                    {entry.departure_time && entry.return_time ? (
-                      <span className="text-xs">
-                        {new Date(entry.departure_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} -
-                        {new Date(entry.return_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                    ) : '-'}
-                  </td>
-                  <td className="p-4">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      entry.status === 'completed' ? 'bg-green-100 text-green-700' :
-                      entry.status === 'in_progress' ? 'bg-yellow-100 text-yellow-700' :
-                      'bg-gray-100 text-gray-600'
-                    }`}>
-                      {entry.status.replace('_', ' ')}
-                    </span>
-                  </td>
-                </tr>
-              ))}
-              {filtered.length === 0 && (
-                <tr><td colSpan={8} className="p-8 text-center text-gray-400">No usage records found</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {showForm && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl max-w-lg w-full p-6">
-            <h3 className="text-xl font-bold text-gray-800 mb-4">Log Ambulance Usage</h3>
-            <form onSubmit={handleSubmit} className="space-y-3">
-              <div>
-                <label className="text-sm font-medium text-gray-700">Ambulance *</label>
-                <select required value={form.ambulance_id}
-                  onChange={e => setForm({...form, ambulance_id: e.target.value})}
-                  className="w-full p-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none">
-                  <option value="">Select ambulance...</option>
-                  {ambulances.filter(a => a.status === 'available').map(amb => (
-                    <option key={amb.id} value={amb.id}>
-                      {amb.unit_number} - {amb.plate_number}{amb.assigned_driver ? ` (Driver: ${amb.assigned_driver})` : ''}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700">Purpose *</label>
-                <input type="text" required value={form.purpose}
-                  onChange={e => setForm({...form, purpose: e.target.value})}
-                  placeholder="e.g. Emergency Response, Patient Transport, Training"
-                  className="w-full p-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700">Destination</label>
-                <input type="text" value={form.destination}
-                  onChange={e => setForm({...form, destination: e.target.value})}
-                  className="w-full p-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
-              </div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-sm font-medium text-gray-700">Departure Time</label>
-                  <input type="datetime-local" value={form.departure_time}
-                    onChange={e => setForm({...form, departure_time: e.target.value})}
-                    className="w-full p-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
-                </div>
-                <div>
-                  <label className="text-sm font-medium text-gray-700">Return Time</label>
-                  <input type="datetime-local" value={form.return_time}
-                    onChange={e => setForm({...form, return_time: e.target.value})}
-                    className="w-full p-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
-                </div>
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700">Staff Name</label>
-                <input type="text" value={form.staff_name}
-                  onChange={e => setForm({...form, staff_name: e.target.value})}
-                  className="w-full p-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
-              </div>
-              <div>
-                <label className="text-sm font-medium text-gray-700">Notes</label>
-                <textarea value={form.notes} rows={2}
-                  onChange={e => setForm({...form, notes: e.target.value})}
-                  className="w-full p-2.5 border rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none" />
-              </div>
-              <div className="flex gap-2 pt-2">
-                <button type="submit" className="flex-1 bg-indigo-600 text-white py-2.5 rounded-lg hover:bg-indigo-700 font-medium">
-                  Log Usage
-                </button>
-                <button type="button" onClick={() => setShowForm(false)}
-                  className="px-4 py-2.5 border rounded-lg hover:bg-gray-50 font-medium">Cancel</button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
-
-// =============================================
-// STAFF REPORTS TAB (new — admin reviews & approves/rejects
-// reports staff generate in StaffInventory.jsx)
-// =============================================
-function StaffReportsTab({ reports, setReports, supabase, adminProfile, onPreview }) {
-  const [statusFilter, setStatusFilter] = useState('pending_approval');
-  const [searchTerm, setSearchTerm] = useState('');
-
-  const filtered = reports.filter(r => {
-    const matchesStatus = statusFilter === 'all' || r.status === statusFilter;
-    const matchesSearch = !searchTerm ||
-      r.title?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-      r.generated_by_name?.toLowerCase().includes(searchTerm.toLowerCase());
-    return matchesStatus && matchesSearch;
-  });
-
-  const updateReportStatus = async (id, status, notes = null) => {
-    try {
-      const { error } = await supabase
-        .from('inventory_reports')
-        .update({
-          status,
-          admin_notes: notes,
-          reviewed_by: adminProfile?.user_id,
-          reviewed_by_name: adminProfile?.full_name,
-          reviewed_at: new Date().toISOString(),
-        })
-        .eq('id', id);
-      if (error) throw error;
-
-      const { data } = await supabase
-        .from('inventory_reports')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(50);
-      setReports(data);
-    } catch (err) {
-      alert('Error updating report: ' + err.message);
-    }
-  };
-
-  return (
-    <div className="space-y-4">
-      <h2 className="text-2xl font-bold text-gray-800">Staff Reports</h2>
-      <p className="text-sm text-gray-500 -mt-2">Review and approve inventory reports submitted by staff.</p>
-
-      <div className="bg-white rounded-xl shadow-sm p-4 flex flex-col md:flex-row gap-3">
-        <div className="relative flex-1">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-400" />
-          <input
-            type="text"
-            placeholder="Search by title or staff name..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            className="pl-10 pr-4 py-2 w-full border border-gray-300 rounded-lg text-sm focus:ring-2 focus:ring-indigo-500 outline-none"
-          />
-        </div>
-        <div className="flex gap-2 flex-wrap">
-          {['pending_approval', 'approved', 'rejected', 'all'].map(status => (
-            <button
-              key={status}
-              onClick={() => setStatusFilter(status)}
-              className={`px-3 py-2 rounded-lg text-sm font-semibold transition ${
-                statusFilter === status ? 'bg-indigo-600 text-white' : 'bg-gray-100 text-gray-700 hover:bg-gray-200'
-              }`}
-            >
-              {status === 'all' ? 'All' : status.replace('_', ' ').replace(/\b\w/g, c => c.toUpperCase())}
-            </button>
-          ))}
-        </div>
-      </div>
-
-      <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead className="bg-gray-50">
-              <tr className="text-left text-gray-500">
-                <th className="p-4 font-medium">Title</th>
-                <th className="p-4 font-medium">Submitted By</th>
-                <th className="p-4 font-medium">Date</th>
-                <th className="p-4 font-medium">Status</th>
-                <th className="p-4 font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(report => (
-                <tr key={report.id} className="border-b border-gray-100 hover:bg-gray-50">
-                  <td className="p-4 font-medium">{report.title}</td>
-                  <td className="p-4">{report.generated_by_name || 'N/A'}</td>
-                  <td className="p-4">{new Date(report.created_at).toLocaleDateString()}</td>
-                  <td className="p-4">
-                    <span className={`px-2 py-1 rounded-full text-xs font-medium ${
-                      report.status === 'approved' ? 'bg-green-100 text-green-700' :
-                      report.status === 'pending_approval' ? 'bg-yellow-100 text-yellow-700' :
-                      report.status === 'rejected' ? 'bg-red-100 text-red-700' : 'bg-gray-100 text-gray-600'
-                    }`}>
-                      {report.status.replace('_', ' ')}
-                    </span>
-                  </td>
-                  <td className="p-4">
-                    <div className="flex items-center gap-3">
-                      <button onClick={() => onPreview(report)} className="text-indigo-600 text-sm font-medium hover:underline">
-                        <Eye className="w-4 h-4 inline mr-1" /> View
-                      </button>
-                      {report.status === 'pending_approval' && (
-                        <>
-                          <button
-                            onClick={() => updateReportStatus(report.id, 'approved')}
-                            className="text-green-600 text-sm font-medium hover:underline"
-                          >
-                            <CheckCircle className="w-4 h-4 inline mr-1" /> Approve
-                          </button>
-                          <button
-                            onClick={() => {
-                              const reason = prompt('Reason for rejecting this report (optional):');
-                              if (reason === null) return; // admin cancelled the prompt
-                              updateReportStatus(report.id, 'rejected', reason || null);
-                            }}
-                            className="text-red-600 text-sm font-medium hover:underline"
-                          >
-                            <XCircle className="w-4 h-4 inline mr-1" /> Reject
-                          </button>
-                        </>
-                      )}
-                    </div>
-                  </td>
-                </tr>
-              ))}
-              {filtered.length === 0 && (
-                <tr><td colSpan={5} className="p-8 text-center text-gray-400">No reports found</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// =============================================
-// REPORT PREVIEW MODAL (Printable)
-// =============================================
-function ReportPreviewModal({ report, onClose, onPrint }) {
-  const content = report.content || {};
-  const now = new Date().toLocaleDateString('en-PH', {
-    weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit'
-  });
-
-  return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4 print:bg-white print:p-0 print:inset-0">
-      <div className="bg-white rounded-2xl max-w-4xl w-full max-h-[90vh] overflow-y-auto print:max-h-none print:rounded-none print:shadow-none">
-        <div className="flex items-center justify-between p-4 border-b print:hidden sticky top-0 bg-white z-10">
-          <h3 className="font-bold text-gray-800">Report Preview</h3>
-          <div className="flex gap-2">
-            <button onClick={onPrint}
-              className="flex items-center gap-2 bg-indigo-600 text-white px-4 py-2 rounded-lg hover:bg-indigo-700 font-medium text-sm">
-              <Printer className="w-4 h-4" /> Print / Save PDF
-            </button>
-            <button onClick={onClose} className="px-4 py-2 border rounded-lg hover:bg-gray-50 font-medium text-sm">Close</button>
-          </div>
-        </div>
-
-        <div className="p-8 print:p-8">
-          <div className="text-center mb-8 border-b pb-6">
-            <h1 className="text-2xl font-bold text-gray-900">MDRRMO INVENTORY REPORT</h1>
-            <p className="text-lg font-semibold text-indigo-700 mt-1">{report.title}</p>
-            <p className="text-sm text-gray-500 mt-2">Generated: {now}</p>
-            <p className="text-sm text-gray-500">Prepared by: {report.generated_by_name || 'N/A'}</p>
-            {report.reviewed_by_name && (
-              <p className="text-sm text-gray-500">Reviewed by: {report.reviewed_by_name}</p>
-            )}
-            <p className="text-xs text-gray-400 mt-1">Report ID: {report.id}</p>
-          </div>
-
-          {report.admin_notes && (
-            <div className={`mb-6 rounded-lg p-4 border ${report.status === 'rejected' ? 'bg-red-50 border-red-200' : 'bg-yellow-50 border-yellow-200'}`}>
-              <p className="text-xs font-bold uppercase text-gray-500 mb-1">Admin Notes</p>
-              <p className="text-sm text-gray-700">{report.admin_notes}</p>
-            </div>
-          )}
-
-          {content.summary && (
-            <div className="mb-6">
-              <h2 className="font-bold text-gray-800 mb-3">Summary</h2>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                {Object.entries(content.summary).map(([key, val]) => (
-                  <div key={key} className="bg-gray-50 rounded-lg p-3 text-center border">
-                    <p className="text-xs text-gray-500 uppercase">{key.replace(/_/g, ' ')}</p>
-                    <p className="text-xl font-bold text-gray-800">{val}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {content.tools && content.tools.length > 0 && (
-            <div className="mb-6">
-              <h2 className="font-bold text-gray-800 mb-3">Tools & Equipment</h2>
-              <table className="w-full text-sm border-collapse">
-                <thead>
-                  <tr className="bg-gray-100">
-                    <th className="p-2 text-left font-medium border">Name</th>
-                    <th className="p-2 text-left font-medium border">Category</th>
-                    <th className="p-2 text-center font-medium border">Qty</th>
-                    <th className="p-2 text-center font-medium border">Min</th>
-                    <th className="p-2 text-left font-medium border">Unit</th>
-                    <th className="p-2 text-left font-medium border">Location</th>
-                    <th className="p-2 text-center font-medium border">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {content.tools.map((t, i) => (
-                    <tr key={i} className={t.status === 'Low Stock' ? 'bg-red-50' : ''}>
-                      <td className="p-2 border font-medium">{t.name}</td>
-                      <td className="p-2 border">{t.category}</td>
-                      <td className="p-2 border text-center">{t.quantity}</td>
-                      <td className="p-2 border text-center">{t.min_quantity || t.min}</td>
-                      <td className="p-2 border">{t.unit}</td>
-                      <td className="p-2 border">{t.location || '-'}</td>
-                      <td className="p-2 border text-center">
-                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                          t.status === 'Low Stock' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
-                        }`}>{t.status}</span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          {content.supplies && content.supplies.length > 0 && (
-            <div className="mb-6">
-              <h2 className="font-bold text-gray-800 mb-3">Medical Supplies</h2>
-              <table className="w-full text-sm border-collapse">
-                <thead>
-                  <tr className="bg-gray-100">
-                    <th className="p-2 text-left font-medium border">Name</th>
-                    <th className="p-2 text-left font-medium border">Category</th>
-                    <th className="p-2 text-center font-medium border">Qty</th>
-                    <th className="p-2 text-center font-medium border">Min</th>
-                    <th className="p-2 text-left font-medium border">Unit</th>
-                    <th className="p-2 text-left font-medium border">Location</th>
-                    <th className="p-2 text-center font-medium border">Status</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {content.supplies?.map((s, i) => (
-                    <tr key={i} className={s.status === 'Low Stock' ? 'bg-red-50' : ''}>
-                      <td className="p-2 border font-medium">{s.name}</td>
-                      <td className="p-2 border">{s.category}</td>
-                      <td className="p-2 border text-center">{s.quantity}</td>
-                      <td className="p-2 border text-center">{s.min_quantity || s.min}</td>
-                      <td className="p-2 border">{s.unit}</td>
-                      <td className="p-2 border">{s.location || '-'}</td>
-                      <td className="p-2 border text-center">
-                        <span className={`px-2 py-0.5 rounded text-xs font-medium ${
-                          s.status === 'Low Stock' ? 'bg-red-100 text-red-700' : 'bg-green-100 text-green-700'
-                        }`}>{s.status}</span>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-
-          <div className="mt-8 pt-4 border-t text-center text-xs text-gray-400">
-            <p>This report is system-generated. For verification, contact MDRRMO Admin.</p>
-            <p className="mt-1">© 2026 MDRRMO Inventory Management System</p>
-          </div>
-        </div>
-      </div>
-    </div>
+    </section>
   );
 }

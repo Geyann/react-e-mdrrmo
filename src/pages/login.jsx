@@ -181,7 +181,7 @@ export default function LoginPage() {
   const isEmailInput = identifier.includes('@');
 
   return (
-    <div className="min-h-screen min-w-screen flex items-center justify-center p-4">
+    <div className="min-h-screen min-w-screen flex items-center justify-center p-4 mt-[-50px]">
       <button
         onClick={() => navigate('/')}
         className="absolute top-6 left-6 flex items-center gap-2 text-gray-600 hover:text-purple-600 transition font-semibold z-10"
@@ -283,7 +283,7 @@ export default function LoginPage() {
             </form>
 
             {/* Divider */}
-            <div className="flex items-center gap-3 my-6">
+            <div className="flex items-center gap-3 my-2">
               <div className="flex-1 h-px bg-gray-200" />
               <span className="text-xs text-gray-400 font-medium">OR</span>
               <div className="flex-1 h-px bg-gray-200" />
@@ -311,11 +311,17 @@ export default function LoginPage() {
               Continue with Google
             </button>
 
-            <div className="mt-6 text-center">
+            <div className="mt-2 text-center">
               <p className="text-sm text-gray-500">
                 Don't have an account?{' '}
                 <Link to="/register" className="text-blue-600 font-bold hover:text-blue-700 hover:underline transition">
                   Create Account
+                </Link>
+              </p>
+              <p className="text-sm text-gray-500">
+                Are you {' '}
+                <Link to="/admin" className="text-blue-600 font-bold hover:text-blue-700 hover:underline transition">
+                  Admin?
                 </Link>
               </p>
             </div>

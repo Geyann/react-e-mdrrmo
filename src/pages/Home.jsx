@@ -10,9 +10,10 @@ export default function Guest() {
     return(
                <div className="">
                <section className="w-full py-20 lg:py-32">
-        <div className="container mx-auto px-4 text-center">
-          <div className="flex flex-col items-center gap-8">
-            <h1 className="text-5xl md:text-7xl tracking-tighter font-bold text-slate-800 max-w-3xl pt-20 ">
+        <div className="container mx-auto px-40 text-center">
+           <div className="flex flex-col items-center gap-8 bg-slate-100 py-20 rounded-[100px] border-5 border-slate-300 shadow-lg">
+          
+            <h1 className="text-5xl md:text-7xl tracking-tighter font-bold text-slate-800 max-w-3xl  ">
               Report Hazards. Keep <br /> 
               <span className="text-purple-600">Your Community Safe.</span>
             </h1>
