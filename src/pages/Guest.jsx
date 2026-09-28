@@ -191,7 +191,7 @@ export default function Guest() {
             <h1 className="mx-auto max-w-4xl text-4xl font-black leading-[1.05] tracking-[-0.04em] text-white sm:text-5xl lg:mx-0 lg:text-6xl xl:text-7xl">
               Report Hazards.
               <br />
-              Helpkeep Naic{" "}
+              Keep Naic{" "}
               <span className="bg-gradient-to-r from-blue-400 via-purple-400 to-red-400 bg-clip-text text-transparent">
                 safe.
               </span>
