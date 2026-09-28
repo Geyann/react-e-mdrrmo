@@ -4,7 +4,6 @@ import {
 } from "react-router-dom";
 import {
   LogIn,
-  Map,
   Menu,
   ShieldCheck,
   UserPlus,
@@ -51,13 +50,7 @@ export default function GuestNavbar() {
 
           {/* Desktop links */}
           <nav className="hidden items-center gap-2 md:flex">
-            <Link
-              to="/guest/hazardmap"
-              className="inline-flex items-center gap-2 rounded-xl px-4 py-2.5 text-sm font-bold text-white transition hover:bg-white/15"
-            >
-              <Map className="h-4 w-4" />
-              Hazard Map
-            </Link>
+          
 
             <Link
               to="/register"
@@ -110,13 +103,7 @@ export default function GuestNavbar() {
 
       {menuOpen && (
         <nav className="fixed left-3 right-3 top-[4.5rem] z-[1020] overflow-hidden rounded-2xl border border-white/20 bg-gradient-to-b from-blue-600 to-purple-700 p-3 shadow-2xl md:hidden">
-          <Link
-            to="/guest/hazardmap"
-            className="flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-bold text-white transition hover:bg-white/15"
-          >
-            <Map className="h-5 w-5" />
-            Hazard Map
-          </Link>
+         
 
           <Link
             to="/register"

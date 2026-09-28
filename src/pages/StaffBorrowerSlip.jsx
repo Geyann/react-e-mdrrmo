@@ -1,520 +1,1588 @@
-import React, { useState, useEffect } from "react";
-import { useNavigate } from "react-router-dom";
-import { supabase } from "../createClient";
-import logo1 from "../Images/logo1.png";
-import iconLogo from "../Images/icon3.png";
+"use client";
+
 import {
-  FileText,
+  useCallback,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
+import { useNavigate } from "react-router-dom";
+
+import {
   AlertCircle,
-  CheckCircle,
+  ArrowLeft,
+  Building2,
+  CalendarDays,
+  CheckCircle2,
+  Clock3,
+  FileText,
+  Info,
   Loader2,
-  User,
+  MapPin,
   Phone,
-  ShieldAlert,
   Printer,
+  ShieldAlert,
+  UserRound,
 } from "lucide-react";
 
-const BorrowerSlip = () => {
+import logo1 from "../Images/logo1.png";
+import iconLogo from "../Images/icon3.png";
+
+import RequestFormShell, {
+  FORM_INPUT_CLASS,
+  FormField,
+  FormSectionHeading,
+} from "../components/RequestFormShell";
+
+import { supabase } from "../createClient";
+
+/* =============================================================
+ * HELPERS
+ * ============================================================= */
+
+const cleanText = (value) =>
+  String(value ?? "").trim();
+
+const getPhoneDigits = (value) =>
+  String(value ?? "")
+    .trim()
+    .replace(/\D/g, "");
+
+const getLocalDateKey = () => {
+  const date = new Date();
+
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(
+      2,
+      "0",
+    ),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
+};
+
+const getLocalTimeKey = () => {
+  const date = new Date();
+
+  return [
+    String(date.getHours()).padStart(2, "0"),
+    String(date.getMinutes()).padStart(2, "0"),
+  ].join(":");
+};
+
+const getInitials = (value) => {
+  const text = cleanText(value);
+
+  if (!text) {
+    return "ST";
+  }
+
+  return (
+    text
+      .split(/\s+/)
+      .map((part) => part.charAt(0))
+      .slice(0, 2)
+      .join("")
+      .toUpperCase() || "ST"
+  );
+};
+
+const getRoleLabel = (role) => {
+  const normalized = cleanText(role).toLowerCase();
+
+  if (normalized === "admin") {
+    return "Administrator";
+  }
+
+  if (normalized === "moderator") {
+    return "Moderator";
+  }
+
+  return "Staff Member";
+};
+
+const readLocalSession = (key) => {
+  try {
+    const raw = localStorage.getItem(key);
+
+    if (!raw) {
+      return null;
+    }
+
+    const parsed = JSON.parse(raw);
+
+    return parsed &&
+      typeof parsed === "object"
+      ? parsed
+      : null;
+  } catch {
+    return null;
+  }
+};
+
+const createEmptySlip = () => ({
+  date: getLocalDateKey(),
+  time: getLocalTimeKey(),
+  plateNo: "",
+  driver: "",
+  borrowerName: "",
+  residentOf: "",
+  contactNum: "",
+  hospital: "",
+  borrowerSignature: "",
+});
+
+/* =============================================================
+ * PRINTABLE BORROWER SLIP
+ * ============================================================= */
+
+function SlipCopy({
+  data,
+  copyLabel,
+}) {
+  return (
+    <article className="slip-copy font-serif text-[11.5pt] leading-relaxed text-black">
+      {/* Header */}
+      <header className="mb-4 text-center">
+        <div className="mb-2 flex items-center justify-center gap-6">
+          <img
+            src={logo1}
+            alt="MDRRMO Logo"
+            className="h-20 w-20 object-contain"
+          />
+
+          <img
+            src={iconLogo}
+            alt="Municipal Seal"
+            className="h-20 w-20 object-contain"
+          />
+        </div>
+
+        <p className="text-[11.5pt] font-bold leading-tight">
+          MUNICIPAL DISASTER RISK REDUCTION
+          MANAGEMENT OFFICE
+        </p>
+
+        <p className="text-[10pt] leading-tight">
+          Municipality of Naic, Province of
+          Cavite
+        </p>
+
+        <p className="mt-2 text-[14pt] font-bold tracking-wide underline">
+          BORROWER SLIP
+        </p>
+
+        {copyLabel && (
+          <p className="mt-1 text-[9pt] font-semibold uppercase tracking-[0.12em]">
+            {copyLabel}
+          </p>
+        )}
+      </header>
+
+      {/* Date and time */}
+      <section className="space-y-2">
+        <div className="flex justify-between gap-4">
+          <p className="m-0 w-1/2">
+            <span className="font-bold">
+              Date:{" "}
+            </span>
+
+            <span className="inline-block min-w-[42mm] border-b border-black px-2 text-center">
+              {data.date}
+            </span>
+          </p>
+
+          <p className="m-0 w-1/2 text-right">
+            <span className="font-bold">
+              Time:{" "}
+            </span>
+
+            <span className="inline-block min-w-[42mm] border-b border-black px-2 text-center">
+              {data.time}
+            </span>
+          </p>
+        </div>
+
+        {/* Vehicle and driver */}
+        <div className="flex justify-between gap-4">
+          <p className="m-0 w-1/2">
+            <span className="font-bold">
+              Ambulance Plate No.:{" "}
+            </span>
+
+            <span className="inline-block min-w-[38mm] border-b border-black px-2 text-center">
+              {data.plateNo}
+            </span>
+          </p>
+
+          <p className="m-0 w-1/2 text-right">
+            <span className="font-bold">
+              Ambulance Driver:{" "}
+            </span>
+
+            <span className="inline-block min-w-[38mm] border-b border-black px-2 text-center">
+              {data.driver}
+            </span>
+          </p>
+        </div>
+      </section>
+
+      <div className="my-3 h-px bg-black" />
+
+      {/* Borrower information */}
+      <section>
+        <p className="my-2 text-justify">
+          Ipinahihintulot at ipinagkakatiwala kay:
+        </p>
+
+        <p className="mb-1 mt-3">
+          <span className="font-bold">
+            Name:{" "}
+          </span>
+
+          <span className="inline-block min-w-[125mm] border-b border-black px-2 text-center">
+            {data.borrower_name}
+          </span>
+        </p>
+
+        <p className="mb-1">
+          <span className="font-bold">
+            Resident of:{" "}
+          </span>
+
+          <span className="inline-block min-w-[125mm] border-b border-black px-2 text-center">
+            {data.resident_of}
+          </span>
+        </p>
+
+        <p className="mb-1">
+          <span className="font-bold">
+            Contact No.:{" "}
+          </span>
+
+          <span className="inline-block min-w-[125mm] border-b border-black px-2 text-center">
+            {data.contact_num}
+          </span>
+        </p>
+
+        <p className="my-3 text-justify">
+          ang pansamantalang pangangalaga ng
+          Ambulance Stretcher sa kadahilanang may
+          kakulangan sa hospital beds ang{" "}
+          <span className="inline-block min-w-[55mm] border-b border-black px-2 text-center">
+            {data.hospital}
+          </span>{" "}
+          (pangalan ng hospital) at walang maaring
+          ipagamit na hospital beds sa
+          kasalukuyang panahon.
+        </p>
+
+        <p className="my-3 text-justify">
+          Lahat ng pagkasira o pagkawala na
+          natamo ng Ambulance Stretcher habang
+          ito ay nasa pangangalaga ng nanghihiram
+          ay pananagutan at responsibilidad
+          niya.
+        </p>
+      </section>
+
+      {/* Signatures */}
+      <section className="mx-4 mt-10 flex justify-between gap-6">
+        <div className="w-1/2 text-center">
+          <p className="m-0 min-h-[8mm] font-[cursive] text-[12pt]">
+            {data.borrowerSignature}
+          </p>
+
+          <div className="border-b border-black" />
+
+          <p className="mb-0 mt-1 text-[10.5pt] font-bold">
+            Borrower
+          </p>
+
+          <p className="m-0 text-[9pt] italic">
+            (Signature over Printed Name)
+          </p>
+
+          <p className="mb-0 mt-2 text-[10pt]">
+            <span className="font-bold">
+              Contact No.:{" "}
+            </span>
+
+            {data.contact_num}
+          </p>
+        </div>
+
+        <div className="w-1/2 text-center">
+          <p className="m-0 min-h-[8mm] font-[cursive] text-[12pt]">
+            {data.requested_by}
+          </p>
+
+          <div className="border-b border-black" />
+
+          <p className="mb-0 mt-1 text-[10.5pt] font-bold">
+            Noted By
+          </p>
+
+          <p className="m-0 text-[9pt] italic">
+            (Signature over Printed Name)
+          </p>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="mt-5 text-[10pt]">
+        <p className="my-0.5 font-bold">
+          MDRRMO HOTLINE NUMBERS:
+        </p>
+
+        <p className="my-0.5">
+          LANDLINE: 410-6725 / 410-5728
+        </p>
+
+        <p className="my-0.5">
+          MOBILE: 0917 812 8187
+        </p>
+      </footer>
+    </article>
+  );
+}
+
+/* =============================================================
+ * MAIN COMPONENT
+ * ============================================================= */
+
+export default function BorrowerSlip() {
   const navigate = useNavigate();
 
-  const emptySlip = () => {
-    const now = new Date();
-    return {
-      date: now.toISOString().slice(0, 10),
-      time: now.toTimeString().slice(0, 5),
-      plateNo: "",
-      driver: "",
-      borrowerName: "",
-      residentOf: "",
-      contactNum: "",
-      hospital: "",
-      borrowerSignature: "",
-    };
-  };
+  const printTimerRef = useRef(null);
 
-  const [slip, setSlip] = useState(emptySlip);
-  const [submittedSlip, setSubmittedSlip] = useState(null);
-  const [showPrintable, setShowPrintable] = useState(false);
-  const [printMode, setPrintMode] = useState(null); // null | "office" | "borrower" | "both"
+  const [slip, setSlip] =
+    useState(createEmptySlip);
 
-  const [staffProfile, setStaffProfile] = useState(null);
-  const [loading, setLoading] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  const [staffProfile, setStaffProfile] =
+    useState(null);
 
-  // ============================================================
-  // STAFF-ONLY guard
-  // 1) localStorage session must exist
-  // 2) account must exist in staff_users and be active (DB-verified)
-  // Otherwise redirect to /admin/login
-  // ============================================================
+  const [loading, setLoading] =
+    useState(true);
+
+  const [loadError, setLoadError] =
+    useState("");
+
+  const [submitting, setSubmitting] =
+    useState(false);
+
+  const [error, setError] =
+    useState("");
+
+  const [success, setSuccess] =
+    useState("");
+
+  const [fieldErrors, setFieldErrors] =
+    useState({});
+
+  const [submittedSlip, setSubmittedSlip] =
+    useState(null);
+
+  const [printMode, setPrintMode] =
+    useState(null);
+
+  /* ===========================================================
+     CLEANUP
+  =========================================================== */
+
   useEffect(() => {
-    let cancelled = false;
+    return () => {
+      if (printTimerRef.current) {
+        window.clearTimeout(
+          printTimerRef.current,
+        );
+      }
+    };
+  }, []);
+
+  /* ===========================================================
+     VERIFY CURRENT STAFF OR ADMINISTRATOR
+  =========================================================== */
+
+  useEffect(() => {
+    let active = true;
 
     const redirectToLogin = (message) => {
-      navigate("/admin/login", { replace: true, state: { error: message } });
+      navigate("/admin/login", {
+        replace: true,
+        state: {
+          error: message,
+        },
+      });
     };
 
-    const loadStaff = async () => {
-      const storedStaff = localStorage.getItem("currentStaff");
+    const verifyPersonnel = async () => {
+      const storedStaff =
+        readLocalSession("currentStaff");
+
       if (!storedStaff) {
-        redirectToLogin("Staff login required.");
+        redirectToLogin(
+          "Staff login is required to create a borrower slip.",
+        );
+
         return;
       }
 
-      let parsed;
+      const workId = cleanText(
+        storedStaff.user_id ||
+          storedStaff.id,
+      );
+
+      if (!workId) {
+        localStorage.removeItem(
+          "currentStaff",
+        );
+
+        redirectToLogin(
+          "Your session is missing a staff ID. Please log in again.",
+        );
+
+        return;
+      }
+
       try {
-        parsed = JSON.parse(storedStaff);
-      } catch {
-        localStorage.removeItem("currentStaff");
-        redirectToLogin("Invalid session. Please log in again.");
-        return;
+        const sessionRole = cleanText(
+          storedStaff.role,
+        ).toLowerCase();
+
+        const sessionSource =
+          cleanText(storedStaff.source).toLowerCase();
+
+        const isAdminSession =
+          sessionRole === "admin" ||
+          sessionSource === "admin_users";
+
+        let account = null;
+
+        if (isAdminSession) {
+          const adminColumns =
+            "id, user_id, custom_id, username, full_name, email, role, created_at";
+
+          const byWorkId = await supabase
+            .from("admin_users")
+            .select(adminColumns)
+            .eq("custom_id", workId)
+            .maybeSingle();
+
+          if (byWorkId.error) {
+            throw byWorkId.error;
+          }
+
+          account = byWorkId.data;
+
+          if (
+            !account &&
+            storedStaff.username
+          ) {
+            const byUsername =
+              await supabase
+                .from("admin_users")
+                .select(adminColumns)
+                .eq(
+                  "username",
+                  cleanText(
+                    storedStaff.username,
+                  ),
+                )
+                .maybeSingle();
+
+            if (byUsername.error) {
+              throw byUsername.error;
+            }
+
+            account = byUsername.data;
+          }
+
+          if (
+            !account &&
+            storedStaff.email
+          ) {
+            const byEmail =
+              await supabase
+                .from("admin_users")
+                .select(adminColumns)
+                .eq(
+                  "email",
+                  cleanText(
+                    storedStaff.email,
+                  ).toLowerCase(),
+                )
+                .maybeSingle();
+
+            if (byEmail.error) {
+              throw byEmail.error;
+            }
+
+            account = byEmail.data;
+          }
+        } else {
+          const staffColumns =
+            "id, user_id, username, full_name, email, role, department, mobile_number, is_active, created_at";
+
+          const byWorkId = await supabase
+            .from("staff_users")
+            .select(staffColumns)
+            .eq("user_id", workId)
+            .maybeSingle();
+
+          if (byWorkId.error) {
+            throw byWorkId.error;
+          }
+
+          account = byWorkId.data;
+
+          if (
+            !account &&
+            storedStaff.username
+          ) {
+            const byUsername =
+              await supabase
+                .from("staff_users")
+                .select(staffColumns)
+                .eq(
+                  "username",
+                  cleanText(
+                    storedStaff.username,
+                  ),
+                )
+                .maybeSingle();
+
+            if (byUsername.error) {
+              throw byUsername.error;
+            }
+
+            account = byUsername.data;
+          }
+        }
+
+        if (!active) {
+          return;
+        }
+
+        if (!account) {
+          localStorage.removeItem(
+            "currentStaff",
+          );
+
+          redirectToLogin(
+            "Your personnel account could not be found. Please log in again.",
+          );
+
+          return;
+        }
+
+        if (
+          account.is_active === false ||
+          storedStaff.is_active === false
+        ) {
+          localStorage.removeItem(
+            "currentStaff",
+          );
+
+          redirectToLogin(
+            "Your personnel account has been deactivated.",
+          );
+
+          return;
+        }
+
+        const fullName =
+          account.full_name ||
+          storedStaff.full_name ||
+          storedStaff.username ||
+          workId ||
+          "Staff Member";
+
+        const role = cleanText(
+          account.role ||
+            storedStaff.role ||
+            "staff",
+        ).toLowerCase();
+
+        const contact =
+          account.mobile_number ||
+          storedStaff.mobile_number ||
+          account.email ||
+          storedStaff.email ||
+          "";
+
+        const department =
+          account.department ||
+          storedStaff.department ||
+          "";
+
+        if (active) {
+          setStaffProfile({
+            id: account.id,
+            user_id:
+              account.user_id ||
+              account.custom_id ||
+              workId,
+            fullName,
+            email:
+              account.email ||
+              storedStaff.email ||
+              "No email address",
+            contact,
+            role,
+            department,
+            source: isAdminSession
+              ? "admin_users"
+              : "staff_users",
+            createdAt:
+              account.created_at ||
+              storedStaff.created_at ||
+              null,
+          });
+
+          setLoading(false);
+        }
+      } catch (verificationError) {
+        console.error(
+          "Staff verification failed:",
+          verificationError,
+        );
+
+        if (active) {
+          setLoadError(
+            verificationError?.message ||
+              "Your personnel account could not be verified.",
+          );
+
+          setLoading(false);
+        }
       }
-
-      const staffCustomId = parsed.user_id || parsed.id;
-      if (!staffCustomId) {
-        localStorage.removeItem("currentStaff");
-        redirectToLogin("Session missing staff ID. Please log in again.");
-        return;
-      }
-
-      const { data: staff, error: staffError } = await supabase
-        .from("staff_users")
-        .select("id, user_id, full_name, email, role, department, mobile_number, is_active")
-        .eq("user_id", staffCustomId)
-        .maybeSingle();
-
-      if (cancelled) return;
-
-      if (staffError) {
-        console.error("staff_users lookup failed:", staffError.message);
-        setError(`Staff lookup failed: ${staffError.message}`);
-        setLoading(false);
-        return;
-      }
-
-      if (!staff) {
-        localStorage.removeItem("currentStaff");
-        redirectToLogin("Staff account not found. Please log in again.");
-        return;
-      }
-
-      if (staff.is_active === false) {
-        localStorage.removeItem("currentStaff");
-        redirectToLogin("Your staff account has been deactivated.");
-        return;
-      }
-
-      setStaffProfile(staff);
-      setLoading(false);
     };
 
-    loadStaff();
+    verifyPersonnel();
+
     return () => {
-      cancelled = true;
+      active = false;
     };
   }, [navigate]);
 
+  /* ===========================================================
+     VALIDATION
+  =========================================================== */
+
+  const validateForm = useCallback(() => {
+    const errors = {};
+
+    if (!cleanText(slip.date)) {
+      errors.date = "Date is required.";
+    }
+
+    if (!cleanText(slip.time)) {
+      errors.time = "Time is required.";
+    }
+
+    if (!cleanText(slip.plateNo)) {
+      errors.plateNo =
+        "Ambulance plate number is required.";
+    }
+
+    if (!cleanText(slip.driver)) {
+      errors.driver =
+        "Ambulance driver is required.";
+    }
+
+    if (!cleanText(slip.borrowerName)) {
+      errors.borrowerName =
+        "Borrower name is required.";
+    }
+
+    if (!cleanText(slip.residentOf)) {
+      errors.residentOf =
+        "Borrower residence is required.";
+    }
+
+    const contactDigits = getPhoneDigits(
+      slip.contactNum,
+    );
+
+    if (!contactDigits) {
+      errors.contactNum =
+        "Contact number is required.";
+    } else if (
+      !/^0\d{10}$/.test(contactDigits)
+    ) {
+      errors.contactNum =
+        "Enter a valid Philippine mobile number, such as 09171234567.";
+    }
+
+    if (!cleanText(slip.hospital)) {
+      errors.hospital =
+        "Hospital name is required.";
+    }
+
+    if (!cleanText(slip.borrowerSignature)) {
+      errors.borrowerSignature =
+        "Borrower's printed signature name is required.";
+    }
+
+    return errors;
+  }, [slip]);
+
+  /* ===========================================================
+     FORM HANDLERS
+  =========================================================== */
+
+  const handleChange = useCallback(
+    (event) => {
+      const { name, value } = event.target;
+
+      setSlip((previous) => ({
+        ...previous,
+        [name]:
+          name === "plateNo"
+            ? value.toUpperCase()
+            : value,
+      }));
+
+      setFieldErrors((previous) => ({
+        ...previous,
+        [name]: "",
+      }));
+
+      setError("");
+      setSuccess("");
+    },
+    [],
+  );
+
+  const handleReset = useCallback(() => {
+    setSlip(createEmptySlip());
+    setFieldErrors({});
+    setError("");
+    setSuccess("");
+  }, []);
+
+  /* ===========================================================
+     SUBMIT
+  =========================================================== */
+
+  const handleSubmit = useCallback(
+    async (event) => {
+      event.preventDefault();
+
+      if (
+        submitting ||
+        submittedSlip
+      ) {
+        return;
+      }
+
+      setError("");
+      setSuccess("");
+      setFieldErrors({});
+
+      if (!staffProfile?.id) {
+        setError(
+          "Your personnel account could not be verified. Please log in again.",
+        );
+
+        return;
+      }
+
+      const validationErrors =
+        validateForm();
+
+      if (
+        Object.keys(validationErrors).length > 0
+      ) {
+        setFieldErrors(validationErrors);
+
+        setError(
+          "Please complete all required fields before saving the borrower slip.",
+        );
+
+        return;
+      }
+
+      setSubmitting(true);
+
+      try {
+        const payload = {
+          date: cleanText(slip.date),
+          time: cleanText(slip.time),
+
+          plateNo:
+            cleanText(slip.plateNo).toUpperCase(),
+
+          driver: cleanText(slip.driver),
+
+          borrower_name:
+            cleanText(slip.borrowerName),
+
+          resident_of:
+            cleanText(slip.residentOf),
+
+          contact_num:
+            getPhoneDigits(slip.contactNum),
+
+          hospital:
+            cleanText(slip.hospital),
+
+          requested_by:
+            staffProfile.fullName,
+
+          staff_id: staffProfile.id,
+          user_id: null,
+        };
+
+        const { error: insertError } =
+          await supabase
+            .from("borrower_slip")
+            .insert(payload);
+
+        if (insertError) {
+          throw new Error(
+            insertError.message ||
+              "The borrower slip could not be saved.",
+          );
+        }
+
+        setSubmittedSlip({
+          ...payload,
+          borrowerSignature:
+            cleanText(slip.borrowerSignature),
+        });
+
+        setPrintMode(null);
+
+        setSuccess(
+          "Borrower slip saved successfully. You may now print the office or borrower copy.",
+        );
+
+        setSlip(createEmptySlip());
+
+        window.dispatchEvent(
+          new Event(
+            "mdrrmo:notif-refresh",
+          ),
+        );
+      } catch (submitError) {
+        console.error(
+          "Borrower slip submit error:",
+          submitError,
+        );
+
+        setError(
+          submitError?.message ||
+            "The borrower slip could not be saved. Please try again.",
+        );
+      } finally {
+        setSubmitting(false);
+      }
+    },
+    [
+      slip,
+      staffProfile,
+      submittedSlip,
+      submitting,
+      validateForm,
+    ],
+  );
+
+  /* ===========================================================
+     PRINT
+  =========================================================== */
+
+  const handlePrint = useCallback(
+    (mode) => {
+      if (!submittedSlip) {
+        return;
+      }
+
+      setPrintMode(mode);
+
+      if (printTimerRef.current) {
+        window.clearTimeout(
+          printTimerRef.current,
+        );
+      }
+
+      printTimerRef.current =
+        window.setTimeout(() => {
+          window.print();
+        }, 150);
+    },
+    [submittedSlip],
+  );
+
+  const startNewSlip = useCallback(() => {
+    setSubmittedSlip(null);
+    setPrintMode(null);
+    setSlip(createEmptySlip());
+    setFieldErrors({});
+    setError("");
+    setSuccess("");
+  }, []);
+
+  /* ===========================================================
+     LOADING SCREEN
+  =========================================================== */
+
   if (loading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-red-50 to-orange-50 flex items-center justify-center print:hidden">
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 dark:bg-slate-950">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-red-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600 font-semibold">Verifying staff session...</p>
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-r from-blue-600 via-blue-600 to-purple-600 shadow-xl">
+            <Loader2 className="h-8 w-8 animate-spin text-white" />
+          </div>
+
+          <p className="mt-5 text-sm font-black text-slate-700 dark:text-slate-200">
+            Verifying your personnel account...
+          </p>
+
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            Checking staff permissions before creating the borrower slip.
+          </p>
         </div>
       </div>
     );
   }
 
-  function handleChange(event) {
-    setSlip((prev) => ({
-      ...prev,
-      [event.target.name]: event.target.value,
-    }));
-  }
+  /* ===========================================================
+     LOAD ERROR
+  =========================================================== */
 
-  async function submitSlip(event) {
-    event.preventDefault();
-    setSubmitting(true);
-    setError("");
-    setSuccess("");
+  if (loadError || !staffProfile) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-10 dark:bg-slate-950">
+        <div className="w-full max-w-md overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+          <div className="h-2 bg-gradient-to-r from-blue-600 via-blue-600 to-purple-600" />
 
-    try {
-      if (!staffProfile?.id) {
-        throw new Error("No verified staff session. Please log in again.");
-      }
+          <div className="p-8 text-center">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-rose-100 dark:bg-rose-950/50">
+              <AlertCircle className="h-8 w-8 text-rose-600" />
+            </div>
 
-      const plate = slip.plateNo.trim().toUpperCase();
-      const contact = slip.contactNum.replace(/[\s-]/g, "");
-      if (!/^0\d{10}$/.test(contact)) {
-        throw new Error("Contact number must be a valid PH mobile number (e.g. 09171234567).");
-      }
-      if (!plate) throw new Error("Ambulance plate number is required.");
-      if (!slip.borrowerSignature.trim()) {
-        throw new Error("Borrower signature name is required.");
-      }
+            <h2 className="mt-5 text-xl font-black text-slate-900 dark:text-white">
+              Personnel account unavailable
+            </h2>
 
-      const payload = {
-        date: slip.date,
-        time: slip.time,
-        plateNo: plate,
-        driver: slip.driver.trim(),
-        borrower_name: slip.borrowerName.trim(),
-        resident_of: slip.residentOf.trim(),
-        contact_num: contact,
-        hospital: slip.hospital.trim(),
-        requested_by: staffProfile.full_name,
-        staff_id: staffProfile.id,
-        user_id: null,
-      };
+            <p className="mt-3 text-sm leading-6 text-slate-500 dark:text-slate-400">
+              {loadError ||
+                "Your personnel account could not be verified."}
+            </p>
 
-      const { error: insertError } = await supabase.from("borrower_slip").insert(payload);
-      if (insertError) throw new Error(insertError.message);
+            <button
+              type="button"
+              onClick={() =>
+                navigate("/admin/login", {
+                  replace: true,
+                })
+              }
+              className="mt-6 inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 via-blue-600 to-purple-600 px-6 py-3 text-sm font-black text-white shadow-lg transition hover:brightness-105"
+            >
+              <ArrowLeft className="h-4 w-4" />
 
-      setSuccess("Borrower slip submitted successfully! You may now print the slip.");
-
-      setSubmittedSlip({
-        ...payload,
-        borrowerSignature: slip.borrowerSignature.trim(),
-      });
-      setShowPrintable(true);
-      setPrintMode(null);
-
-      setSlip(emptySlip());
-    } catch (err) {
-      console.error("Insert error:", err);
-      setError(err.message || "Failed to submit the slip. Please try again.");
-    } finally {
-      setSubmitting(false);
-    }
-  }
-
-  function handlePrint(mode) {
-    setPrintMode(mode);
-    // Wait one tick so React renders the correct copies before the dialog opens
-    setTimeout(() => window.print(), 50);
-  }
-
-  const inputClass =
-    "w-full p-3 border border-gray-300 rounded-xl focus:ring-2 focus:ring-red-500 outline-none transition";
-  const labelClass = "text-sm font-medium text-gray-700";
-
-  // ============================================================
-  // One printed copy — official MDRRMO paper format, Tailwind only
-  // ============================================================
-  const SlipCopy = ({ data, copyLabel }) => (
-    <div className="font-serif text-[11.5pt] leading-relaxed text-black px-2 py-3">
-     {/* Header */}
-<div className="text-center mb-3">
-  <div className="flex items-center justify-center gap-100 mb-1">
-    <img src={logo1} alt="MDRRMO Logo" className="w-30 h-30 object-contain" />
-    <img src={iconLogo} alt="Municipal Seal" className="w-30 h-30 object-contain" />
-  </div>
-  <p className="font-bold text-[11.5pt] leading-tight">
-    MUNICIPAL DISASTER RISK REDUCTION MANAGEMENT OFFICE
-  </p>
-  <p className="text-[10pt] leading-tight">Municipality of Naic, Province of Cavite</p>
-  <p className="font-bold text-[13pt] underline tracking-wide mt-1.5">BORROWER SLIP</p>
-  {copyLabel && <p className="text-[9pt] italic mt-0.5">{copyLabel}</p>}
-</div>
-
-      {/* Top logistical info */}
-      <div className="flex justify-between mb-1.5">
-        <p className="w-[48%] m-0">
-          <span className="font-bold">Date: </span>
-          <span className="inline-block min-w-[45mm] border-b border-black text-center px-2">
-            {data.date}
-          </span>
-        </p>
-        <p className="w-[48%] m-0">
-          <span className="font-bold">Time: </span>
-          <span className="inline-block min-w-[45mm] border-b border-black text-center px-2">
-            {data.time}
-          </span>
-        </p>
-      </div>
-      <div className="flex justify-between mb-1.5">
-        <p className="w-[48%] m-0">
-          <span className="font-bold">Ambulance Plate No.: </span>
-          <span className="inline-block min-w-[45mm] border-b border-black text-center px-2">
-            {data.plateNo}
-          </span>
-        </p>
-        <p className="w-[48%] m-0">
-          <span className="font-bold">Ambulance Driver: </span>
-          <span className="inline-block min-w-[45mm] border-b border-black text-center px-2">
-            {data.driver}
-          </span>
-        </p>
-      </div>
-
-      {/* Main agreement text (Tagalog) */}
-      <p className="text-justify my-2 mt-3">
-        Ipinahihintulot at ipinagkakatiwala kay:
-      </p>
-      <p className="m-0 mb-1">
-        <span className="font-bold">Name: </span>
-        <span className="inline-block min-w-[120mm] border-b border-black text-center px-2">
-          {data.borrower_name}
-        </span>
-      </p>
-      <p className="m-0 mb-1">
-        <span className="font-bold">Resident of: </span>
-        <span className="inline-block min-w-[120mm] border-b border-black text-center px-2">
-          {data.resident_of}
-        </span>
-      </p>
-      <p className="m-0 mb-1">
-        <span className="font-bold">Contact No.: </span>
-        <span className="inline-block min-w-[120mm] border-b border-black text-center px-2">
-          {data.contact_num}
-        </span>
-      </p>
-
-      <p className="text-justify my-2">
-        ang pansamantalang pangangalaga ng Ambulance Stretcher sa kadahilanang may kakulangan
-        sa hospital beds ang{" "}
-        <span className="inline-block min-w-[55mm] border-b border-black text-center px-2">
-          {data.hospital}
-        </span>{" "}
-        (pangalan ng hospital) at walang maaring ipagamit na hospital beds sa kasalukuyang panahon.
-      </p>
-
-      <p className="text-justify my-2">
-        Lahat ng pagkasira o pagkawala na natamo ng Ambulance Stretcher habang ito ay nasa
-        pangangalaga ng nanghihiram ay pananagutan at responsibilidad niya.
-      </p>
-
-      {/* Signatures */}
-      <div className="flex justify-between mx-6 mt-10 mb-2">
-        <div className="w-[42%] text-center">
-          <p className="font-cursive text-[12pt] min-h-[7mm] m-0">{data.borrowerSignature}</p>
-          <div className="border-b border-black"></div>
-          <p className="font-bold text-[10.5pt] mt-1 mb-0">Borrower</p>
-          <p className="text-[9pt] italic m-0">(Signature over Printed Name)</p>
-          <p className="text-[10pt] mt-2 m-0">
-            <span className="font-bold">Contact No.: </span>
-            {data.contact_num}
-          </p>
-        </div>
-        <div className="w-[42%] text-center">
-          <p className="font-cursive text-[12pt] min-h-[7mm] m-0">{data.requested_by}</p>
-          <div className="border-b border-black"></div>
-          <p className="font-bold text-[10.5pt] mt-1 mb-0">Noted By</p>
-          <p className="text-[9pt] italic m-0">(Signature over Printed Name)</p>
+              Return to Personnel Login
+            </button>
+          </div>
         </div>
       </div>
+    );
+  }
 
-      {/* Footer / Hotlines */}
-      <div className="mt-4 text-[10pt]">
-        <p className="font-bold my-0.5">MDRRMO HOTLINE NUMBERS:</p>
-        <p className="my-0.5">LANDLINE: 410-6725 / 410-5728</p>
-        <p className="my-0.5">MOBILE: 0917 812 8187</p>
-      </div>
-    </div>
+  const staffInitials = getInitials(
+    staffProfile.fullName,
   );
+
+  const roleLabel = getRoleLabel(
+    staffProfile.role,
+  );
+
+  const accountDetail = [
+    staffProfile.contact ||
+      staffProfile.email,
+    staffProfile.department,
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  /* ===========================================================
+     PAGE
+  =========================================================== */
 
   return (
     <>
-      {/* ============================================================
-          PRINT LAYOUT — ONE form per A4 sheet.
-          Only the copy(ies) matching the chosen print mode are rendered.
-          Each slip-page fills a full sheet, so copies never share a page.
-      ============================================================ */}
-      {showPrintable &&
-        submittedSlip &&
-        printMode !== null &&
-        ( printMode === "office") && (
-          <div className="hidden print:block print:absolute print:top-0 print:left-0 print:w-full slip-page">
-            <SlipCopy data={submittedSlip} copyLabel="OFFICE COPY" />
-          </div>
-        )}
+      {/* =========================================================
+          PRINT LAYOUT
+      ========================================================= */}
 
-      {showPrintable &&
-        submittedSlip &&
-        printMode !== null &&
-        ( printMode === "borrower") && (
-          <div className="hidden print:block print:absolute print:top-0 print:left-0 print:w-full slip-page">
-            <SlipCopy data={submittedSlip} copyLabel="BORROWER'S COPY" />
-          </div>
-        )}
+      <div className="borrower-slip-print-root hidden">
+        {submittedSlip &&
+          printMode &&
+          (printMode === "office" ||
+            printMode === "both") && (
+            <div className="borrower-slip-print-page">
+              <SlipCopy
+                data={submittedSlip}
+                copyLabel="Office Copy"
+              />
+            </div>
+          )}
 
-      {/* ================= SCREEN UI (hidden when printing) ================= */}
-      <div className="screen-ui min-h-screen pt-10 pb-16 print:hidden">
-        <div className="bg-gradient-to-r from-red-600 to-orange-500 max-w-3xl mx-auto rounded-t-3xl shadow-t-xl border border-b-transparent border-gray-100">
-          <div className="flex flex-col items-center mb-3 pt-5 text-center px-4">
-            <FileText className="w-12 h-12 text-slate-200 mb-1" />
-            <h2 className="text-white font-semibold text-sm tracking-wide">
-              MUNICIPAL DISASTER RISK REDUCTION MANAGEMENT OFFICE
-            </h2>
-            <p className="text-orange-100 text-xs">Municipality of Naic, Province of Cavite</p>
-            <h1 className="text-3xl font-bold text-white mt-2">Borrower Slip</h1>
-            <p className="text-white text-sm mt-1">
-              Staff use only · All fields marked <span className="text-yellow-300">*</span> are required.
-            </p>
-          </div>
-        </div>
+        {submittedSlip &&
+          printMode &&
+          (printMode === "borrower" ||
+            printMode === "both") && (
+            <div className="borrower-slip-print-page">
+              <SlipCopy
+                data={submittedSlip}
+                copyLabel="Borrower's Copy"
+              />
+            </div>
+          )}
+      </div>
 
-        <form
-          onSubmit={submitSlip}
-          className="max-w-3xl mx-auto bg-white px-10 pb-10 pt-6 rounded-b-3xl border border-gray-100"
-        >
-          {staffProfile && (
-            <div className="flex items-center gap-3 p-4 bg-red-50 border border-red-200 rounded-xl mb-6">
-              <User className="w-5 h-5 text-red-600 flex-shrink-0" />
-              <div className="text-sm">
-                <p className="font-bold text-gray-800">
-                  Noted by: {staffProfile.full_name}
-                  <span className="ml-2 px-2 py-0.5 text-xs bg-orange-100 text-orange-700 rounded-full font-semibold">
-                    {staffProfile.role}
-                  </span>
-                </p>
-                <p className="text-gray-600">
-                  {staffProfile.mobile_number || staffProfile.email}
-                  {staffProfile.department ? ` · ${staffProfile.department}` : ""}
-                </p>
-                <p className="text-xs text-gray-400">
-                  Verified staff account — slips you file are recorded under your account.
+      {/* =========================================================
+          FORM
+      ========================================================= */}
+
+      <RequestFormShell
+        formId="borrower-slip-form"
+        icon={FileText}
+        eyebrow="MDRRMO Personnel Service"
+        title="Create Borrower Slip"
+        description="Record the temporary custody of an ambulance stretcher and generate the official acknowledgment copy."
+        account={{
+          initials: staffInitials,
+          name: staffProfile.fullName,
+          detail:
+            accountDetail ||
+            "Verified personnel account",
+          badge: roleLabel,
+        }}
+        onSubmit={handleSubmit}
+        onReset={
+          submittedSlip
+            ? startNewSlip
+            : handleReset
+        }
+        error={error}
+        success={success}
+        submitting={submitting}
+        submitDisabled={Boolean(submittedSlip)}
+        submitLabel="Save Borrower Slip"
+        submitIcon={FileText}
+        resetLabel={
+          submittedSlip
+            ? "Create Another Slip"
+            : "Clear Form"
+        }
+        maxWidth="max-w-5xl"
+        footerNote="The borrower must receive the printed acknowledgment copy and sign over the printed borrower name. The borrower signature name is used for the printed form only and is not stored in the borrower_slip table."
+      >
+        {/* =======================================================
+            SUCCESS PRINT PANEL
+        ======================================================= */}
+
+        {submittedSlip && (
+          <section className="rounded-2xl border border-emerald-200 bg-emerald-50 p-5 dark:border-emerald-800/70 dark:bg-emerald-950/40">
+            <div className="flex items-start gap-3">
+              <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white">
+                <CheckCircle2 className="h-5 w-5" />
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <h2 className="text-base font-black text-emerald-900 dark:text-emerald-100">
+                  Borrower slip saved
+                </h2>
+
+                <p className="mt-1 text-xs leading-5 text-emerald-700 dark:text-emerald-300">
+                  Choose the acknowledgment copy you want to print.
                 </p>
               </div>
             </div>
-          )}
 
-          {error && (
-            <div className="flex items-start gap-3 bg-red-50 border border-red-200 rounded-xl p-4 mb-6">
-              <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-              <p className="text-red-700 text-sm font-medium">{error}</p>
+            {/* Submitted summary */}
+            <div className="mt-5 grid gap-3 sm:grid-cols-2">
+              <div className="rounded-xl border border-emerald-200 bg-white p-3 dark:border-emerald-900 dark:bg-slate-900">
+                <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                  Borrower
+                </p>
+
+                <p className="mt-1 text-sm font-bold text-slate-800 dark:text-white">
+                  {
+                    submittedSlip.borrower_name
+                  }
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-emerald-200 bg-white p-3 dark:border-emerald-900 dark:bg-slate-900">
+                <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                  Ambulance
+                </p>
+
+                <p className="mt-1 text-sm font-bold text-slate-800 dark:text-white">
+                  {
+                    submittedSlip.plateNo
+                  }{" "}
+                  · {submittedSlip.driver}
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-emerald-200 bg-white p-3 dark:border-emerald-900 dark:bg-slate-900">
+                <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                  Hospital
+                </p>
+
+                <p className="mt-1 text-sm font-bold text-slate-800 dark:text-white">
+                  {submittedSlip.hospital}
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-emerald-200 bg-white p-3 dark:border-emerald-900 dark:bg-slate-900">
+                <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                  Noted By
+                </p>
+
+                <p className="mt-1 text-sm font-bold text-slate-800 dark:text-white">
+                  {submittedSlip.requested_by}
+                </p>
+              </div>
             </div>
-          )}
 
-          {success && (
-            <div className="flex items-start gap-3 bg-green-50 border border-green-200 rounded-xl p-4 mb-6">
-              <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0 mt-0.5" />
-              <p className="text-green-700 text-sm font-medium">{success}</p>
-            </div>
-          )}
-
-          {/* Print buttons — appear after successful submit */}
-          {showPrintable && submittedSlip && (
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
-            
+            {/* Print buttons */}
+            <div className="mt-5 grid gap-3 sm:grid-cols-3">
               <button
                 type="button"
-                onClick={() => handlePrint("office")}
-                className="bg-gray-700 text-white font-bold py-4 rounded-2xl hover:bg-gray-800 transition shadow-lg flex items-center justify-center gap-2"
+                onClick={() =>
+                  handlePrint("office")
+                }
+                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-slate-700 px-4 py-3 text-sm font-black text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-slate-800"
               >
-                <Printer className="w-5 h-5" />
-                Office Copy Only
+                <Printer className="h-4 w-4" />
+
+                Office Copy
               </button>
+
               <button
                 type="button"
-                onClick={() => handlePrint("borrower")}
-                className="bg-gray-600 text-white font-bold py-4 rounded-2xl hover:bg-gray-700 transition shadow-lg flex items-center justify-center gap-2"
+                onClick={() =>
+                  handlePrint("borrower")
+                }
+                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-slate-600 px-4 py-3 text-sm font-black text-white shadow-sm transition hover:-translate-y-0.5 hover:bg-slate-700"
               >
-                <Printer className="w-5 h-5" />
-                Borrower's Copy Only
+                <Printer className="h-4 w-4" />
+
+                Borrower's Copy
+              </button>
+
+              <button
+                type="button"
+                onClick={() =>
+                  handlePrint("both")
+                }
+                className="inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 via-blue-600 to-purple-600 px-4 py-3 text-sm font-black text-white shadow-lg shadow-blue-600/20 transition hover:-translate-y-0.5 hover:brightness-105"
+              >
+                <Printer className="h-4 w-4" />
+
+                Print Both Copies
               </button>
             </div>
-          )}
+          </section>
+        )}
 
-          <h3 className="text-lg font-semibold text-gray-800 mb-4 border-b pb-2">Slip Details</h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="flex flex-col gap-1.5">
-              <label className={labelClass}>Date <span className="text-red-500">*</span></label>
-              <input name="date" type="date" value={slip.date} onChange={handleChange} className={inputClass} required />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className={labelClass}>Time <span className="text-red-500">*</span></label>
-              <input name="time" type="time" value={slip.time} onChange={handleChange} className={inputClass} required />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className={labelClass}>Ambulance Plate No. <span className="text-red-500">*</span></label>
-              <input name="plateNo" type="text" placeholder="e.g. CAV-1234" value={slip.plateNo} onChange={handleChange} className={inputClass} required />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className={labelClass}>Ambulance Driver <span className="text-red-500">*</span></label>
-              <input name="driver" type="text" placeholder="e.g. Juan Dela Cruz" value={slip.driver} onChange={handleChange} className={inputClass} required />
-            </div>
-          </div>
+        {/* =======================================================
+            FORM CONTENT
+        ======================================================= */}
 
-          <h3 className="text-lg font-semibold text-gray-800 mb-4 mt-8 border-b pb-2">
-            Borrower Information
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            <div className="flex flex-col gap-1.5 md:col-span-2">
-              <label className={labelClass}>Name of Borrower <span className="text-red-500">*</span></label>
-              <input name="borrowerName" type="text" placeholder="Full name of the person entrusted with the stretcher" value={slip.borrowerName} onChange={handleChange} className={inputClass} required />
+        {!submittedSlip && (
+          <>
+            {/* Step 01 */}
+            <section>
+              <FormSectionHeading
+                icon={CalendarDays}
+                step="01"
+                title="Slip Schedule"
+                description="Enter the official date and time when the borrower slip was issued."
+              />
+
+              <div className="grid gap-5 md:grid-cols-2">
+                <FormField
+                  id="date"
+                  label="Issue Date"
+                  required
+                  error={fieldErrors.date}
+                >
+                  <div className="relative">
+                    <CalendarDays className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+
+                    <input
+                      id="date"
+                      name="date"
+                      type="date"
+                      value={slip.date}
+                      onChange={handleChange}
+                      className={`${FORM_INPUT_CLASS} pl-11`}
+                      required
+                    />
+                  </div>
+                </FormField>
+
+                <FormField
+                  id="time"
+                  label="Issue Time"
+                  required
+                  error={fieldErrors.time}
+                >
+                  <div className="relative">
+                    <Clock3 className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+
+                    <input
+                      id="time"
+                      name="time"
+                      type="time"
+                      value={slip.time}
+                      onChange={handleChange}
+                      className={`${FORM_INPUT_CLASS} pl-11`}
+                      required
+                    />
+                  </div>
+                </FormField>
+              </div>
+            </section>
+
+            <div className="my-8 h-px bg-slate-200 dark:bg-slate-700" />
+
+            {/* Step 02 */}
+            <section>
+              <FormSectionHeading
+                icon={FileText}
+                step="02"
+                title="Ambulance Details"
+                description="Enter the ambulance plate number and assigned driver."
+              />
+
+              <div className="grid gap-5 md:grid-cols-2">
+                <FormField
+                  id="plateNo"
+                  label="Ambulance Plate Number"
+                  required
+                  hint="Example: CAV-1234"
+                  error={fieldErrors.plateNo}
+                >
+                  <div className="relative">
+                    <FileText className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+
+                    <input
+                      id="plateNo"
+                      name="plateNo"
+                      type="text"
+                      value={slip.plateNo}
+                      onChange={handleChange}
+                      placeholder="e.g. CAV-1234"
+                      className={`${FORM_INPUT_CLASS} pl-11 uppercase`}
+                      autoComplete="off"
+                      spellCheck={false}
+                      required
+                    />
+                  </div>
+                </FormField>
+
+                <FormField
+                  id="driver"
+                  label="Ambulance Driver"
+                  required
+                  error={fieldErrors.driver}
+                >
+                  <div className="relative">
+                    <UserRound className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+
+                    <input
+                      id="driver"
+                      name="driver"
+                      type="text"
+                      value={slip.driver}
+                      onChange={handleChange}
+                      placeholder="Enter the driver's full name"
+                      className={`${FORM_INPUT_CLASS} pl-11`}
+                      autoComplete="name"
+                      required
+                    />
+                  </div>
+                </FormField>
+              </div>
+            </section>
+
+            <div className="my-8 h-px bg-slate-200 dark:bg-slate-700" />
+
+            {/* Step 03 */}
+            <section>
+              <FormSectionHeading
+                icon={UserRound}
+                step="03"
+                title="Borrower Information"
+                description="Identify the person who will temporarily hold the ambulance stretcher."
+              />
+
+              <div className="space-y-5">
+                <FormField
+                  id="borrowerName"
+                  label="Borrower's Full Name"
+                  required
+                  error={fieldErrors.borrowerName}
+                >
+                  <div className="relative">
+                    <UserRound className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+
+                    <input
+                      id="borrowerName"
+                      name="borrowerName"
+                      type="text"
+                      value={slip.borrowerName}
+                      onChange={handleChange}
+                      placeholder="Full name of the borrower"
+                      className={`${FORM_INPUT_CLASS} pl-11`}
+                      autoComplete="name"
+                      required
+                    />
+                  </div>
+                </FormField>
+
+                <div className="grid gap-5 md:grid-cols-2">
+                  <FormField
+                    id="residentOf"
+                    label="Resident Of"
+                    required
+                    error={fieldErrors.residentOf}
+                  >
+                    <div className="relative">
+                      <MapPin className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+
+                      <input
+                        id="residentOf"
+                        name="residentOf"
+                        type="text"
+                        value={slip.residentOf}
+                        onChange={handleChange}
+                        placeholder="e.g. Brgy. Bagong Kalsada, Naic"
+                        className={`${FORM_INPUT_CLASS} pl-11`}
+                        autoComplete="street-address"
+                        required
+                      />
+                    </div>
+                  </FormField>
+
+                  <FormField
+                    id="contactNum"
+                    label="Borrower's Contact Number"
+                    required
+                    hint="Use an active Philippine mobile number."
+                    error={fieldErrors.contactNum}
+                  >
+                    <div className="relative">
+                      <Phone className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+
+                      <input
+                        id="contactNum"
+                        name="contactNum"
+                        type="tel"
+                        inputMode="tel"
+                        value={slip.contactNum}
+                        onChange={handleChange}
+                        placeholder="e.g. 0917 123 4567"
+                        className={`${FORM_INPUT_CLASS} pl-11`}
+                        autoComplete="tel"
+                        required
+                      />
+                    </div>
+                  </FormField>
+                </div>
+              </div>
+            </section>
+
+            <div className="my-8 h-px bg-slate-200 dark:bg-slate-700" />
+
+            {/* Step 04 */}
+            <section>
+              <FormSectionHeading
+                icon={Building2}
+                step="04"
+                title="Hospital & Acknowledgment"
+                description="Identify the hospital and enter the borrower's printed signature name."
+              />
+
+              <div className="space-y-5">
+                <FormField
+                  id="hospital"
+                  label="Hospital"
+                  required
+                  hint="Enter the hospital with a shortage of available beds."
+                  error={fieldErrors.hospital}
+                >
+                  <div className="relative">
+                    <Building2 className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+
+                    <input
+                      id="hospital"
+                      name="hospital"
+                      type="text"
+                      value={slip.hospital}
+                      onChange={handleChange}
+                      placeholder="e.g. Naic Doctors Hospital"
+                      className={`${FORM_INPUT_CLASS} pl-11`}
+                      autoComplete="organization"
+                      required
+                    />
+                  </div>
+                </FormField>
+
+                <FormField
+                  id="borrowerSignature"
+                  label="Borrower's Printed Signature Name"
+                  required
+                  hint="The borrower must sign over this printed name when receiving the slip."
+                  error={
+                    fieldErrors.borrowerSignature
+                  }
+                >
+                  <div className="relative">
+                    <FileText className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+
+                    <input
+                      id="borrowerSignature"
+                      name="borrowerSignature"
+                      type="text"
+                      value={slip.borrowerSignature}
+                      onChange={handleChange}
+                      placeholder="Borrower's full name as signature"
+                      className={`${FORM_INPUT_CLASS} pl-11`}
+                      autoComplete="name"
+                      required
+                    />
+                  </div>
+                </FormField>
+              </div>
+            </section>
+
+            <div className="my-8 h-px bg-slate-200 dark:bg-slate-700" />
+
+            {/* Agreement */}
+            <section className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-800/70 dark:bg-amber-950/40">
+              <ShieldAlert className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
+
+              <div>
+                <p className="text-sm font-black text-amber-900 dark:text-amber-100">
+                  Temporary custody agreement
+                </p>
+
+                <p className="mt-1 text-xs leading-6 text-amber-800 dark:text-amber-200">
+                  Lahat ng pagkasira o pagkawala na natamo ng Ambulance Stretcher habang ito ay nasa pangangalaga ng nanghihiram ay pananagutan at responsibilidad ng nanghihiram.
+                </p>
+              </div>
+            </section>
+
+            <div className="mt-5 flex items-start gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-800/70 dark:bg-blue-950/40">
+              <Info className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" />
+
+              <div>
+                <p className="text-sm font-black text-blue-900 dark:text-blue-100">
+                  Personnel record
+                </p>
+
+                <p className="mt-1 text-xs leading-6 text-blue-800 dark:text-blue-200">
+                  This borrower slip will be automatically recorded under your verified personnel account. The borrower must receive and sign the printed acknowledgment copy.
+                </p>
+              </div>
             </div>
-            <div className="flex flex-col gap-1.5">
-              <label className={labelClass}>Resident of <span className="text-red-500">*</span></label>
-              <input name="residentOf" type="text" placeholder="e.g. Brgy. Bagong Kalsada, Naic, Cavite" value={slip.residentOf} onChange={handleChange} className={inputClass} required />
-            </div>
-            <div className="flex flex-col gap-1.5">
-              <label className={labelClass}>Contact No. <span className="text-red-500">*</span></label>
-              <input name="contactNum" type="tel" placeholder="e.g. 0917 123 4567" value={slip.contactNum} onChange={handleChange} className={inputClass} required />
-            </div>
-          </div>
+          </>
+        )}
+      </RequestFormShell>
 
-          <div className="mt-8 flex flex-col gap-1.5">
-            <label className={labelClass}>
-              Hospital (with shortage of hospital beds) <span className="text-red-500">*</span>
-            </label>
-            <input name="hospital" type="text" placeholder="e.g. Naic Doctors Hospital" value={slip.hospital} onChange={handleChange} className={inputClass} required />
-          </div>
+      {/* =========================================================
+          PRINT STYLES
+      ========================================================= */}
 
-          <div className="mt-8 flex flex-col gap-1.5">
-            <label className={labelClass}>
-              Borrower Signature (printed name) <span className="text-red-500">*</span>
-            </label>
-            <input
-              name="borrowerSignature"
-              type="text"
-              placeholder="Borrower's full name as signature"
-              value={slip.borrowerSignature}
-              onChange={handleChange}
-              className={inputClass}
-              required
-            />
-          </div>
+      <style>{`
+        @media print {
+          @page {
+            size: A4 portrait;
+            margin: 12mm;
+          }
 
-          <div className="mt-6 p-4 bg-yellow-50 border border-yellow-200 rounded-xl text-sm text-gray-700">
-            Lahat ng pagkasira o pagkawala na natamo ng Ambulance Stretcher habang ito ay nasa
-            pangangalaga ng nanghihiram ay pananagutan at responsibilidad ng nanghihiram.
-          </div>
+          html,
+          body,
+          #root {
+            width: 100% !important;
+            min-height: 0 !important;
+            height: auto !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: visible !important;
+            background: #ffffff !important;
+          }
 
-          <button
-            type="submit"
-            disabled={submitting}
-            className="w-full mt-8 bg-red-600 text-white font-bold py-4 rounded-2xl hover:bg-red-700 transition shadow-lg shadow-red-200 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
-          >
-            {submitting ? (
-              <>
-                <Loader2 className="w-5 h-5 animate-spin" />
-                Submitting...
-              </>
-            ) : (
-              "Submit Borrower Slip"
-            )}
-          </button>
+          body * {
+            visibility: hidden !important;
+          }
 
-          <div className="mt-8 flex items-start gap-3 p-4 bg-gray-50 border border-gray-200 rounded-xl text-sm">
-            <Phone className="w-5 h-5 text-red-600 flex-shrink-0 mt-0.5" />
-            <div>
-              <p className="font-bold text-gray-800">MDRRMO Hotline Numbers</p>
-              <p className="text-gray-600">Landline: 410-6725 / 410-5728</p>
-              <p className="text-gray-600">Mobile: 0917 812 8187</p>
-            </div>
-          </div>
+          .borrower-slip-print-root {
+            display: block !important;
+            position: static !important;
+            visibility: visible !important;
+            width: 100% !important;
+            min-height: 0 !important;
+            height: auto !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            overflow: visible !important;
+            background: #ffffff !important;
+          }
 
-          <div className="mt-4 flex items-center justify-center gap-2 text-xs text-gray-400">
-            <ShieldAlert className="w-3.5 h-3.5" />
-            This page is restricted to MDRRMO staff accounts.
-          </div>
-        </form>
-      </div>
+          .borrower-slip-print-root,
+          .borrower-slip-print-root * {
+            visibility: visible !important;
+          }
+
+          .borrower-slip-print-page {
+            display: block !important;
+            width: 100% !important;
+            min-height: 260mm !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            break-after: page;
+            page-break-after: always;
+            overflow: visible !important;
+          }
+
+          .borrower-slip-print-page:last-child {
+            break-after: auto;
+            page-break-after: auto;
+          }
+
+          .slip-copy {
+            width: 100% !important;
+            max-width: 190mm !important;
+            margin: 0 auto !important;
+            color: #000000 !important;
+            font-size: 11.5pt !important;
+            line-height: 1.45 !important;
+            print-color-adjust: exact !important;
+            -webkit-print-color-adjust: exact !important;
+          }
+
+          .slip-copy img {
+            max-width: 24mm !important;
+            max-height: 24mm !important;
+            object-fit: contain !important;
+          }
+
+          * {
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
+          }
+        }
+      `}</style>
     </>
   );
-};
-
-export default BorrowerSlip;
+}

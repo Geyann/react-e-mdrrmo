@@ -1,121 +1,494 @@
 "use client";
 
-import { useState, useEffect, useMemo, useCallback } from "react";
-import { Link, useNavigate } from "react-router-dom";
-import { supabase } from "../createClient";
 import {
-  CalendarDays, Clock, User, AlertCircle, CheckCircle, XCircle, Search,
-  RefreshCw, Siren, Ambulance, Stethoscope, TriangleAlert, Plus, MapPin,
-  Phone, Image as ImageIcon, ChevronDown, FileText, Activity, Package,
-  Wrench, Calendar, X, Layers,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
+import { Link, useNavigate } from "react-router-dom";
+
+import {
+  Activity,
+  Ambulance,
+  CalendarDays,
+  CheckCircle,
+  CheckCircle2,
+  ChevronDown,
+  CircleSlash,
+  Clock,
+  FileText,
+  Image as ImageIcon,
+  Layers,
+  Loader2,
+  MapPin,
+  Plus,
+  RefreshCw,
+  Search,
+  ShieldCheck,
+  Siren,
+  SlidersHorizontal,
+  Stethoscope,
+  TriangleAlert,
+  UserRound,
+  X,
+  XCircle,
 } from "lucide-react";
 
-/* ══════════════════════════════════════════════════════════════════════
-   CONFIG
-   ══════════════════════════════════════════════════════════════════════ */
+import { supabase } from "../createClient";
 
-const TABLES = [
-  "appointments",
-  "reportIncident",
-  "borrow-vehicle",
-  "outPatientCheckUp",
-  "hazard_reports",
-];
+/* ══════════════════════════════════════════════════════════════════
+   THEME
+   ══════════════════════════════════════════════════════════════════ */
 
-/* ══════════════════════════════════════════════════════════════════════
-   STATUS METADATA
-   ──────────────────────────────────────────────────────────────────────
-   One map for every status string used anywhere in the app, normalised
-   to a single tone so cards look identical across all five sources.
-   ══════════════════════════════════════════════════════════════════════ */
+const REQUEST_GRADIENT =
+  "bg-gradient-to-r from-blue-600 via-blue-600 to-purple-600";
+
+/* ══════════════════════════════════════════════════════════════════
+   STATUS CONFIGURATION
+   ══════════════════════════════════════════════════════════════════ */
+
 const STATUS_META = {
-  // appointments
-  pending:   { label: "Pending Review",  tone: "amber",  icon: Clock },
-  approved:  { label: "Approved",        tone: "emerald", icon: CheckCircle },
-  confirmed: { label: "Confirmed",       tone: "blue",   icon: CheckCircle },
-  // incident_reports
-  active:      { label: "Active",       tone: "blue",   icon: Activity },
-  "in progress": { label: "In Progress", tone: "blue",   icon: Activity },
-  dispatched:   { label: "Dispatched",   tone: "indigo", icon: Ambulance },
-  resolved:     { label: "Resolved",     tone: "emerald", icon: CheckCircle },
-  ongoing:      { label: "Ongoing",      tone: "blue",   icon: Activity },
-  // shared negatives
-  rejected:   { label: "Rejected",       tone: "red",    icon: XCircle },
-  declined:   { label: "Declined",       tone: "red",    icon: XCircle },
-  cancelled:  { label: "Cancelled",      tone: "slate",  icon: XCircle },
-  completed:  { label: "Completed",      tone: "emerald", icon: CheckCircle },
-  // fallback
-  unknown:    { label: "Unknown",        tone: "slate",  icon: Clock },
-};
+  pending: {
+    label: "Pending Review",
+    tone: "amber",
+    icon: Clock,
+  },
 
-const statusMeta = (raw) => {
-  const key = String(raw || "").trim().toLowerCase();
-  return STATUS_META[key] || { label: raw || "Unknown", tone: "slate", icon: Clock };
+  approved: {
+    label: "Approved",
+    tone: "emerald",
+    icon: CheckCircle,
+  },
+
+  confirmed: {
+    label: "Confirmed",
+    tone: "blue",
+    icon: CheckCircle,
+  },
+
+  active: {
+    label: "Active",
+    tone: "blue",
+    icon: Activity,
+  },
+
+  "in progress": {
+    label: "In Progress",
+    tone: "blue",
+    icon: Activity,
+  },
+
+  dispatched: {
+    label: "Dispatched",
+    tone: "indigo",
+    icon: Ambulance,
+  },
+
+  ongoing: {
+    label: "Ongoing",
+    tone: "blue",
+    icon: Activity,
+  },
+
+  resolved: {
+    label: "Resolved",
+    tone: "emerald",
+    icon: CheckCircle,
+  },
+
+  completed: {
+    label: "Completed",
+    tone: "emerald",
+    icon: CheckCircle,
+  },
+
+  rejected: {
+    label: "Rejected",
+    tone: "red",
+    icon: XCircle,
+  },
+
+  declined: {
+    label: "Declined",
+    tone: "red",
+    icon: XCircle,
+  },
+
+  cancelled: {
+    label: "Cancelled",
+    tone: "slate",
+    icon: XCircle,
+  },
+
+  canceled: {
+    label: "Cancelled",
+    tone: "slate",
+    icon: XCircle,
+  },
 };
 
 const TONE_CLASSES = {
-  amber:   "bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300 border-amber-200 dark:border-amber-800",
-  emerald: "bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800",
-  blue:    "bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border-blue-200 dark:border-blue-800",
-  indigo:  "bg-indigo-100 dark:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 border-indigo-200 dark:border-indigo-800",
-  red:     "bg-red-100 dark:bg-red-900/40 text-red-700 dark:text-red-300 border-red-200 dark:border-red-800",
-  slate:   "bg-slate-100 dark:bg-slate-700/60 text-slate-700 dark:text-slate-300 border-slate-200 dark:border-slate-600",
-  purple:  "bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300 border-purple-200 dark:border-purple-800",
+  amber:
+    "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-300",
+
+  emerald:
+    "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-300",
+
+  blue:
+    "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-300",
+
+  indigo:
+    "border-indigo-200 bg-indigo-50 text-indigo-700 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-300",
+
+  red:
+    "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-300",
+
+  slate:
+    "border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300",
 };
 
-/* ══════════════════════════════════════════════════════════════════════
-   DATE / TIME HELPERS  (all date columns here are TEXT)
-   ══════════════════════════════════════════════════════════════════════ */
+const normalizeStatus = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ");
 
-const toKey = (value) => (value ? String(value).split("T")[0] : "");
+const prettyStatus = (value) => {
+  const status = String(value || "Unknown").trim();
+
+  if (!status) {
+    return "Unknown";
+  }
+
+  return status
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .split(" ")
+    .map(
+      (word) =>
+        word.charAt(0).toUpperCase() +
+        word.slice(1),
+    )
+    .join(" ");
+};
+
+const statusMeta = (value) => {
+  const key = normalizeStatus(value);
+
+  return (
+    STATUS_META[key] || {
+      label: prettyStatus(value),
+      tone: "slate",
+      icon: Clock,
+    }
+  );
+};
+
+const OPEN_STATUSES = new Set([
+  "pending",
+  "approved",
+  "confirmed",
+  "active",
+  "in progress",
+  "dispatched",
+  "ongoing",
+]);
+
+const DONE_STATUSES = new Set([
+  "resolved",
+  "completed",
+]);
+
+const ATTENTION_STATUSES = new Set([
+  "rejected",
+  "declined",
+  "cancelled",
+  "canceled",
+]);
+
+/* ══════════════════════════════════════════════════════════════════
+   REQUEST TYPE CONFIGURATION
+   ══════════════════════════════════════════════════════════════════ */
+
+const KIND_META = {
+  appointment: {
+    label: "Appointment",
+    plural: "Appointments",
+    icon: CalendarDays,
+    route: "/appointment",
+    action: "Book Appointment",
+    gradient: "from-blue-600 to-blue-600",
+    soft:
+      "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-300",
+  },
+
+  incident: {
+    label: "Incident",
+    plural: "Incidents",
+    icon: Siren,
+    route: "/report",
+    action: "Report Incident",
+    gradient: "from-red-600 to-orange-500",
+    soft:
+      "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300",
+  },
+
+  borrow: {
+    label: "Vehicle",
+    plural: "Vehicles",
+    icon: Ambulance,
+    route: "/borrow",
+    action: "Request Vehicle",
+    gradient: "from-emerald-600 to-teal-500",
+    soft:
+      "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300",
+  },
+
+  checkup: {
+    label: "Check-Up",
+    plural: "Check-Ups",
+    icon: Stethoscope,
+    route: "/checkup",
+    action: "Request Check-Up",
+    gradient: "from-cyan-600 to-blue-600",
+    soft:
+      "border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-900 dark:bg-cyan-950/40 dark:text-cyan-300",
+  },
+
+  hazard: {
+    label: "Hazard",
+    plural: "Hazards",
+    icon: TriangleAlert,
+    route: "/hazard-report",
+    action: "Report Hazard",
+    gradient: "from-violet-600 to-purple-600",
+    soft:
+      "border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900 dark:bg-violet-950/40 dark:text-violet-300",
+  },
+};
+
+/* ══════════════════════════════════════════════════════════════════
+   DATE AND TIME HELPERS
+   ══════════════════════════════════════════════════════════════════ */
+
+const toKey = (value) =>
+  value
+    ? String(value).split("T")[0]
+    : "";
 
 const formatDateLong = (value) => {
   const key = toKey(value);
-  if (!key) return "Date not set";
-  const m = key.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/);
-  if (!m) return key;
-  const d = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
-  if (Number.isNaN(d.getTime())) return key;
-  return d.toLocaleDateString("en-US", { weekday: "long", year: "numeric", month: "long", day: "numeric" });
+
+  if (!key) {
+    return "Date not set";
+  }
+
+  const match = key.match(
+    /^(\d{4})-(\d{1,2})-(\d{1,2})$/,
+  );
+
+  if (!match) {
+    return key;
+  }
+
+  const date = new Date(
+    Number(match[1]),
+    Number(match[2]) - 1,
+    Number(match[3]),
+  );
+
+  if (Number.isNaN(date.getTime())) {
+    return key;
+  }
+
+  return date.toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
 };
 
 const to12h = (time) => {
-  if (!time) return "";
-  const m = String(time).trim().match(/^(\d{1,2}):(\d{2})/);
-  if (!m) return String(time);
-  const h = Number(m[1]);
-  const suffix = h >= 12 ? "PM" : "AM";
-  const h12 = h % 12 || 12;
-  return `${h12}:${m[2]} ${suffix}`;
+  if (!time) {
+    return "";
+  }
+
+  const raw = String(time).trim();
+
+  const match = raw.match(
+    /^(\d{1,2}):(\d{2})(?::\d{2}(?:\.\d+)?)?\s*(am|pm)?/i,
+  );
+
+  if (!match) {
+    return raw;
+  }
+
+  let hour = Number(match[1]);
+  const minute = match[2];
+  const suffix = match[3]?.toLowerCase();
+
+  if (suffix === "pm" && hour < 12) {
+    hour += 12;
+  }
+
+  if (suffix === "am" && hour === 12) {
+    hour = 0;
+  }
+
+  const displayHour = hour % 12 || 12;
+  const period = hour >= 12 ? "PM" : "AM";
+
+  return `${displayHour}:${minute} ${period}`;
 };
 
-const timestampOf = (iso) => {
-  if (!iso) return 0;
-  const t = new Date(iso).getTime();
-  return Number.isNaN(t) ? 0 : t;
+const timestampOf = (value) => {
+  if (!value) {
+    return 0;
+  }
+
+  const timestamp = new Date(value).getTime();
+
+  return Number.isNaN(timestamp)
+    ? 0
+    : timestamp;
 };
 
-const timeAgo = (iso) => {
-  const ms = Date.now() - timestampOf(iso);
-  if (ms <= 0) return "just now";
-  const mins = Math.floor(ms / 60000);
-  if (mins < 1) return "just now";
-  if (mins < 60) return `${mins}m ago`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h ago`;
-  const days = Math.floor(hrs / 24);
-  if (days < 30) return `${days}d ago`;
-  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
+const localDateTimestamp = (value) => {
+  const key = toKey(value);
+
+  if (!key) {
+    return 0;
+  }
+
+  const match = key.match(
+    /^(\d{4})-(\d{1,2})-(\d{1,2})$/,
+  );
+
+  if (!match) {
+    return timestampOf(value);
+  }
+
+  return new Date(
+    Number(match[1]),
+    Number(match[2]) - 1,
+    Number(match[3]),
+  ).getTime();
 };
 
-/* ══════════════════════════════════════════════════════════════════════
-   IDENTITY
-   ──────────────────────────────────────────────────────────────────────
-   Resolves EVERY id the current person might be stored as, because the
-   five tables disagree on which one they use.
-   ══════════════════════════════════════════════════════════════════════ */
+const timeAgo = (value) => {
+  const timestamp = timestampOf(value);
+
+  if (!timestamp) {
+    return "";
+  }
+
+  const difference = Date.now() - timestamp;
+
+  if (difference <= 0) {
+    return "just now";
+  }
+
+  const minutes = Math.floor(
+    difference / (1000 * 60),
+  );
+
+  if (minutes < 1) {
+    return "just now";
+  }
+
+  if (minutes < 60) {
+    return `${minutes}m ago`;
+  }
+
+  const hours = Math.floor(minutes / 60);
+
+  if (hours < 24) {
+    return `${hours}h ago`;
+  }
+
+  const days = Math.floor(hours / 24);
+
+  if (days < 30) {
+    return `${days}d ago`;
+  }
+
+  return new Date(value).toLocaleDateString(
+    "en-US",
+    {
+      month: "short",
+      day: "numeric",
+      year: "numeric",
+    },
+  );
+};
+
+const phoneDigits = (value) =>
+  String(value || "").replace(/\D/g, "");
+
+const cleanText = (value) =>
+  String(value || "").trim();
+
+const sentenceCase = (value) => {
+  const text = String(value || "")
+    .trim()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ");
+
+  if (!text) {
+    return "";
+  }
+
+  return (
+    text.charAt(0).toUpperCase() +
+    text.slice(1)
+  );
+};
+
+/* ══════════════════════════════════════════════════════════════════
+   LOCAL SESSION HELPERS
+   ══════════════════════════════════════════════════════════════════ */
+
+const readLocalSession = (key) => {
+  try {
+    const raw = localStorage.getItem(key);
+
+    if (!raw) {
+      return null;
+    }
+
+    const parsed = JSON.parse(raw);
+
+    return parsed && typeof parsed === "object"
+      ? parsed
+      : null;
+  } catch {
+    return null;
+  }
+};
+
+/* ══════════════════════════════════════════════════════════════════
+   IDENTITY RESOLUTION
+   ══════════════════════════════════════════════════════════════════ */
+
 const resolveIdentity = async () => {
   const ids = new Set();
+
+  const addId = (value) => {
+    if (
+      value === null ||
+      value === undefined ||
+      value === ""
+    ) {
+      return;
+    }
+
+    ids.add(String(value));
+  };
+
   let authId = null;
   let pendingId = null;
   let profileId = null;
@@ -123,827 +496,2192 @@ const resolveIdentity = async () => {
   let workId = null;
   let name = "";
   let email = "";
+  let phone = "";
+  let role = "user";
   let isStaff = false;
   let exists = false;
 
-  // 1. Supabase Auth session
+  /* 1. Supabase Auth */
   try {
-    const { data: { user } } = await supabase.auth.getUser();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+
     if (user) {
-      authId = user.id;
-      ids.add(user.id);
-      email = user.email || "";
       exists = true;
+      authId = user.id;
+      addId(user.id);
+
+      email = user.email || "";
+      phone =
+        user.phone ||
+        user.phone_metadata?.phone_number ||
+        "";
+
+      name =
+        user.user_metadata?.full_name ||
+        user.user_metadata?.name ||
+        email;
 
       const { data: profile } = await supabase
         .from("profiles")
-        .select("id, full_name, first_name, last_name, user_id")
+        .select(
+          "id, full_name, first_name, middle_name, last_name, user_id, role, mobile_number",
+        )
         .eq("id", user.id)
         .maybeSingle();
 
       if (profile) {
         profileId = profile.id;
-        ids.add(profile.id);
-        if (profile.user_id) { workId = profile.user_id; ids.add(String(profile.user_id)); }
+        addId(profile.id);
+        addId(profile.user_id);
+
+        workId = profile.user_id || workId;
+        phone = profile.mobile_number || phone;
+        role = profile.role || role;
+
         name =
           profile.full_name ||
-          `${profile.first_name || ""} ${profile.last_name || ""}`.trim() ||
-          email;
-      } else {
-        name = email;
+          [
+            profile.first_name,
+            profile.middle_name,
+            profile.last_name,
+          ]
+            .filter(Boolean)
+            .join(" ") ||
+          name;
       }
     }
   } catch {
-    /* no auth session, or the profiles read was blocked — continue */
+    // Continue with local session.
   }
 
-  // 2. Local resident session
-  const rawUser = localStorage.getItem("currentUser");
-  if (rawUser) {
-    try {
-      const u = JSON.parse(rawUser);
-      exists = true;
-      pendingId = u.id || null;
-      if (u.user_id) ids.add(String(u.user_id));
-      if (u.id) ids.add(String(u.id));
-      if (!email) email = u.email || "";
-      if (!name) {
+  /* 2. Resident session */
+  const storedUser = readLocalSession(
+    "currentUser",
+  );
+
+  if (storedUser) {
+    exists = true;
+    pendingId = storedUser.id || null;
+
+    addId(storedUser.id);
+    addId(storedUser.user_id);
+
+    email = email || storedUser.email || "";
+    phone =
+      phone ||
+      storedUser.mobile_number ||
+      "";
+
+    if (
+      !name ||
+      name === email
+    ) {
+      name =
+        storedUser.full_name ||
+        [
+          storedUser.first_name,
+          storedUser.middle_name,
+          storedUser.last_name,
+        ]
+          .filter(Boolean)
+          .join(" ") ||
+        storedUser.email ||
+        "Resident";
+    }
+
+    if (storedUser.email) {
+      const { data: profile } = await supabase
+        .from("profiles")
+        .select(
+          "id, full_name, first_name, middle_name, last_name, user_id, role, mobile_number",
+        )
+        .eq("email", storedUser.email)
+        .maybeSingle();
+
+      if (profile) {
+        profileId = profile.id;
+        addId(profile.id);
+        addId(profile.user_id);
+
+        workId = profile.user_id || workId;
+        phone = profile.mobile_number || phone;
+        role = profile.role || role;
+
+        if (
+          !name ||
+          name === email ||
+          name === "Resident"
+        ) {
+          name =
+            profile.full_name ||
+            [
+              profile.first_name,
+              profile.middle_name,
+              profile.last_name,
+            ]
+              .filter(Boolean)
+              .join(" ") ||
+            name;
+        }
+      }
+    }
+  }
+
+  /* 3. Staff/admin session */
+  const storedStaff = readLocalSession(
+    "currentStaff",
+  );
+
+  if (storedStaff) {
+    exists = true;
+    isStaff = true;
+
+    staffId = storedStaff.id ?? null;
+    workId =
+      storedStaff.user_id || workId;
+
+    addId(storedStaff.id);
+    addId(storedStaff.user_id);
+    addId(storedStaff.email);
+
+    email = email || storedStaff.email || "";
+
+    phone =
+      phone ||
+      storedStaff.mobile_number ||
+      "";
+
+    role =
+      storedStaff.role || "staff";
+
+    name =
+      storedStaff.full_name ||
+      storedStaff.username ||
+      storedStaff.user_id ||
+      "Staff Member";
+
+    if (storedStaff.user_id) {
+      const [staffResult, profileResult] =
+        await Promise.all([
+          supabase
+            .from("staff_users")
+            .select(
+              "id, full_name, email, mobile_number, role, department, user_id",
+            )
+            .eq(
+              "user_id",
+              storedStaff.user_id,
+            )
+            .maybeSingle(),
+
+          supabase
+            .from("profiles")
+            .select(
+              "id, full_name, mobile_number, user_id",
+            )
+            .eq(
+              "user_id",
+              storedStaff.user_id,
+            )
+            .maybeSingle(),
+        ]);
+
+      const staff = staffResult.data;
+      const profile = profileResult.data;
+
+      if (staff) {
+        staffId = staff.id;
+        addId(staff.id);
+        addId(staff.user_id);
+
         name =
-          u.full_name ||
-          `${u.first_name || ""} ${u.last_name || ""}`.trim() ||
-          u.email ||
-          "Resident";
+          staff.full_name ||
+          name;
+
+        email =
+          email ||
+          staff.email ||
+          "";
+
+        phone =
+          phone ||
+          staff.mobile_number ||
+          "";
+
+        role =
+          staff.role || role;
       }
 
-      // profiles row by email → gives us the profiles UUID used by
-      // reportIncident.userId and borrow-vehicle.userId
-      if (u.email) {
-        const { data: p } = await supabase
-          .from("profiles")
-          .select("id, full_name, first_name, last_name, user_id")
-          .eq("email", u.email)
-          .maybeSingle();
-        if (p) {
-          profileId = p.id;
-          ids.add(p.id);
-          if (p.user_id) { workId = p.user_id; ids.add(String(p.user_id)); }
-          if (!name || name === "Resident") {
-            name = p.full_name || `${p.first_name || ""} ${p.last_name || ""}`.trim() || name;
-          }
-        }
+      if (profile) {
+        profileId = profile.id;
+        addId(profile.id);
+        addId(profile.user_id);
+
+        name =
+          profile.full_name ||
+          name;
+
+        phone =
+          profile.mobile_number ||
+          phone;
       }
-    } catch {
-      /* malformed JSON — keep going */
     }
   }
 
-  // 3. Local staff / admin session
-  const rawStaff = localStorage.getItem("currentStaff");
-  if (rawStaff) {
-    try {
-      const s = JSON.parse(rawStaff);
-      exists = true;
-      isStaff = true;
-      staffId = s.id ?? null;
-      if (staffId != null) ids.add(String(staffId));
-      if (s.user_id) { workId = s.user_id; ids.add(String(s.user_id)); }
-      if (s.email) ids.add(String(s.email));
-      if (!email) email = s.email || "";
-      name = s.full_name || s.username || s.user_id || "Staff Member";
-
-      if (s.user_id) {
-        const { data: row } = await supabase
-          .from("staff_users")
-          .select("id, full_name, email")
-          .eq("user_id", s.user_id)
-          .maybeSingle();
-        if (row) {
-          staffId = row.id;
-          ids.add(String(row.id));
-          name = row.full_name || name;
-        }
-      }
-    } catch {
-      /* malformed */
+  for (const value of [...ids]) {
+    if (
+      value === null ||
+      value === undefined ||
+      value === ""
+    ) {
+      ids.delete(value);
     }
   }
 
-  // Drop blanks so comparisons never match an empty string
-  for (const v of [...ids]) if (v === null || v === undefined || v === "") ids.delete(v);
-
-  return { ids: [...ids], authId, pendingId, profileId, staffId, workId, name, email, isStaff, exists };
+  return {
+    ids: [...ids],
+    idSet: ids,
+    authId,
+    pendingId,
+    profileId,
+    staffId,
+    workId,
+    name,
+    email,
+    phone,
+    role,
+    isStaff,
+    exists,
+  };
 };
 
-/* ══════════════════════════════════════════════════════════════════════
+/* ══════════════════════════════════════════════════════════════════
    OWNERSHIP MATCHING
-   ══════════════════════════════════════════════════════════════════════ */
-const rowBelongsTo = (row, idSet, opts = {}) => {
-  if (idSet.size === 0) return false;
+   ══════════════════════════════════════════════════════════════════ */
 
-  for (const raw of Object.values(row)) {
-    if (raw === null || raw === undefined) continue;
-    if (typeof raw === "object") continue; // skip arrays / jsonb
-    if (idSet.has(String(raw))) return true;
+const OWNER_ID_FIELDS = [
+  "userId",
+  "user_id",
+  "user_id_from_auth",
+  "profileId",
+  "profile_id",
+  "staffId",
+  "staff_id",
+];
+
+const OWNER_EMAIL_FIELDS = [
+  "email",
+  "reporterContact",
+  "contactNum",
+  "contactDetails",
+  "reporter_contact",
+];
+
+const OWNER_PHONE_FIELDS = [
+  "mobile_number",
+  "reporterContact",
+  "contactNum",
+  "contactDetails",
+  "reporter_contact",
+];
+
+const OWNER_NAME_FIELDS = [
+  "requestedBy",
+  "reporter_name",
+  "fullName",
+];
+
+const rowBelongsTo = (row, who) => {
+  if (
+    !row ||
+    !who ||
+    !who.idSet ||
+    who.idSet.size === 0
+  ) {
+    return false;
   }
 
-  // Fallbacks for rows written before the id columns were populated
-  if (opts.email && opts.email === row.reporterContact) return true;
-  if (opts.name && opts.name && row.requestedBy && opts.name === row.requestedBy) return true;
-  if (opts.name && opts.name && row.patientName && opts.name === row.patientName) return true;
+  for (const field of OWNER_ID_FIELDS) {
+    const value = row[field];
+
+    if (
+      value !== null &&
+      value !== undefined &&
+      value !== "" &&
+      who.idSet.has(String(value))
+    ) {
+      return true;
+    }
+  }
+
+  const myEmail = cleanText(
+    who.email,
+  ).toLowerCase();
+
+  if (myEmail) {
+    for (const field of OWNER_EMAIL_FIELDS) {
+      const value = cleanText(
+        row[field],
+      ).toLowerCase();
+
+      if (value && value === myEmail) {
+        return true;
+      }
+    }
+  }
+
+  const myPhone = phoneDigits(
+    who.phone,
+  );
+
+  if (myPhone.length >= 10) {
+    for (const field of OWNER_PHONE_FIELDS) {
+      const value = phoneDigits(
+        row[field],
+      );
+
+      if (
+        value.length >= 10 &&
+        value.slice(-10) ===
+          myPhone.slice(-10)
+      ) {
+        return true;
+      }
+    }
+  }
+
+  const myName = cleanText(
+    who.name,
+  ).toLowerCase();
+
+  if (myName) {
+    for (const field of OWNER_NAME_FIELDS) {
+      const value = cleanText(
+        row[field],
+      ).toLowerCase();
+
+      if (value && value === myName) {
+        return true;
+      }
+    }
+  }
 
   return false;
 };
 
-/* ══════════════════════════════════════════════════════════════════════
-   NORMALISERS → one common record shape
-   ══════════════════════════════════════════════════════════════════════ */
-const normalizeAppointment = (r) => ({
-  key: `appt-${r.appointmentId}`,
-  kind: "appointment",
-  id: r.appointmentId,
-  title: r.purpose || "Appointment",
-  subject: r.fullName || "",
-  status: r.status || "pending",
-  dateText: r.date,
-  timeText: r.time,
-  detail: r.reason || "",
-  createdAt: r.created_at,
-  updatedAt: r.updated_at,
-  photo: null,
-  photoCount: 0,
-  fields: [
-    r.email && { label: "Email", value: r.email },
-    r.mobile_number && { label: "Mobile", value: r.mobile_number },
-  ].filter(Boolean),
-  cancellable: (r.status || "pending") === "pending",
-});
+/* ══════════════════════════════════════════════════════════════════
+   RECORD NORMALIZERS
+   ══════════════════════════════════════════════════════════════════ */
 
-const normalizeIncident = (r) => ({
-  key: `inc-${r.reportIncidentId}`,
-  kind: "incident",
-  id: r.reportIncidentId,
-  title: r.incidentType || "Incident Report",
-  subject: r.patientName || "",
-  status: r.status || "Pending",
-  dateText: r.date,
-  timeText: r.time,
-  detail: r.adminResponse || "",
-  createdAt: r.created_at,
-  updatedAt: r.updated_at,
-  photo: r.pictureOfIncident || null,
-  photoCount: r.pictureOfIncident ? 1 : 0,
-  fields: [
-    r.address && { label: "Address", value: r.address },
-    r.landMark && { label: "Landmark", value: r.landMark },
-    r.priorityLevel && { label: "Priority", value: r.priorityLevel },
-    r.specialNeeds && { label: "Special needs", value: r.specialNeeds },
-    r.requiredTools && { label: "Required tools", value: r.requiredTools },
-  ].filter(Boolean),
-  cancellable: false,
-});
+const normalizeAppointment = (row) => {
+  const status = normalizeStatus(
+    row.status || "pending",
+  );
 
-const normalizeBorrow = (r) => ({
-  key: `bor-${r.borrowerId}`,
-  kind: "borrow",
-  id: r.borrowerId,
-  title: r.purpose || "Vehicle Dispatch Request",
-  subject: r.requestedBy || "",
-  status: r.status || "Pending",
-  dateText: r.date,
-  timeText: r.time,
-  detail: r.adminNotes || "",
-  createdAt: r.created_at,
-  updatedAt: r.updated_at,
-  photo: null,
-  photoCount: 0,
-  fields: [
-    r.dispatchNum && { label: "Dispatch no.", value: r.dispatchNum },
-    r.vehicle && { label: "Vehicle", value: r.vehicle.replace(/-/g, " ") },
-    r.destination && { label: "Destination", value: r.destination },
-    r.departure && r.arrival && { label: "Odometer", value: `${r.departure} → ${r.arrival}` },
-  ].filter(Boolean),
-  cancellable: (r.status || "Pending") === "Pending",
-});
-
-const normalizeCheckup = (r) => ({
-  key: `chk-${r.id}`,
-  kind: "checkup",
-  id: r.id,
-  title: r.patientFor ? `${r.patientFor.charAt(0).toUpperCase()}${r.patientFor.slice(1)}` : "Out-Patient Check-Up",
-  subject: r.patientName || "",
-  status: r.status || "Pending",
-  dateText: r.preferredDate,
-  timeText: r.preferredTime,
-  detail: r.staffNote || "",
-  createdAt: r.created_at,
-  updatedAt: r.updated_at,
-  respondedAt: r.respondedAt,
-  photo: null,
-  photoCount: 0,
-  fields: [
-    r.hospitalName && { label: "Hospital", value: r.hospitalName },
-    r.location && { label: "Location", value: r.location },
-    r.mobility && { label: "Mobility", value: r.mobility.replace(/-/g, " ") },
-    r.escort && { label: "Escort", value: r.escort },
-  ].filter(Boolean),
-  cancellable: ["pending", "approved"].includes(String(r.status || "pending").toLowerCase()),
-});
-
-const normalizeHazard = (r) => {
-  const st = r.status || r.report_status || "pending";
-  const photos = Array.isArray(r.hazard_photos) ? r.hazard_photos : [];
   return {
-    key: `haz-${r.id}`,
-    kind: "hazard",
-    id: r.id,
-    title: r.hazard_category
-      ? `${r.hazard_category.charAt(0).toUpperCase()}${r.hazard_category.slice(1)} Hazard`
-      : "Hazard Report",
-    subject: r.reporter_name || "Anonymous",
-    status: st,
-    dateText: r.date_observed,
-    timeText: r.time_observed,
-    detail: r.hazard_description || "",
-    createdAt: r.created_at,
-    updatedAt: r.reviewed_at,
+    key: `appointment-${row.appointmentId}`,
+    kind: "appointment",
+    id: row.appointmentId,
+    title:
+      row.purpose ||
+      "General Appointment",
+    subject:
+      row.fullName ||
+      "Resident request",
+    status,
+    dateText: row.date,
+    timeText: row.time,
+    summary: row.reason || "",
+    detail: row.reason || "",
+    detailLabel: "Your Request Notes",
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
     photo: null,
-    photoCount: photos.length,
-    risk: r.risk_level || "",
-    onMap: r.show_on_heatmap === true,
+    photoCount: 0,
+    risk: "",
+    onMap: false,
     fields: [
-      r.address && { label: "Address", value: r.address },
-      r.landmark && { label: "Landmark", value: r.landmark },
-      r.risk_level && { label: "Risk level", value: r.risk_level },
-      r.recommended_action && { label: "Recommended", value: r.recommended_action },
-      r.admin_remarks && { label: "Admin remarks", value: r.admin_remarks },
+      row.email && {
+        label: "Email",
+        value: row.email,
+      },
+
+      row.mobile_number && {
+        label: "Mobile",
+        value: row.mobile_number,
+      },
+
+      row.account_status && {
+        label: "Account Status",
+        value: sentenceCase(
+          row.account_status,
+        ),
+      },
     ].filter(Boolean),
-    cancellable: String(st).toLowerCase() === "pending",
+    cancellable: status === "pending",
+    cancelLabel: "Cancel Appointment",
   };
 };
 
-/* ══════════════════════════════════════════════════════════════════════
-   PRESENTATION
-   ══════════════════════════════════════════════════════════════════════ */
-const KIND_META = {
-  appointment: { label: "Appointment",     short: "Appointments", icon: CalendarDays, route: "/appointment",  action: "Book Appointment" },
-  incident:    { label: "Incident",        short: "Incidents",    icon: Siren,         route: "/report",      action: "Report Incident" },
-  borrow:      { label: "Vehicle",         short: "Vehicles",     icon: Ambulance,     route: "/borrow",      action: "Request Vehicle" },
-  checkup:     { label: "Check-Up",        short: "Check-Ups",    icon: Stethoscope,   route: "/checkup",     action: "Request Check-Up" },
-  hazard:      { label: "Hazard",          short: "Hazards",      icon: TriangleAlert, route: "/hazard-report", action: "Report Hazard" },
+const normalizeIncident = (row) => ({
+  key: `incident-${row.reportIncidentId}`,
+  kind: "incident",
+  id: row.reportIncidentId,
+  title:
+    row.incidentType ||
+    "Incident Report",
+  subject:
+    row.patientName ||
+    "Resident report",
+  status: normalizeStatus(
+    row.status || "pending",
+  ),
+  dateText: row.date,
+  timeText: row.time,
+  summary:
+    row.address ||
+    row.specialNeeds ||
+    "",
+  detail: row.adminResponse || "",
+  detailLabel: "MDRRMO Response",
+  createdAt: row.created_at,
+  updatedAt: row.updated_at,
+  photo:
+    typeof row.pictureOfIncident ===
+      "string" &&
+    /^https?:\/\//i.test(
+      row.pictureOfIncident,
+    )
+      ? row.pictureOfIncident
+      : null,
+  photoCount: row.pictureOfIncident
+    ? 1
+    : 0,
+  risk: "",
+  onMap: false,
+  fields: [
+    row.address && {
+      label: "Address",
+      value: row.address,
+    },
+
+    row.landMark && {
+      label: "Landmark",
+      value: row.landMark,
+    },
+
+    row.priorityLevel && {
+      label: "Priority",
+      value: row.priorityLevel,
+    },
+
+    row.specialNeeds && {
+      label: "Special Needs",
+      value: row.specialNeeds,
+    },
+
+    row.requiredTools && {
+      label: "Required Tools",
+      value: row.requiredTools,
+    },
+  ].filter(Boolean),
+  cancellable: false,
+  cancelLabel: "",
+});
+
+const normalizeBorrow = (row) => {
+  const status = normalizeStatus(
+    row.status || "pending",
+  );
+
+  const hasDeparture = Boolean(
+    row.departure,
+  );
+
+  const hasArrival = Boolean(
+    row.arrival,
+  );
+
+  return {
+    key: `vehicle-${row.borrowerId}`,
+    kind: "borrow",
+    id: row.borrowerId,
+    title:
+      row.purpose ||
+      "Vehicle Dispatch Request",
+    subject:
+      row.requestedBy ||
+      "Resident request",
+    status,
+    dateText: row.date,
+    timeText: row.time,
+    summary:
+      row.destination ||
+      row.purpose ||
+      "",
+    detail: row.adminNotes || "",
+    detailLabel: "Dispatch Update",
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    photo: null,
+    photoCount: 0,
+    risk: "",
+    onMap: false,
+    fields: [
+      row.dispatchNum && {
+        label: "Dispatch Number",
+        value: row.dispatchNum,
+      },
+
+      row.vehicle && {
+        label: "Vehicle",
+        value: String(row.vehicle)
+          .replace(/-/g, " "),
+      },
+
+      row.destination && {
+        label: "Destination",
+        value: row.destination,
+      },
+
+      hasDeparture && {
+        label: "Starting Odometer",
+        value: row.departure,
+      },
+
+      hasArrival && {
+        label: "Ending Odometer",
+        value: row.arrival,
+      },
+    ].filter(Boolean),
+    cancellable: status === "pending",
+    cancelLabel: "Cancel Vehicle Request",
+  };
 };
 
-const OPEN_STATUSES = new Set(["pending", "approved", "active", "in progress", "dispatched", "ongoing", "confirmed"]);
-const DONE_STATUSES = new Set(["resolved", "completed"]);
+const normalizeCheckup = (row) => {
+  const status = normalizeStatus(
+    row.status || "pending",
+  );
 
-/* ══════════════════════════════════════════════════════════════════════
-   COMPONENT
-   ══════════════════════════════════════════════════════════════════════ */
-const MyRequests = () => {
+  return {
+    key: `checkup-${row.id}`,
+    kind: "checkup",
+    id: row.id,
+    title: row.patientFor
+      ? `Check-Up — ${sentenceCase(
+          row.patientFor,
+        )}`
+      : "Outpatient Check-Up Request",
+    subject:
+      row.patientName ||
+      "Patient request",
+    status,
+    dateText: row.preferredDate,
+    timeText: row.preferredTime,
+    summary:
+      row.hospitalName ||
+      row.location ||
+      "",
+    detail: row.staffNote || "",
+    detailLabel: "MDRRMO Staff Note",
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    respondedAt: row.respondedAt,
+    photo: null,
+    photoCount: 0,
+    risk: "",
+    onMap: false,
+    fields: [
+      row.hospitalName && {
+        label: "Hospital",
+        value: row.hospitalName,
+      },
+
+      row.location && {
+        label: "Location",
+        value: row.location,
+      },
+
+      row.mobility && {
+        label: "Mobility",
+        value: String(row.mobility)
+          .replace(/-/g, " "),
+      },
+
+      row.escort && {
+        label: "Escort",
+        value: row.escort,
+      },
+    ].filter(Boolean),
+    cancellable: ["pending", "approved"].includes(
+      status,
+    ),
+    cancelLabel: "Cancel Check-Up Request",
+  };
+};
+
+const normalizeHazard = (row) => {
+  const status = normalizeStatus(
+    row.report_status || row.status || "pending",
+  );
+
+  const photos = Array.isArray(
+    row.hazard_photos,
+  )
+    ? row.hazard_photos
+    : [];
+
+  return {
+    key: `hazard-${row.id}`,
+    kind: "hazard",
+    id: row.id,
+    title: row.hazard_category
+      ? `${sentenceCase(
+          row.hazard_category,
+        )} Hazard`
+      : "Hazard Report",
+    subject:
+      row.reporter_name ||
+      "Anonymous",
+    status,
+    dateText: row.date_observed,
+    timeText: row.time_observed,
+    summary:
+      row.hazard_description || "",
+    detail: row.admin_remarks || "",
+    detailLabel: "Administrator Response",
+    createdAt: row.created_at,
+    updatedAt: row.reviewed_at,
+    photo: null,
+    photoCount: photos.length,
+    risk: row.risk_level || "",
+    onMap:
+      status === "approved" &&
+      row.show_on_heatmap === true,
+    fields: [
+      row.hazard_description && {
+        label: "Hazard Description",
+        value: row.hazard_description,
+      },
+
+      row.address && {
+        label: "Address",
+        value: row.address,
+      },
+
+      row.landmark && {
+        label: "Landmark",
+        value: row.landmark,
+      },
+
+      row.risk_level && {
+        label: "Risk Level",
+        value: sentenceCase(
+          row.risk_level,
+        ),
+      },
+
+      row.recommended_action && {
+        label: "Recommended Action",
+        value: row.recommended_action,
+      },
+    ].filter(Boolean),
+    cancellable: status === "pending",
+    cancelLabel: "Dismiss Hazard Report",
+  };
+};
+
+/* ══════════════════════════════════════════════════════════════════
+   REQUEST SOURCES
+   ══════════════════════════════════════════════════════════════════ */
+
+const REQUEST_SOURCES = [
+  {
+    kind: "appointment",
+    table: "appointments",
+    label: "appointments",
+    normalize: normalizeAppointment,
+  },
+
+  {
+    kind: "incident",
+    table: "reportIncident",
+    label: "incidents",
+    normalize: normalizeIncident,
+  },
+
+  {
+    kind: "borrow",
+    table: "borrow-vehicle",
+    label: "vehicle requests",
+    normalize: normalizeBorrow,
+  },
+
+  {
+    kind: "checkup",
+    table: "outPatientCheckUp",
+    label: "check-ups",
+    normalize: normalizeCheckup,
+  },
+
+  {
+    kind: "hazard",
+    table: "hazard_reports",
+    label: "hazards",
+    normalize: normalizeHazard,
+  },
+];
+
+/* ══════════════════════════════════════════════════════════════════
+   SMALL REUSABLE COMPONENTS
+   ══════════════════════════════════════════════════════════════════ */
+
+function StatCard({
+  icon: Icon,
+  label,
+  value,
+  detail,
+  wrapperClass,
+  iconClass,
+}) {
+  return (
+    <div
+      className={`rounded-2xl border p-4 shadow-sm sm:p-5 ${wrapperClass}`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="min-w-0">
+          <p className="text-[10px] font-black uppercase tracking-[0.14em] opacity-75 sm:text-xs">
+            {label}
+          </p>
+
+          <p className="mt-2 text-3xl font-black leading-none">
+            {value}
+          </p>
+
+          {detail && (
+            <p className="mt-2 text-xs font-semibold opacity-70">
+              {detail}
+            </p>
+          )}
+        </div>
+
+        <div
+          className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl shadow-sm ${iconClass}`}
+        >
+          <Icon className="h-5 w-5" />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function RequestCard({
+  record,
+  expanded,
+  onToggle,
+  onCancel,
+  cancelling,
+}) {
+  const kind = KIND_META[record.kind];
+  const KindIcon = kind.icon;
+
+  const meta = statusMeta(record.status);
+  const StatusIcon = meta.icon;
+
+  const status = normalizeStatus(
+    record.status,
+  );
+
+  const needsAttention =
+    ATTENTION_STATUSES.has(status);
+
+  const isDone = DONE_STATUSES.has(
+    status,
+  );
+
+  const noteTone = needsAttention
+    ? "border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-200"
+    : isDone
+      ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200"
+      : "border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-800 dark:bg-blue-950/40 dark:text-blue-200";
+
+  const riskTone =
+    record.risk === "critical"
+      ? "border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/50 dark:text-red-300"
+      : record.risk === "high"
+        ? "border-orange-200 bg-orange-50 text-orange-700 dark:border-orange-900 dark:bg-orange-950/50 dark:text-orange-300"
+        : record.risk === "medium"
+          ? "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/50 dark:text-amber-300"
+          : "border-slate-200 bg-slate-100 text-slate-700 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300";
+
+  return (
+    <article className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm transition hover:-translate-y-0.5 hover:border-indigo-300 hover:shadow-lg dark:border-slate-800 dark:bg-slate-900 dark:hover:border-indigo-800">
+      <div
+        className={`h-1 bg-gradient-to-r ${kind.gradient}`}
+        aria-hidden="true"
+      />
+
+      <div className="p-4 sm:p-5">
+        {/* Summary */}
+        <div className="flex items-start gap-3 sm:gap-4">
+          <div
+            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br text-white shadow-md sm:h-12 sm:w-12 ${kind.gradient}`}
+          >
+            <KindIcon className="h-5 w-5 sm:h-6 sm:w-6" />
+          </div>
+
+          <div className="min-w-0 flex-1">
+            <div className="mb-2 flex flex-wrap items-center gap-2">
+              <span className="text-[10px] font-black uppercase tracking-[0.16em] text-slate-400 dark:text-slate-500">
+                {kind.label}
+              </span>
+
+              <span
+                className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-black sm:text-xs ${
+                  TONE_CLASSES[
+                    meta.tone
+                  ] || TONE_CLASSES.slate
+                }`}
+              >
+                <StatusIcon className="h-3 w-3" />
+                {meta.label}
+              </span>
+
+              {record.risk && (
+                <span
+                  className={`rounded-full border px-2.5 py-1 text-[10px] font-black uppercase tracking-wide ${riskTone}`}
+                >
+                  {record.risk} risk
+                </span>
+              )}
+            </div>
+
+            <h3 className="truncate text-sm font-black text-slate-800 sm:text-base dark:text-white">
+              {record.title}
+            </h3>
+
+            {record.subject && (
+              <p className="mt-0.5 truncate text-sm text-slate-500 dark:text-slate-400">
+                {record.subject}
+              </p>
+            )}
+
+            {record.summary && (
+              <p className="mt-2 line-clamp-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                {record.summary}
+              </p>
+            )}
+
+            <div className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+              {record.dateText && (
+                <span className="flex items-center gap-1.5">
+                  <CalendarDays className="h-3.5 w-3.5 text-blue-500" />
+                  {formatDateLong(
+                    record.dateText,
+                  )}
+                </span>
+              )}
+
+              {record.timeText && (
+                <span className="flex items-center gap-1.5">
+                  <Clock className="h-3.5 w-3.5 text-purple-500" />
+                  {to12h(record.timeText)}
+                </span>
+              )}
+
+              {record.createdAt && (
+                <span className="flex items-center gap-1.5">
+                  <Activity className="h-3.5 w-3.5" />
+                  Submitted {timeAgo(
+                    record.createdAt,
+                  )}
+                </span>
+              )}
+
+              {record.photoCount > 0 && (
+                <span className="flex items-center gap-1.5">
+                  <ImageIcon className="h-3.5 w-3.5" />
+                  {record.photoCount} photo
+                  {record.photoCount === 1
+                    ? ""
+                    : "s"}
+                </span>
+              )}
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={onToggle}
+            aria-label={
+              expanded
+                ? `Hide ${kind.label.toLowerCase()} details`
+                : `Show ${kind.label.toLowerCase()} details`
+            }
+            aria-expanded={expanded}
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-400 dark:hover:border-indigo-800 dark:hover:bg-indigo-950/40 dark:hover:text-indigo-300"
+          >
+            <ChevronDown
+              className={`h-5 w-5 transition-transform duration-200 ${
+                expanded
+                  ? "rotate-180"
+                  : ""
+              }`}
+            />
+          </button>
+        </div>
+
+        {/* Note */}
+        {record.detail && (
+          <div
+            className={`mt-4 rounded-2xl border p-4 ${noteTone}`}
+          >
+            <p className="text-[10px] font-black uppercase tracking-[0.16em] opacity-75">
+              {record.detailLabel}
+            </p>
+
+            <p className="mt-1.5 whitespace-pre-line text-sm leading-6">
+              {record.detail}
+            </p>
+          </div>
+        )}
+
+        {/* Expanded content */}
+        {expanded && (
+          <div className="mt-4 space-y-4 border-t border-slate-200 pt-4 dark:border-slate-800">
+            {record.photo && (
+              <a
+                href={record.photo}
+                target="_blank"
+                rel="noreferrer"
+                className="group relative block overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700"
+              >
+                <img
+                  src={record.photo}
+                  alt="Attached incident evidence"
+                  className="max-h-72 w-full object-cover transition group-hover:scale-[1.02]"
+                />
+
+                <span className="absolute bottom-3 right-3 rounded-xl bg-slate-950/75 px-3 py-2 text-xs font-bold text-white backdrop-blur">
+                  Open full-size image
+                </span>
+              </a>
+            )}
+
+            {record.fields.length > 0 && (
+              <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                {record.fields.map(
+                  (field, index) => (
+                    <div
+                      key={`${field.label}-${index}`}
+                      className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950/50"
+                    >
+                      <dt className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
+                        {field.label}
+                      </dt>
+
+                      <dd className="mt-1.5 break-words text-sm font-semibold leading-6 text-slate-700 dark:text-slate-200">
+                        {field.value}
+                      </dd>
+                    </div>
+                  ),
+                )}
+              </dl>
+            )}
+
+            <div className="flex flex-wrap items-center gap-3 pt-1">
+              {record.cancellable && (
+                <button
+                  type="button"
+                  onClick={onCancel}
+                  disabled={cancelling}
+                  className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-rose-200 bg-white px-4 py-2.5 text-xs font-black text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-900 dark:bg-slate-900 dark:text-rose-300 dark:hover:bg-rose-950/40"
+                >
+                  {cancelling ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <XCircle className="h-4 w-4" />
+                  )}
+
+                  {cancelling
+                    ? "Updating..."
+                    : record.cancelLabel}
+                </button>
+              )}
+
+              {record.onMap && (
+                <Link
+                  to="/hazardmap"
+                  className={`${REQUEST_GRADIENT} inline-flex min-h-10 items-center justify-center gap-2 rounded-xl px-4 py-2.5 text-xs font-black text-white shadow-md transition hover:brightness-105`}
+                >
+                  <MapPin className="h-4 w-4" />
+                  View on Public Map
+                </Link>
+              )}
+
+              <span className="ml-auto font-mono text-[10px] font-bold text-slate-400 dark:text-slate-500">
+                Request #{record.id}
+              </span>
+            </div>
+          </div>
+        )}
+      </div>
+    </article>
+  );
+}
+
+function QuickActionCard({
+  kind,
+}) {
+  const Icon = kind.icon;
+
+  return (
+    <Link
+      to={kind.route}
+      className="group flex min-h-28 flex-col justify-between rounded-2xl border border-slate-200 bg-white p-4 shadow-sm transition hover:-translate-y-1 hover:border-indigo-300 hover:shadow-lg focus:outline-none focus-visible:ring-4 focus-visible:ring-indigo-500/15 dark:border-slate-700 dark:bg-slate-900 dark:hover:border-indigo-800"
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div
+          className={`flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br text-white shadow-md ${kind.gradient}`}
+        >
+          <Icon className="h-5 w-5" />
+        </div>
+
+        <Plus className="h-4 w-4 text-slate-300 transition group-hover:rotate-90 group-hover:text-indigo-500 dark:text-slate-700 dark:group-hover:text-indigo-400" />
+      </div>
+
+      <div>
+        <p className="text-sm font-black text-slate-800 dark:text-white">
+          {kind.action}
+        </p>
+
+        <p className="mt-1 text-[11px] leading-5 text-slate-500 dark:text-slate-400">
+          Create a new {kind.label.toLowerCase()} request.
+        </p>
+      </div>
+    </Link>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   MAIN COMPONENT
+   ══════════════════════════════════════════════════════════════════ */
+
+export default function MyRequests() {
   const navigate = useNavigate();
 
-  const [identity, setIdentity] = useState(null);
-  const [records, setRecords] = useState([]);
-  const [loading, setLoading] = useState(true);
-  const [refreshing, setRefreshing] = useState(false);
-  const [error, setError] = useState("");
-  const [notice, setNotice] = useState("");
+  const [identity, setIdentity] =
+    useState(null);
 
-  const [tab, setTab] = useState("all");
-  const [query, setQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
-  const [expanded, setExpanded] = useState({});
-  const [cancellingId, setCancellingId] = useState(null);
+  const [records, setRecords] =
+    useState([]);
 
-  /* ── Load every table, then keep only what belongs to this person ── */
+  const [loading, setLoading] =
+    useState(true);
+
+  const [refreshing, setRefreshing] =
+    useState(false);
+
+  const [error, setError] =
+    useState("");
+
+  const [notice, setNotice] =
+    useState("");
+
+  const [tab, setTab] =
+    useState("all");
+
+  const [query, setQuery] =
+    useState("");
+
+  const [statusFilter, setStatusFilter] =
+    useState("all");
+
+  const [expanded, setExpanded] =
+    useState({});
+
+  const [cancellingId, setCancellingId] =
+    useState(null);
+
+  const loadSequenceRef = useRef(0);
+
+  /* ------------------------------------------------------------
+     LOAD REQUESTS
+  ------------------------------------------------------------ */
+
   const load = useCallback(async (who) => {
-    if (!who) return;
+    if (!who) {
+      return;
+    }
+
+    const requestId =
+      ++loadSequenceRef.current;
+
     setRefreshing(true);
     setError("");
 
-    const opts = { email: who.email, name: who.name };
-    const idSet = new Set(who.ids.map(String));
-
-    const results = await Promise.allSettled([
-      supabase.from("appointments").select("*").order("created_at", { ascending: false }),
-      supabase.from("reportIncident").select("*").order("created_at", { ascending: false }),
-      supabase.from("borrow-vehicle").select("*").order("created_at", { ascending: false }),
-      supabase.from("outPatientCheckUp").select("*").order("created_at", { ascending: false }),
-      supabase.from("hazard_reports").select("*").order("created_at", { ascending: false }),
-    ]);
-
-    const labels = ["appointments", "incidents", "vehicle requests", "check-ups", "hazards"];
-    const failed = [];
-
-    const mine = {
-      appointments: [],
-      incidents: [],
-      borrow: [],
-      checkup: [],
-      hazard: [],
-    };
-
-    const [
-      apptRes, incRes, borRes, chkRes, hazRes,
-    ] = results;
-
-    if (apptRes.status === "fulfilled" && !apptRes.value.error) {
-      mine.appointments = (apptRes.value.data || [])
-        .filter((r) => rowBelongsTo(r, idSet, opts))
-        .map(normalizeAppointment);
-    } else if (apptRes.status === "rejected" || apptRes.value?.error) {
-      failed.push(labels[0]);
-    }
-
-    if (incRes.status === "fulfilled" && !incRes.value.error) {
-      // A lone staff member may have submitted before the reporter column was
-      // populated, so accept rows already assigned to their staffId too.
-      const staffRows = who.isStaff
-        ? (incRes.value.data || []).filter((r) => !r.userId)
-        : [];
-      const found = (incRes.value.data || []).filter(
-        (r) => rowBelongsTo(r, idSet, opts) || staffRows.includes(r)
+    const results =
+      await Promise.allSettled(
+        REQUEST_SOURCES.map(
+          (source) =>
+            supabase
+              .from(source.table)
+              .select("*")
+              .order("created_at", {
+                ascending: false,
+              })
+              .limit(1000),
+        ),
       );
-      mine.incidents = found.map(normalizeIncident);
-    } else if (incRes.status === "rejected" || incRes.value?.error) {
-      failed.push(labels[1]);
+
+    if (requestId !== loadSequenceRef.current) {
+      return;
     }
 
-    if (borRes.status === "fulfilled" && !borRes.value.error) {
-      const rows = borRes.value.data || [];
-      mine.borrow = rows
-        .filter((r) => rowBelongsTo(r, idSet, opts) || (who.isStaff && r.staffId == who.staffId))
-        .map(normalizeBorrow);
-    } else if (borRes.status === "rejected" || borRes.value?.error) {
-      failed.push(labels[2]);
-    }
+    const failed = [];
+    const allRecords = [];
 
-    if (chkRes.status === "fulfilled" && !chkRes.value.error) {
-      mine.checkup = (chkRes.value.data || [])
-        .filter((r) => rowBelongsTo(r, idSet, opts))
-        .map(normalizeCheckup);
-    } else if (chkRes.status === "rejected" || chkRes.value?.error) {
-      failed.push(labels[3]);
-    }
+    results.forEach(
+      (result, index) => {
+        const source =
+          REQUEST_SOURCES[index];
 
-    if (hazRes.status === "fulfilled" && !hazRes.value.error) {
-      mine.hazard = (hazRes.value.data || [])
-        .filter((r) => rowBelongsTo(r, idSet, opts))
-        .map(normalizeHazard);
-    } else if (hazRes.status === "rejected" || hazRes.value?.error) {
-      failed.push(labels[4]);
-    }
+        if (
+          result.status ===
+          "rejected"
+        ) {
+          failed.push(source.label);
 
-    const all = [...mine.appointments, ...mine.incidents, ...mine.borrow, ...mine.checkup, ...mine.hazard];
-    setRecords(all);
+          console.error(
+            `Failed to load ${source.table}:`,
+            result.reason,
+          );
 
-    if (failed.length) {
+          return;
+        }
+
+        const response = result.value;
+
+        if (response?.error) {
+          failed.push(source.label);
+
+          console.error(
+            `Failed to load ${source.table}:`,
+            response.error,
+          );
+
+          return;
+        }
+
+        const rows = response?.data || [];
+
+        const ownedRows = rows.filter(
+          (row) => rowBelongsTo(row, who),
+        );
+
+        allRecords.push(
+          ...ownedRows.map(
+            source.normalize,
+          ),
+        );
+      },
+    );
+
+    allRecords.sort(
+      (first, second) => {
+        const firstTime =
+          timestampOf(
+            first.updatedAt ||
+              first.createdAt,
+          ) ||
+          localDateTimestamp(
+            first.dateText,
+          );
+
+        const secondTime =
+          timestampOf(
+            second.updatedAt ||
+              second.createdAt,
+          ) ||
+          localDateTimestamp(
+            second.dateText,
+          );
+
+        return secondTime - firstTime;
+      },
+    );
+
+    setRecords(allRecords);
+
+    if (failed.length > 0) {
       setError(
-        `Could not load: ${failed.join(", ")}. This is usually a row-level-security rule on that table, not a missing record.`
+        `Could not load ${failed.join(
+          ", ",
+        )}. This is usually a row-level-security rule on one of the request tables.`,
       );
     }
   }, []);
 
-  /* ── Boot: resolve identity, then load ── */
+  /* ------------------------------------------------------------
+     INITIAL LOAD
+  ------------------------------------------------------------ */
+
   useEffect(() => {
     let cancelled = false;
 
-    (async () => {
+    const boot = async () => {
       setLoading(true);
+
       const who = await resolveIdentity();
 
-      if (cancelled) return;
+      if (cancelled) {
+        return;
+      }
 
       if (!who.exists) {
         setLoading(false);
-        navigate("/login", { replace: true, state: { error: "Please log in to view your requests." } });
+
+        navigate("/login", {
+          replace: true,
+          state: {
+            error:
+              "Please log in to view your requests.",
+          },
+        });
+
         return;
       }
 
       setIdentity(who);
+
       await load(who);
-      if (!cancelled) setLoading(false);
-    })();
 
-    return () => { cancelled = true; };
-  }, [navigate, load]);
+      if (!cancelled) {
+        setLoading(false);
+      }
+    };
 
-  /* ── Realtime: refresh when any watched table changes ── */
+    boot();
+
+    return () => {
+      cancelled = true;
+      loadSequenceRef.current += 1;
+    };
+  }, [load, navigate]);
+
+  /* ------------------------------------------------------------
+     REALTIME + PERIODIC REFRESH
+  ------------------------------------------------------------ */
+
   useEffect(() => {
-    if (!identity) return;
-    const channel = supabase
-      .channel("my-requests-watch")
-      .on("postgres_changes", { event: "*", schema: "public" }, () => load(identity))
-      .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    if (!identity) {
+      return undefined;
+    }
+
+    let refreshTimer = null;
+
+    const scheduleRefresh = () => {
+      if (refreshTimer) {
+        window.clearTimeout(
+          refreshTimer,
+        );
+      }
+
+      refreshTimer =
+        window.setTimeout(() => {
+          load(identity);
+        }, 350);
+    };
+
+    const channel = REQUEST_SOURCES.reduce(
+      (currentChannel, source) =>
+        currentChannel.on(
+          "postgres_changes",
+          {
+            event: "*",
+            schema: "public",
+            table: source.table,
+          },
+          scheduleRefresh,
+        ),
+      supabase.channel(
+        "my-requests-watch-v3",
+      ),
+    );
+
+    channel.subscribe();
+
+    const pollingTimer =
+      window.setInterval(() => {
+        if (
+          document.visibilityState ===
+          "visible"
+        ) {
+          load(identity);
+        }
+      }, 30000);
+
+    return () => {
+      if (refreshTimer) {
+        window.clearTimeout(
+          refreshTimer,
+        );
+      }
+
+      window.clearInterval(
+        pollingTimer,
+      );
+
+      supabase.removeChannel(channel);
+    };
   }, [identity, load]);
 
-  /* ── Derived data ── */
+  /* ------------------------------------------------------------
+     NOTICE TIMEOUT
+  ------------------------------------------------------------ */
+
+  useEffect(() => {
+    if (!notice) {
+      return undefined;
+    }
+
+    const timeout =
+      window.setTimeout(() => {
+        setNotice("");
+      }, 6000);
+
+    return () => {
+      window.clearTimeout(timeout);
+    };
+  }, [notice]);
+
+  /* ------------------------------------------------------------
+     DERIVED COUNTS
+  ------------------------------------------------------------ */
+
   const counts = useMemo(() => {
-    const c = { all: records.length, appointment: 0, incident: 0, borrow: 0, checkup: 0, hazard: 0 };
-    let open = 0, done = 0, attention = 0;
-    records.forEach((r) => {
-      c[r.kind] += 1;
-      const s = String(r.status || "").toLowerCase();
-      if (OPEN_STATUSES.has(s)) open += 1;
-      if (DONE_STATUSES.has(s)) done += 1;
-      if (["rejected", "declined", "cancelled"].includes(s)) attention += 1;
+    const nextCounts = {
+      all: records.length,
+      appointment: 0,
+      incident: 0,
+      borrow: 0,
+      checkup: 0,
+      hazard: 0,
+      open: 0,
+      done: 0,
+      attention: 0,
+    };
+
+    records.forEach((record) => {
+      nextCounts[record.kind] += 1;
+
+      const status = normalizeStatus(
+        record.status,
+      );
+
+      if (OPEN_STATUSES.has(status)) {
+        nextCounts.open += 1;
+      }
+
+      if (DONE_STATUSES.has(status)) {
+        nextCounts.done += 1;
+      }
+
+      if (
+        ATTENTION_STATUSES.has(status)
+      ) {
+        nextCounts.attention += 1;
+      }
     });
-    return { ...c, open, done, attention };
+
+    return nextCounts;
   }, [records]);
 
+  /* ------------------------------------------------------------
+     FILTERED RECORDS
+  ------------------------------------------------------------ */
+
   const filtered = useMemo(() => {
-    const q = query.trim().toLowerCase();
+    const search = query
+      .trim()
+      .toLowerCase();
+
     return records
-      .filter((r) => (tab === "all" ? true : r.kind === tab))
-      .filter((r) => {
-        if (statusFilter === "all") return true;
-        if (statusFilter === "open") return OPEN_STATUSES.has(String(r.status || "").toLowerCase());
-        if (statusFilter === "done") return DONE_STATUSES.has(String(r.status || "").toLowerCase());
-        if (statusFilter === "attention") return ["rejected", "declined", "cancelled"].includes(String(r.status || "").toLowerCase());
-        return String(r.status || "").toLowerCase() === statusFilter;
+      .filter((record) =>
+        tab === "all"
+          ? true
+          : record.kind === tab,
+      )
+      .filter((record) => {
+        const status = normalizeStatus(
+          record.status,
+        );
+
+        if (statusFilter === "all") {
+          return true;
+        }
+
+        if (statusFilter === "open") {
+          return OPEN_STATUSES.has(
+            status,
+          );
+        }
+
+        if (statusFilter === "done") {
+          return DONE_STATUSES.has(
+            status,
+          );
+        }
+
+        if (
+          statusFilter === "attention"
+        ) {
+          return ATTENTION_STATUSES.has(
+            status,
+          );
+        }
+
+        return status === statusFilter;
       })
-      .filter((r) => {
-        if (!q) return true;
-        return [
-          r.title, r.subject, r.detail, r.status, r.dateText,
-          ...(r.fields || []).map((f) => `${f.label} ${f.value}`),
-        ].filter(Boolean).join(" ").toLowerCase().includes(q);
-      })
-      .sort((a, b) => {
-        const ta = timestampOf(b.updatedAt || b.createdAt) || new Date(b.dateText || 0).getTime() || 0;
-        const tb = timestampOf(a.updatedAt || a.createdAt) || new Date(a.dateText || 0).getTime() || 0;
-        return tb - ta;
+      .filter((record) => {
+        if (!search) {
+          return true;
+        }
+
+        const values = [
+          record.title,
+          record.subject,
+          record.summary,
+          record.detail,
+          record.status,
+          record.dateText,
+          KIND_META[record.kind].label,
+          ...record.fields.map(
+            (field) =>
+              `${field.label} ${field.value}`,
+          ),
+        ]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase();
+
+        return values.includes(search);
       });
   }, [records, tab, statusFilter, query]);
 
-  const toggle = (key) => setExpanded((p) => ({ ...p, [key]: !p[key] }));
+  /* ------------------------------------------------------------
+     CARD EXPANSION
+  ------------------------------------------------------------ */
 
-  /* ── Cancel a pending request ── */
-  const handleCancel = async (rec) => {
-    if (!window.confirm(`Cancel this ${KIND_META[rec.kind].label.toLowerCase()}? This cannot be undone.`)) return;
-    setCancellingId(rec.key);
+  const toggleExpanded = (key) => {
+    setExpanded((previous) => ({
+      ...previous,
+      [key]: !previous[key],
+    }));
+  };
+
+  /* ------------------------------------------------------------
+     CANCEL / DISMISS REQUEST
+  ------------------------------------------------------------ */
+
+  const handleCancel = async (
+    record,
+  ) => {
+    if (cancellingId) {
+      return;
+    }
+
+    if (record.kind === "incident") {
+      setError(
+        "Incident reports cannot be cancelled from this page. Please contact MDRRMO for urgent assistance.",
+      );
+
+      return;
+    }
+
+    const action =
+      record.kind === "hazard"
+        ? "dismiss"
+        : "cancel";
+
+    const confirmed = window.confirm(
+      `Are you sure you want to ${action} this ${KIND_META[
+        record.kind
+      ].label.toLowerCase()}? This action cannot be undone.`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setCancellingId(record.key);
+    setError("");
     setNotice("");
 
     try {
-      let error = null;
-      if (rec.kind === "appointment") {
-        ({ error } = await supabase
+      let updateResult;
+
+      if (record.kind === "appointment") {
+        updateResult = await supabase
           .from("appointments")
-          .update({ status: "cancelled", updated_at: new Date().toISOString() })
-          .eq("appointmentId", rec.id));
-      } else if (rec.kind === "borrow") {
-        ({ error } = await supabase
+          .update({
+            status: "cancelled",
+            updated_at:
+              new Date().toISOString(),
+          })
+          .eq(
+            "appointmentId",
+            record.id,
+          );
+      } else if (
+        record.kind === "borrow"
+      ) {
+        updateResult = await supabase
           .from("borrow-vehicle")
-          .update({ status: "Cancelled", updated_at: new Date().toISOString() })
-          .eq("borrowerId", rec.id));
-      } else if (rec.kind === "checkup") {
-        ({ error } = await supabase
+          .update({
+            status: "Cancelled",
+            updated_at:
+              new Date().toISOString(),
+          })
+          .eq(
+            "borrowerId",
+            record.id,
+          );
+      } else if (
+        record.kind === "checkup"
+      ) {
+        updateResult = await supabase
           .from("outPatientCheckUp")
-          .update({ status: "Cancelled", updated_at: new Date().toISOString() })
-          .eq("id", rec.id));
-      } else {
-        ({ error } = await supabase
+          .update({
+            status: "Cancelled",
+            updated_at:
+              new Date().toISOString(),
+          })
+          .eq("id", record.id);
+      } else if (
+        record.kind === "hazard"
+      ) {
+        updateResult = await supabase
           .from("hazard_reports")
-          .update({ status: "rejected", report_status: "rejected" })
-          .eq("id", rec.id));
+          .update({
+            status: "rejected",
+            report_status: "rejected",
+          })
+          .eq("id", record.id);
+      } else {
+        throw new Error(
+          "This request type cannot be cancelled here.",
+        );
       }
 
-      if (error) throw error;
+      if (updateResult.error) {
+        throw updateResult.error;
+      }
 
-      setNotice("Request cancelled successfully.");
+      setNotice(
+        record.kind === "hazard"
+          ? "Hazard report dismissed successfully."
+          : "Request cancelled successfully.",
+      );
+
+      window.dispatchEvent(
+        new Event(
+          "mdrrmo:notif-refresh",
+        ),
+      );
+
       await load(identity);
-    } catch (err) {
-      setError(`Could not cancel: ${err.message}`);
+    } catch (operationError) {
+      console.error(
+        "Request update error:",
+        operationError,
+      );
+
+      setError(
+        operationError?.message ||
+          "Could not update the request.",
+      );
     } finally {
       setCancellingId(null);
     }
   };
 
-  /* ── RENDER: loading ── */
+  /* ------------------------------------------------------------
+     LOADING SCREEN
+  ------------------------------------------------------------ */
+
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-gradient-to-br from-blue-50 to-purple-50 dark:from-slate-900 dark:to-slate-900">
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 dark:bg-slate-950">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto" />
-          <p className="mt-4 text-gray-600 dark:text-slate-300 font-semibold">Loading your requests...</p>
+          <div
+            className={`${REQUEST_GRADIENT} mx-auto flex h-16 w-16 items-center justify-center rounded-2xl shadow-xl shadow-blue-600/20`}
+          >
+            <Loader2 className="h-8 w-8 animate-spin text-white" />
+          </div>
+
+          <h1 className="mt-5 text-lg font-black text-slate-800 dark:text-white">
+            Loading your requests
+          </h1>
+
+          <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
+            Checking the latest status of your
+            submitted requests.
+          </p>
         </div>
       </div>
     );
   }
 
-  /* ════════════════════════════════════════════════════════════════
-     RENDER
-     ════════════════════════════════════════════════════════════════ */
+  /* ------------------------------------------------------------
+     TABS
+  ------------------------------------------------------------ */
+
   const tabs = [
-    { id: "all", label: "All", icon: Layers, count: counts.all },
-    { id: "appointment", label: "Appointments", icon: CalendarDays, count: counts.appointment },
-    { id: "incident", label: "Incidents", icon: Siren, count: counts.incident },
-    { id: "borrow", label: "Vehicles", icon: Ambulance, count: counts.borrow },
-    { id: "checkup", label: "Check-Ups", icon: Stethoscope, count: counts.checkup },
-    { id: "hazard", label: "Hazards", icon: TriangleAlert, count: counts.hazard },
+    {
+      id: "all",
+      label: "All",
+      icon: Layers,
+      count: counts.all,
+    },
+
+    {
+      id: "appointment",
+      label:
+        KIND_META.appointment.plural,
+      icon: CalendarDays,
+      count: counts.appointment,
+    },
+
+    {
+      id: "incident",
+      label: KIND_META.incident.plural,
+      icon: Siren,
+      count: counts.incident,
+    },
+
+    {
+      id: "borrow",
+      label: KIND_META.borrow.plural,
+      icon: Ambulance,
+      count: counts.borrow,
+    },
+
+    {
+      id: "checkup",
+      label: KIND_META.checkup.plural,
+      icon: Stethoscope,
+      count: counts.checkup,
+    },
+
+    {
+      id: "hazard",
+      label: KIND_META.hazard.plural,
+      icon: TriangleAlert,
+      count: counts.hazard,
+    },
   ];
 
+  const accountName =
+    identity?.name || "My Requests";
+
+  const accountDetail =
+    identity?.email ||
+    identity?.workId ||
+    "Verified SafeResponse account";
+
+  const accountBadge = identity?.isStaff
+    ? String(
+        identity?.role || "staff",
+      )
+        .replace(/_/g, " ")
+        .replace(/\b\w/g, (letter) =>
+          letter.toUpperCase(),
+        )
+    : "Resident";
+
+  const filtersActive =
+    query.trim() !== "" ||
+    statusFilter !== "all" ||
+    tab !== "all";
+
+  /* ------------------------------------------------------------
+     RENDER
+  ------------------------------------------------------------ */
+
   return (
-    <div className="min-h-screen p-4 sm:p-6 lg:p-10 mt-20">
-      <div className="max-w-4xl mx-auto">
+    <div className="relative isolate min-h-screen overflow-hidden bg-slate-50 px-4 py-8 sm:px-6 sm:py-10 dark:bg-slate-950">
+      {/* Background decoration */}
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute -left-24 top-32 -z-10 h-80 w-80 rounded-full bg-blue-500/10 blur-3xl"
+      />
 
-        {/* Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-t-3xl shadow-xl px-4 sm:px-6 py-8 text-center">
-          <CalendarDays className="w-10 h-10 text-white/90 mx-auto" />
-          <h1 className="mt-2 text-2xl sm:text-3xl font-bold text-white">My Requests</h1>
-          
-        </div>
+      <div
+        aria-hidden="true"
+        className="pointer-events-none absolute -right-24 bottom-20 -z-10 h-96 w-96 rounded-full bg-purple-500/10 blur-3xl"
+      />
 
-        {/* Stats */}
-        <div className="bg-white dark:bg-slate-900 border border-t-0 border-gray-200 dark:border-slate-800 rounded-b-3xl shadow-xl p-4 sm:p-6 space-y-5">
+      <div className="mx-auto max-w-7xl">
+        {/* Hero */}
+        <section
+          className={`${REQUEST_GRADIENT} relative overflow-hidden rounded-[2rem] px-5 py-7 shadow-2xl shadow-blue-950/20 sm:px-8 sm:py-8`}
+        >
+          <div
+            aria-hidden="true"
+            className="absolute -right-16 -top-24 h-64 w-64 rounded-full bg-white/10 blur-2xl"
+          />
 
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            {[
-              { label: "Total", value: counts.all, color: "bg-blue-50 dark:bg-blue-950/30 border-blue-200 dark:border-blue-900 text-blue-700 dark:text-blue-300" },
-              { label: "In Progress", value: counts.open, color: "bg-amber-50 dark:bg-amber-950/30 border-amber-200 dark:border-amber-900 text-amber-700 dark:text-amber-300" },
-              { label: "Completed", value: counts.done, color: "bg-emerald-50 dark:bg-emerald-950/30 border-emerald-200 dark:border-emerald-900 text-emerald-700 dark:text-emerald-300" },
-              { label: "Needs Attention", value: counts.attention, color: "bg-red-50 dark:bg-red-950/30 border-red-200 dark:border-red-900 text-red-700 dark:text-red-300" },
-            ].map((s) => (
-              <div key={s.label} className={`p-4 rounded-xl border ${s.color}`}>
-                <p className="text-xs font-bold uppercase tracking-wide opacity-70">{s.label}</p>
-                <p className="text-2xl font-bold mt-1">{s.value}</p>
+          <div
+            aria-hidden="true"
+            className="absolute -bottom-28 left-24 h-64 w-64 rounded-full bg-indigo-950/20 blur-2xl"
+          />
+
+          <div className="relative flex flex-col gap-6 lg:flex-row lg:items-center lg:justify-between">
+            <div className="flex min-w-0 items-start gap-4">
+              <div className="flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl border border-white/20 bg-white/15 shadow-lg ring-1 ring-white/20 backdrop-blur-sm">
+                <Layers className="h-8 w-8 text-white" />
               </div>
-            ))}
+
+              <div className="min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-[0.22em] text-blue-100">
+                  SafeResponse Request Center
+                </p>
+
+                <h1 className="mt-1 text-2xl font-black leading-tight text-white sm:text-3xl lg:text-4xl">
+                  My Requests
+                </h1>
+
+                <p className="mt-2 max-w-2xl text-sm leading-6 text-blue-50/85">
+                  Track your appointments, emergency reports, vehicle requests, check-ups, and hazard submissions in one place.
+                </p>
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+              <div className="inline-flex items-center justify-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-bold text-white backdrop-blur-sm">
+                <ShieldCheck className="h-4 w-4" />
+                Status Updates Enabled
+              </div>
+
+              <div className="rounded-full bg-white px-4 py-2 text-center shadow-lg">
+                <p className="text-[10px] font-black uppercase tracking-wide text-blue-600">
+                  Total Requests
+                </p>
+
+                <p className="text-xl font-black text-slate-900">
+                  {counts.all}
+                </p>
+              </div>
+            </div>
           </div>
 
-          {/* Banners */}
-          {error && (
-            <div role="alert" className="flex items-start gap-3 p-4 bg-red-50 dark:bg-red-950/40 border border-red-200 dark:border-red-800 rounded-xl">
-              <AlertCircle className="w-5 h-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
-              <p className="text-sm text-red-700 dark:text-red-300 font-medium">{error}</p>
+          {/* Account card */}
+          <div className="relative mt-6 flex items-center gap-3 rounded-2xl border border-white/15 bg-white/10 p-4 backdrop-blur-sm">
+            <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/20 font-black text-white ring-1 ring-white/20">
+              <UserRound className="h-5 w-5" />
             </div>
-          )}
-          {notice && (
-            <div role="status" className="flex items-start gap-3 p-4 bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800 rounded-xl">
-              <CheckCircle className="w-5 h-5 text-emerald-600 dark:text-emerald-400 flex-shrink-0 mt-0.5" />
-              <p className="text-sm text-emerald-700 dark:text-emerald-300 font-medium">{notice}</p>
-              <button type="button" onClick={() => setNotice("")} aria-label="Dismiss" className="ml-auto p-1 -mr-1 -mt-1 rounded hover:bg-emerald-100 dark:hover:bg-emerald-900/50">
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-          )}
 
-          {/* Search + status + refresh */}
-          <div className="flex flex-col sm:flex-row gap-3">
-            <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-5 h-5 text-slate-400" />
-              <input
-                type="search"
-                placeholder="Search by purpose, status, hospital, address..."
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                className="w-full pl-10 pr-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-purple-500 outline-none"
-              />
-            </div>
-            <select
-              value={statusFilter}
-              onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-4 py-2.5 border border-slate-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:ring-2 focus:ring-purple-500 outline-none"
-            >
-              <option value="all">All Statuses</option>
-              <option value="open">In Progress</option>
-              <option value="done">Completed</option>
-              <option value="attention">Needs Attention</option>
-              <option value="pending">Pending</option>
-              <option value="approved">Approved</option>
-              <option value="resolved">Resolved</option>
-              <option value="rejected">Rejected</option>
-            </select>
-            <button
-              type="button"
-              onClick={() => load(identity)}
-              disabled={refreshing}
-              className="flex items-center justify-center gap-2 px-4 py-2.5 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-xl font-bold transition"
-            >
-              <RefreshCw className={`w-4 h-4 ${refreshing ? "animate-spin" : ""}`} />
-              Refresh
-            </button>
-          </div>
+            <div className="min-w-0 flex-1">
+              <p className="truncate text-sm font-black text-white">
+                {accountName}
+              </p>
 
-          {/* Tabs */}
-          <div className="flex gap-1.5 overflow-x-auto pb-1">
-            {tabs.map((t) => {
-              const Icon = t.icon;
-              const active = tab === t.id;
-              return (
-                <button
-                  key={t.id}
-                  type="button"
-                  onClick={() => setTab(t.id)}
-                  className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-sm font-bold whitespace-nowrap transition ${
-                    active
-                      ? "bg-purple-600 text-white shadow"
-                      : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
-                  }`}
-                >
-                  <Icon className="w-4 h-4" />
-                  {t.label}
-                  <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${active ? "bg-white/25" : "bg-slate-200 dark:bg-slate-700"}`}>
-                    {t.count}
-                  </span>
-                </button>
-              );
-            })}
-          </div>
-
-          {/* List */}
-          {filtered.length === 0 ? (
-            <div className="py-14 text-center">
-              <FileText className="w-14 h-14 text-slate-300 dark:text-slate-700 mx-auto mb-4" />
-              <h3 className="text-lg font-bold text-slate-600 dark:text-slate-300">
-                {query || statusFilter !== "all" ? "No matching requests" : "No requests yet"}
-              </h3>
-              <p className="text-sm text-slate-500 dark:text-slate-400 mt-1 max-w-md mx-auto">
-                {query || statusFilter !== "all"
-                  ? "Try clearing the search or status filter."
-                  : "Once you submit an appointment, incident, vehicle request, check-up, or hazard report, it will appear here with live status updates."}
+              <p className="mt-0.5 truncate text-xs text-blue-50/80">
+                {accountDetail}
               </p>
             </div>
-          ) : (
-            <div className="space-y-3">
-              {filtered.map((rec) => {
-                const kind = KIND_META[rec.kind];
-                const KindIcon = kind.icon;
-                const meta = statusMeta(rec.status);
-                const StatusIcon = meta.icon;
-                const isOpen = expanded[rec.key];
 
-                return (
-                  <div
-                    key={rec.key}
-                    className="border border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 rounded-2xl overflow-hidden hover:border-purple-300 dark:hover:border-purple-700 transition"
+            <span className="shrink-0 rounded-full bg-white/15 px-3 py-1 text-[10px] font-black uppercase tracking-wide text-white ring-1 ring-white/15">
+              {accountBadge}
+            </span>
+          </div>
+        </section>
+
+        {/* Main card */}
+        <section className="relative z-10 -mt-5 sm:-mt-6">
+          <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-2xl shadow-slate-900/10 dark:border-slate-700 dark:bg-slate-900 dark:shadow-black/30">
+            <div
+              className={`h-1.5 ${REQUEST_GRADIENT}`}
+              aria-hidden="true"
+            />
+
+            <div className="space-y-6 p-4 sm:p-6 lg:p-8">
+              {/* Statistics */}
+              <section>
+                <div className="mb-4 flex items-center gap-2">
+                  <SlidersHorizontal className="h-5 w-5 text-blue-600" />
+
+                  <h2 className="text-base font-black text-slate-800 dark:text-white">
+                    Request Overview
+                  </h2>
+                </div>
+
+                <div className="grid grid-cols-2 gap-3 lg:grid-cols-4">
+                  <StatCard
+                    icon={Layers}
+                    label="Total"
+                    value={counts.all}
+                    detail="All submissions"
+                    wrapperClass="border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-300"
+                    iconClass="bg-blue-600 text-white"
+                  />
+
+                  <StatCard
+                    icon={Activity}
+                    label="Active"
+                    value={counts.open}
+                    detail="Pending or ongoing"
+                    wrapperClass="border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300"
+                    iconClass="bg-amber-500 text-white"
+                  />
+
+                  <StatCard
+                    icon={CheckCircle2}
+                    label="Completed"
+                    value={counts.done}
+                    detail="Resolved requests"
+                    wrapperClass="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300"
+                    iconClass="bg-emerald-600 text-white"
+                  />
+
+                  <StatCard
+                    icon={XCircle}
+                    label="Attention"
+                    value={counts.attention}
+                    detail="Declined or cancelled"
+                    wrapperClass="border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900 dark:bg-rose-950/40 dark:text-rose-300"
+                    iconClass="bg-rose-600 text-white"
+                  />
+                </div>
+              </section>
+
+              {/* Error */}
+              {error && (
+                <div
+                  role="alert"
+                  className="flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-200"
+                >
+                  <XCircle className="mt-0.5 h-5 w-5 shrink-0" />
+
+                  <p className="font-semibold leading-6">
+                    {error}
+                  </p>
+                </div>
+              )}
+
+              {/* Notice */}
+              {notice && (
+                <div
+                  role="status"
+                  aria-live="polite"
+                  className="flex items-start gap-3 rounded-2xl border border-emerald-200 bg-emerald-50 p-4 text-sm text-emerald-800 dark:border-emerald-800 dark:bg-emerald-950/40 dark:text-emerald-200"
+                >
+                  <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0" />
+
+                  <p className="flex-1 font-semibold leading-6">
+                    {notice}
+                  </p>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setNotice("")
+                    }
+                    aria-label="Dismiss notification"
+                    className="rounded-lg p-1 transition hover:bg-emerald-100 dark:hover:bg-emerald-900/50"
                   >
-                    {/* Summary row */}
-                    <div className="flex items-start gap-3 p-4">
-                      <div className="w-10 h-10 rounded-xl bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-300 flex items-center justify-center flex-shrink-0">
-                        <KindIcon className="w-5 h-5" />
-                      </div>
+                    <X className="h-4 w-4" />
+                  </button>
+                </div>
+              )}
 
-                      <div className="flex-1 min-w-0">
-                        <div className="flex flex-wrap items-center gap-2 mb-1">
-                          <span className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
-                            {kind.label}
-                          </span>
-                          <span className={`px-2.5 py-0.5 rounded-full text-xs font-bold border flex items-center gap-1 ${TONE_CLASSES[meta.tone]}`}>
-                            <StatusIcon className="w-3 h-3" />
-                            {meta.label}
-                          </span>
-                          {rec.risk && (
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-bold uppercase bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300">
-                              {rec.risk} risk
-                            </span>
-                          )}
-                        </div>
+              {/* Search and filters */}
+              <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950/50">
+                <div className="flex flex-col gap-3 lg:flex-row">
+                  <div className="relative min-w-0 flex-1">
+                    <label
+                      htmlFor="request-search"
+                      className="sr-only"
+                    >
+                      Search requests
+                    </label>
 
-                        <p className="font-bold text-slate-800 dark:text-slate-100 truncate">{rec.title}</p>
-                        {rec.subject && (
-                          <p className="text-sm text-slate-500 dark:text-slate-400 truncate">{rec.subject}</p>
-                        )}
+                    <Search className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
 
-                        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-1.5 text-xs text-slate-500 dark:text-slate-400">
-                          {rec.dateText && (
-                            <span className="flex items-center gap-1">
-                              <CalendarDays className="w-3.5 h-3.5" />
-                              {formatDateLong(rec.dateText)}
-                            </span>
-                          )}
-                          {rec.timeText && (
-                            <span className="flex items-center gap-1">
-                              <Clock className="w-3.5 h-3.5" />
-                              {to12h(rec.timeText)}
-                            </span>
-                          )}
-                          {rec.createdAt && (
-                            <span className="flex items-center gap-1">
-                              <Activity className="w-3.5 h-3.5" />
-                              Submitted {timeAgo(rec.createdAt)}
-                            </span>
-                          )}
-                          {rec.photoCount > 0 && (
-                            <span className="flex items-center gap-1">
-                              <ImageIcon className="w-3.5 h-3.5" />
-                              {rec.photoCount} photo{rec.photoCount === 1 ? "" : "s"}
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      <button
-                        type="button"
-                        onClick={() => toggle(rec.key)}
-                        aria-label={isOpen ? "Hide details" : "Show details"}
-                        aria-expanded={isOpen}
-                        className="p-2 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-400 flex-shrink-0"
-                      >
-                        <ChevronDown className={`w-5 h-5 transition-transform ${isOpen ? "rotate-180" : ""}`} />
-                      </button>
-                    </div>
-
-                    {/* Admin note (always visible — this is the part users care about) */}
-                    {rec.detail && (
-                      <div className="mx-4 mb-4 px-3 py-2.5 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl">
-                        <p className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-0.5">
-                          {["approved", "confirmed", "completed", "resolved"].includes(String(rec.status || "").toLowerCase())
-                            ? "Staff note"
-                            : "Admin response"}
-                        </p>
-                        <p className="text-sm text-slate-700 dark:text-slate-300 whitespace-pre-line">{rec.detail}</p>
-                      </div>
-                    )}
-
-                    {/* Expanded details */}
-                    {isOpen && (
-                      <div className="px-4 pb-4 space-y-3">
-                        {rec.photo && (
-                          <a href={rec.photo} target="_blank" rel="noreferrer" className="block">
-                            <img
-                              src={rec.photo}
-                              alt="Attached evidence"
-                              className="w-full max-h-64 object-cover rounded-xl border border-slate-200 dark:border-slate-700"
-                            />
-                          </a>
-                        )}
-
-                        {rec.fields.length > 0 && (
-                          <dl className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                            {rec.fields.map((f, i) => (
-                              <div key={i} className="px-3 py-2 bg-slate-50 dark:bg-slate-800/60 border border-slate-200 dark:border-slate-700 rounded-xl">
-                                <dt className="text-[10px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
-                                  {f.label}
-                                </dt>
-                                <dd className="text-sm text-slate-800 dark:text-slate-200 font-medium break-words">{f.value}</dd>
-                              </div>
-                            ))}
-                          </dl>
-                        )}
-
-                        <div className="flex flex-wrap items-center gap-2 pt-1">
-                          {rec.cancellable && (
-                            <button
-                              type="button"
-                              onClick={() => handleCancel(rec)}
-                              disabled={cancellingId === rec.key}
-                              className="px-3.5 py-2 bg-red-500 hover:bg-red-600 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition"
-                            >
-                              {cancellingId === rec.key ? "Cancelling..." : "Cancel Request"}
-                            </button>
-                          )}
-                          {rec.onMap && (
-                            <Link
-                              to="/hazardmap"
-                              className="px-3.5 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl text-xs font-bold transition flex items-center gap-1"
-                            >
-                              <MapPin className="w-3.5 h-3.5" /> View on Map
-                            </Link>
-                          )}
-                          <span className="ml-auto text-[10px] text-slate-400 dark:text-slate-500 font-mono">
-                            #{rec.id}
-                          </span>
-                        </div>
-                      </div>
-                    )}
+                    <input
+                      id="request-search"
+                      type="search"
+                      value={query}
+                      onChange={(event) =>
+                        setQuery(event.target.value)
+                      }
+                      placeholder="Search purpose, status, hospital, address..."
+                      className="min-h-12 w-full rounded-xl border border-slate-300 bg-white py-3 pl-12 pr-4 text-sm text-slate-800 shadow-sm outline-none transition placeholder:text-slate-400 hover:border-indigo-300 focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
+                    />
                   </div>
-                );
-              })}
-            </div>
-          )}
 
-          {/* Quick actions */}
-          <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
-            <p className="text-xs font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500 mb-3">
-              New Request
-            </p>
-            <div className="grid grid-cols-2 sm:grid-cols-5 gap-2">
-              {Object.entries(KIND_META).map(([id, k]) => {
-                const Icon = k.icon;
-                return (
-                  <Link
-                    key={id}
-                    to={k.route}
-                    className="flex flex-col items-center gap-1.5 p-3 border border-slate-200 dark:border-slate-700 rounded-xl text-center hover:border-purple-400 dark:hover:border-purple-600 hover:bg-purple-50 dark:hover:bg-purple-900/20 transition"
+                  <div className="min-w-0 sm:w-56">
+                    <label
+                      htmlFor="request-status-filter"
+                      className="sr-only"
+                    >
+                      Filter requests by status
+                    </label>
+
+                    <select
+                      id="request-status-filter"
+                      value={statusFilter}
+                      onChange={(event) =>
+                        setStatusFilter(
+                          event.target.value,
+                        )
+                      }
+                      className="min-h-12 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-700 shadow-sm outline-none transition hover:border-indigo-300 focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                    >
+                      <option value="all">
+                        All Statuses
+                      </option>
+
+                      <option value="open">
+                        Active / Pending
+                      </option>
+
+                      <option value="done">
+                        Completed
+                      </option>
+
+                      <option value="attention">
+                        Needs Attention
+                      </option>
+
+                      <option value="pending">
+                        Pending Review
+                      </option>
+
+                      <option value="approved">
+                        Approved
+                      </option>
+
+                      <option value="confirmed">
+                        Confirmed
+                      </option>
+
+                      <option value="completed">
+                        Completed
+                      </option>
+
+                      <option value="resolved">
+                        Resolved
+                      </option>
+
+                      <option value="rejected">
+                        Rejected
+                      </option>
+
+                      <option value="declined">
+                        Declined
+                      </option>
+
+                      <option value="cancelled">
+                        Cancelled
+                      </option>
+                    </select>
+                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() =>
+                      load(identity)
+                    }
+                    disabled={refreshing}
+                    className={`${REQUEST_GRADIENT} inline-flex min-h-12 items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-black text-white shadow-lg shadow-blue-600/20 transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50`}
                   >
-                    <Icon className="w-5 h-5 text-purple-600 dark:text-purple-300" />
-                    <span className="text-[11px] font-bold text-slate-700 dark:text-slate-200 leading-tight">
-                      {k.action}
-                    </span>
-                  </Link>
-                );
-              })}
+                    <RefreshCw
+                      className={`h-4 w-4 ${
+                        refreshing
+                          ? "animate-spin"
+                          : ""
+                      }`}
+                    />
+
+                    {refreshing
+                      ? "Refreshing..."
+                      : "Refresh"}
+                  </button>
+                </div>
+              </section>
+
+              {/* Request type tabs */}
+              <section>
+                <div
+                  className="no-scrollbar flex gap-2 overflow-x-auto pb-2"
+                  role="tablist"
+                  aria-label="Request categories"
+                >
+                  {tabs.map((item) => {
+                    const Icon = item.icon;
+                    const active = tab === item.id;
+
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        role="tab"
+                        aria-selected={active}
+                        onClick={() =>
+                          setTab(item.id)
+                        }
+                        className={`flex min-h-11 shrink-0 items-center gap-2 rounded-xl border px-3.5 py-2.5 text-sm font-black transition ${
+                          active
+                            ? `${REQUEST_GRADIENT} border-transparent text-white shadow-lg shadow-blue-600/20`
+                            : "border-slate-200 bg-white text-slate-600 hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 dark:border-slate-700 dark:bg-slate-950/50 dark:text-slate-300 dark:hover:border-indigo-800 dark:hover:bg-indigo-950/40 dark:hover:text-indigo-300"
+                        }`}
+                      >
+                        <Icon className="h-4 w-4" />
+
+                        <span>
+                          {item.label}
+                        </span>
+
+                        <span
+                          className={`rounded-full px-2 py-0.5 text-[10px] font-black ${
+                            active
+                              ? "bg-white/20 text-white"
+                              : "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-300"
+                          }`}
+                        >
+                          {item.count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+
+              {/* Result heading */}
+              <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <div>
+                  <h2 className="flex items-center gap-2 text-base font-black text-slate-800 dark:text-white">
+                    <FileText className="h-5 w-5 text-blue-600" />
+                    Request History
+                  </h2>
+
+                  <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                    Select a request to view complete details.
+                  </p>
+                </div>
+
+                <span className="w-fit rounded-full bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-600 dark:bg-slate-800 dark:text-slate-300">
+                  Showing {filtered.length} of {records.length}
+                </span>
+              </div>
+
+              {/* Request list */}
+              {filtered.length === 0 ? (
+                <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-14 text-center dark:border-slate-700 dark:bg-slate-950/40">
+                  <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-950 dark:to-purple-950">
+                    <CircleSlash className="h-8 w-8 text-slate-400" />
+                  </div>
+
+                  <h3 className="mt-5 text-lg font-black text-slate-800 dark:text-white">
+                    {filtersActive
+                      ? "No matching requests"
+                      : "No requests yet"}
+                  </h3>
+
+                  <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-slate-500 dark:text-slate-400">
+                    {filtersActive
+                      ? "Try selecting another request category, status, or search term."
+                      : "Your submitted appointment, incident, vehicle, check-up, and hazard requests will appear here."}
+                  </p>
+
+                  {filtersActive && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setTab("all");
+                        setStatusFilter("all");
+                        setQuery("");
+                      }}
+                      className="mt-5 rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-bold text-slate-700 transition hover:border-indigo-300 hover:bg-indigo-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+                    >
+                      Clear Filters
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {filtered.map((record) => (
+                    <RequestCard
+                      key={record.key}
+                      record={record}
+                      expanded={
+                        Boolean(
+                          expanded[record.key],
+                        )
+                      }
+                      onToggle={() =>
+                        toggleExpanded(
+                          record.key,
+                        )
+                      }
+                      onCancel={() =>
+                        handleCancel(record)
+                      }
+                      cancelling={
+                        cancellingId ===
+                        record.key
+                      }
+                    />
+                  ))}
+                </div>
+              )}
+
+              {/* Quick actions */}
+              <section className="border-t border-slate-200 pt-6 dark:border-slate-800">
+                <div className="mb-4 flex items-center gap-2">
+                  <div
+                    className={`${REQUEST_GRADIENT} flex h-9 w-9 items-center justify-center rounded-xl text-white shadow-md`}
+                  >
+                    <Plus className="h-4 w-4" />
+                  </div>
+
+                  <div>
+                    <h2 className="text-base font-black text-slate-800 dark:text-white">
+                      Submit a New Request
+                    </h2>
+
+                    <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+                      Choose the service you need.
+                    </p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
+                  {Object.entries(KIND_META).map(
+                    ([, kind]) => (
+                      <QuickActionCard
+                        key={kind.route}
+                        kind={kind}
+                      />
+                    ),
+                  )}
+                </div>
+              </section>
+
+              <div className="border-t border-slate-200 pt-5 text-center dark:border-slate-800">
+                <p className="text-xs leading-5 text-slate-400 dark:text-slate-500">
+                  Request statuses may take a few seconds to update while administrative actions are synchronized.
+                </p>
+              </div>
             </div>
           </div>
-
-          <p className="text-center text-xs text-slate-400 dark:text-slate-500 pt-2">
-            Showing {filtered.length} of {records.length} request{records.length === 1 ? "" : "s"}
-          </p>
-        </div>
+        </section>
       </div>
     </div>
   );
-};
-
-export default MyRequests;
+}

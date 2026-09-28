@@ -1,8 +1,8 @@
 @import "tailwindcss";
 
-/* ═══════════════════════════════════════════════════════════════════
+/* ============================================================
    CLASS-BASED DARK MODE
-   ═══════════════════════════════════════════════════════════════════ */
+============================================================ */
 
 @custom-variant dark (
   &:where(.dark, .dark *)
@@ -10,11 +10,22 @@
 
 @theme {
   --font-sans:
-    Inter, ui-sans-serif, system-ui, -apple-system,
-    BlinkMacSystemFont, "Segoe UI", sans-serif;
+    Inter,
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    BlinkMacSystemFont,
+    "Segoe UI",
+    sans-serif;
 }
 
 :root {
+  /*
+   * PortalNavbar changes this value when the desktop
+   * sidebar is shown or hidden.
+   */
+  --portal-sidebar-width: 17rem;
+
   font-family: var(--font-sans);
   color-scheme: light;
   font-synthesis: none;
@@ -84,9 +95,9 @@ button:disabled {
   min-height: 100vh;
 }
 
-/* ═══════════════════════════════════════════════════════════════════
+/* ============================================================
    GLOBAL APPLICATION THEME
-   ═══════════════════════════════════════════════════════════════════ */
+============================================================ */
 
 .app-gradient-frame {
   position: relative;
@@ -153,9 +164,27 @@ html.dark .app-surface {
     #020617;
 }
 
-/* ═══════════════════════════════════════════════════════════════════
+/* ============================================================
+   COLLAPSIBLE PORTAL SIDEBAR
+============================================================ */
+
+.portal-main {
+  min-height: 100vh;
+  padding-left: 0;
+  transition:
+    padding-left 300ms cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@media (min-width: 1024px) {
+  .portal-main {
+    padding-left:
+      var(--portal-sidebar-width, 17rem);
+  }
+}
+
+/* ============================================================
    FORM CONTROLS
-   ═══════════════════════════════════════════════════════════════════ */
+============================================================ */
 
 input,
 textarea,
@@ -184,9 +213,9 @@ html.dark textarea::placeholder {
   color: #64748b;
 }
 
-/* ═══════════════════════════════════════════════════════════════════
+/* ============================================================
    SCROLLBARS
-   ═══════════════════════════════════════════════════════════════════ */
+============================================================ */
 
 * {
   scrollbar-width: thin;
@@ -220,6 +249,7 @@ html.dark *::-webkit-scrollbar-thumb {
   border-color: #1e293b;
 }
 
+/* Hide scrollbar for Chrome, Safari, and Opera */
 .no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;
@@ -229,9 +259,9 @@ html.dark *::-webkit-scrollbar-thumb {
   display: none;
 }
 
-/* ═══════════════════════════════════════════════════════════════════
+/* ============================================================
    LEAFLET
-   ═══════════════════════════════════════════════════════════════════ */
+============================================================ */
 
 .leaflet-container {
   font-family: var(--font-sans);
@@ -257,9 +287,9 @@ html.dark *::-webkit-scrollbar-thumb {
   z-index: 500;
 }
 
-/* ═══════════════════════════════════════════════════════════════════
+/* ============================================================
    ANIMATION
-   ═══════════════════════════════════════════════════════════════════ */
+============================================================ */
 
 @keyframes safeThemeFadeIn {
   from {
@@ -291,11 +321,15 @@ html.dark *::-webkit-scrollbar-thumb {
     animation-iteration-count: 1 !important;
     transition-duration: 0.01ms !important;
   }
+
+  .portal-main {
+    transition: none !important;
+  }
 }
 
-/* ═══════════════════════════════════════════════════════════════════
+/* ============================================================
    PRINTING
-   ═══════════════════════════════════════════════════════════════════ */
+============================================================ */
 
 @page {
   size: A4 portrait;
@@ -315,6 +349,10 @@ html.dark *::-webkit-scrollbar-thumb {
     overflow: visible !important;
     background: #ffffff !important;
     box-shadow: none !important;
+  }
+
+  .portal-main {
+    padding-left: 0 !important;
   }
 
   .print-hidden,

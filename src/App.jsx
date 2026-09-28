@@ -1,6 +1,4 @@
-import {
-  useEffect,
-} from "react";
+import { useEffect } from "react";
 import {
   Navigate,
   Route,
@@ -8,17 +6,20 @@ import {
   useLocation,
   useNavigate,
 } from "react-router-dom";
+
 import { supabase } from "./createClient";
 
 import AdminAppointmentDashboard from "./components/AdminAppointmentDashboard";
-import Admin from "./components/AdminDashboard";
+import AdminDashboard from "./components/AdminDashboard";
 import AdminNavbar from "./components/adminNavbar";
 import AdminLoginRedirect from "./components/AdminLoginRedirect";
 
-import DynamicNavbar from "./components/dynamicNavbar";
+import Navbar from "./components/navbar";
 import GuestNavbar from "./components/GuestNavbar";
-
 import StaffNavbar from "./components/StaffNavbar";
+
+import ProtectedRoute from "./components/ProtectedRoute";
+import CreateUserForOauth from "./components/CreateUserForOauth";
 
 import { SettingsProvider } from "./pages/SettingsContext";
 
@@ -32,7 +33,6 @@ import BorrowedVehicles from "./pages/borrowedVehicles";
 import CheckUp from "./pages/CheckUp";
 import CheckUpTable from "./pages/checkUpTable";
 import CreateUser from "./pages/CreateUser";
-import CreateUserForOauth from "./components/CreateUserForOauth";
 import EditProfile from "./pages/editProfile";
 import Guest from "./pages/Guest";
 import Hazardmap from "./pages/Hazardmap";
@@ -42,7 +42,6 @@ import IncidentReported from "./pages/incidentReported";
 import LoginPage from "./pages/login";
 import MonthlyIncidentTrends from "./pages/MonthlyIncidentTrends";
 import Profile from "./pages/Profile";
-import ProtectedRoute from "./components/ProtectedRoute";
 import RegisterAdmin from "./pages/register-admin";
 import Report from "./pages/Report";
 import Settings from "./pages/Settings";
@@ -53,12 +52,38 @@ import StaffInventory from "./pages/StaffInventory";
 import TrackAppointment from "./pages/trackAppointment";
 import UserApproval from "./pages/userApproval";
 
+/* Resident pages that use the collapsible sidebar. */
+const RESIDENT_RAIL_PATHS = new Set([
+  "/home",
+  "/track",
+  "/about",
+  "/report",
+  "/hazard-report",
+  "/borrow",
+  "/appointment",
+  "/checkup",
+  "/hazardmap",
+  "/edit-profile",
+  "/settings",
+  "/profile",
+  "/yearly-incident-trends",
+  "/notification",
+]);
+
 export default function App() {
   const location = useLocation();
   const navigate = useNavigate();
-  const path = location.pathname;
 
-  /* ── Supabase authentication listener ───────────────────────── */
+  /*
+   * Normalize paths such as:
+   * /admin/dashboard/ -> /admin/dashboard
+   */
+  const path =
+    location.pathname.replace(/\/+$/, "") || "/";
+
+  /* ==========================================================
+     SUPABASE AUTH LISTENER
+  ========================================================== */
 
   useEffect(() => {
     const {
@@ -92,14 +117,18 @@ export default function App() {
     };
   }, [navigate]);
 
-  /* ── Navbar categories ──────────────────────────────────────── */
+  /* ==========================================================
+     NAVIGATION CATEGORIES
+  ========================================================== */
 
-  const isAdminLoginPath = [
+  const adminLoginPaths = new Set([
     "/admin",
-    "/admin/",
     "/admin/login",
     "/admin/register-admin",
-  ].includes(path);
+  ]);
+
+  const isAdminLoginPath =
+    adminLoginPaths.has(path);
 
   const isAuthPath =
     path.startsWith("/login") ||
@@ -118,10 +147,30 @@ export default function App() {
     path === "/" ||
     path.startsWith("/guest/");
 
+  const isResidentPath =
+    RESIDENT_RAIL_PATHS.has(path);
+
   const hasNavbar = !isAuthPath;
+
   const hasDesktopRail =
     hasNavbar &&
-    (isAdminPath || isStaffPath);
+    (
+      isAdminPath ||
+      isStaffPath ||
+      isResidentPath ||
+      (
+        !isGuestPath &&
+        !isAdminLoginPath
+      )
+    );
+
+  /* ==========================================================
+     DIRECT NAVBAR SELECTION
+
+     DynamicNavbar is intentionally not used here.
+     Direct rendering prevents a blank navbar in WebViews
+     where localStorage role detection is delayed or blocked.
+  ========================================================== */
 
   const renderNavbar = () => {
     if (isAuthPath) {
@@ -140,10 +189,15 @@ export default function App() {
       return <GuestNavbar />;
     }
 
-    return <DynamicNavbar />;
+    /*
+     * All remaining authenticated pages are resident pages.
+     */
+    return <Navbar />;
   };
 
-  /* ── Application routes ─────────────────────────────────────── */
+  /* ==========================================================
+     APPLICATION ROUTES
+  ========================================================== */
 
   return (
     <SettingsProvider>
@@ -155,16 +209,16 @@ export default function App() {
             className={[
               hasNavbar ? "py-16" : "",
               hasDesktopRail
-                ? "min-h-screen lg:pl-20"
+                ? "portal-main"
                 : "min-h-screen",
             ]
               .join(" ")
               .trim()}
           >
             <Routes>
-              {/* ═══════════════════════════════════════════════
+              {/* ==========================================
                   PUBLIC ROUTES
-              ═══════════════════════════════════════════════ */}
+              ========================================== */}
 
               <Route
                 path="/"
@@ -191,17 +245,12 @@ export default function App() {
                 element={<AuthCallback />}
               />
 
-              {/* ═══════════════════════════════════════════════
+              {/* ==========================================
                   ADMIN LOGIN ROUTES
-              ═══════════════════════════════════════════════ */}
+              ========================================== */}
 
               <Route
                 path="/admin"
-                element={<AdminLoginRedirect />}
-              />
-
-              <Route
-                path="/admin/"
                 element={<AdminLoginRedirect />}
               />
 
@@ -215,9 +264,9 @@ export default function App() {
                 element={<RegisterAdmin />}
               />
 
-              {/* ═══════════════════════════════════════════════
+              {/* ==========================================
                   GUEST ROUTES
-              ═══════════════════════════════════════════════ */}
+              ========================================== */}
 
               <Route
                 path="/guest/hazardmap"
@@ -226,14 +275,12 @@ export default function App() {
 
               <Route
                 path="/guest/yearly-incident-trends"
-                element={
-                  <MonthlyIncidentTrends />
-                }
+                element={<MonthlyIncidentTrends />}
               />
 
-              {/* ═══════════════════════════════════════════════
-                  PROTECTED USER ROUTES
-              ═══════════════════════════════════════════════ */}
+              {/* ==========================================
+                  RESIDENT ROUTES
+              ========================================== */}
 
               <Route
                 path="/home"
@@ -352,15 +399,24 @@ export default function App() {
                 }
               />
 
-              {/* ═══════════════════════════════════════════════
-                  PROTECTED ADMIN ROUTES
-              ═══════════════════════════════════════════════ */}
+              <Route
+                path="/notification"
+                element={
+                  <ProtectedRoute>
+                    <Home />
+                  </ProtectedRoute>
+                }
+              />
+
+              {/* ==========================================
+                  ADMIN ROUTES
+              ========================================== */}
 
               <Route
                 path="/admin/dashboard"
                 element={
                   <ProtectedRoute adminOnly>
-                    <Admin />
+                    <AdminDashboard />
                   </ProtectedRoute>
                 }
               />
@@ -450,14 +506,14 @@ export default function App() {
                 path="/admin/notification"
                 element={
                   <ProtectedRoute adminOnly>
-                    <Admin />
+                    <AdminDashboard />
                   </ProtectedRoute>
                 }
               />
 
-              {/* ═══════════════════════════════════════════════
-                  PROTECTED STAFF ROUTES
-              ═══════════════════════════════════════════════ */}
+              {/* ==========================================
+                  STAFF ROUTES
+              ========================================== */}
 
               <Route
                 path="/staff/dashboard"
@@ -540,22 +596,9 @@ export default function App() {
                 }
               />
 
-              {/* ═══════════════════════════════════════════════
-                  USER NOTIFICATION ROUTE
-              ═══════════════════════════════════════════════ */}
-
-              <Route
-                path="/notification"
-                element={
-                  <ProtectedRoute>
-                    <Home />
-                  </ProtectedRoute>
-                }
-              />
-
-              {/* ═══════════════════════════════════════════════
-                  CATCH-ALL
-              ═══════════════════════════════════════════════ */}
+              {/* ==========================================
+                  CATCH-ALL ROUTES
+              ========================================== */}
 
               <Route
                 path="/admin/*"
