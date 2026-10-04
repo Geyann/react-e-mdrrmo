@@ -634,34 +634,7 @@ export default function UserMonthlyHazardGraph() {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          {/* Year filter */}
-          <div className="relative">
-            <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-
-            <select
-              aria-label="Filter hazard reports by year"
-              value={selectedYear}
-              onChange={(event) =>
-                setSelectedYear(event.target.value)
-              }
-              className="appearance-none rounded-xl border border-slate-300 bg-white py-2 pl-9 pr-8 text-sm font-semibold text-slate-700 outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
-            >
-              <option value="all">
-                All years
-              </option>
-
-              {availableYears.map((year) => (
-                <option
-                  key={year}
-                  value={year}
-                >
-                  {year}
-                </option>
-              ))}
-            </select>
-          </div>
-
-          {/* Hazard type filter */}
+            {/* Hazard type filter */}
           <select
             aria-label="Filter hazard reports by type"
             value={selectedType}
@@ -694,12 +667,39 @@ export default function UserMonthlyHazardGraph() {
           >
             <RefreshCw className="h-4 w-4" />
           </button>
+          
+          {/* Year filter */}
+          <div className="relative">
+            <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+
+            <select
+              aria-label="Filter hazard reports by year"
+              value={selectedYear}
+              onChange={(event) =>
+                setSelectedYear(event.target.value)
+              }
+              className="appearance-none rounded-xl border border-slate-300 bg-white py-2 pl-9 pr-8 text-sm font-semibold text-slate-700 outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
+            >
+              <option value="all">
+                All years
+              </option>
+
+              {availableYears.map((year) => (
+                <option
+                  key={year}
+                  value={year}
+                >
+                  {year}
+                </option>
+              ))}
+            </select>
+          </div>
         </div>
       </div>
 
       <div className="p-5">
         {/* Summary cards */}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-2">
           {/* Total */}
           <div className="rounded-xl border border-orange-200 bg-orange-50 p-4 dark:border-orange-900 dark:bg-orange-950/30">
             <div className="flex items-center justify-between gap-3">
@@ -944,94 +944,7 @@ export default function UserMonthlyHazardGraph() {
           )}
         </div>
 
-        {/* Hazard type breakdown */}
-        <div className="mt-5 rounded-xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-900">
-          <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
-            <div>
-              <h3 className="text-sm font-black text-slate-800 dark:text-slate-100">
-                Hazard Type Breakdown
-              </h3>
-
-              <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                Share of reports for the selected
-                filters
-              </p>
-            </div>
-
-            <span className="text-xs font-bold text-slate-500 dark:text-slate-400">
-              {analytics.total} total report
-              {analytics.total === 1 ? "" : "s"}
-            </span>
-          </div>
-
-          <div className="mt-4 grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-3">
-            {HAZARD_TYPES.map((type) => {
-              const count =
-                analytics.typeTotals[
-                  type.key
-                ] || 0;
-
-              const percentage =
-                analytics.total > 0
-                  ? Math.round(
-                      (count /
-                        analytics.total) *
-                        100,
-                    )
-                  : 0;
-
-              return (
-                <div
-                  key={type.key}
-                  className="rounded-xl border border-slate-200 bg-white p-3 dark:border-slate-700 dark:bg-slate-800"
-                >
-                  <div className="flex items-center justify-between gap-3">
-                    <div className="flex min-w-0 items-center gap-2.5">
-                      <span
-                        className="h-3 w-3 shrink-0 rounded-full"
-                        style={{
-                          backgroundColor:
-                            type.color,
-                        }}
-                      />
-
-                      <p className="truncate text-xs font-bold text-slate-700 dark:text-slate-200">
-                        {type.label}
-                      </p>
-                    </div>
-
-                    <p className="shrink-0 text-sm font-black text-slate-800 dark:text-slate-100">
-                      {count}
-                    </p>
-                  </div>
-
-                  <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-slate-100 dark:bg-slate-700">
-                    <div
-                      className="h-full rounded-full transition-all"
-                      style={{
-                        width: `${percentage}%`,
-                        backgroundColor:
-                          type.color,
-                      }}
-                    />
-                  </div>
-
-                  <p className="mt-1.5 text-right text-[10px] font-semibold text-slate-400">
-                    {percentage}% of total
-                  </p>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-
-        <p className="mt-3 text-center text-xs text-slate-400">
-          Showing {analytics.activeMonths} active month
-          {analytics.activeMonths === 1
-            ? ""
-            : "s"}{" "}
-          for the selected filters
-        </p>
+     
       </div>
     </section>
   );

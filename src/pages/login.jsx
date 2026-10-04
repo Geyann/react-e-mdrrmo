@@ -745,7 +745,7 @@ export default function LoginPage() {
                   <img
                     src={Icon}
                     alt="SafeResponse Logo"
-                    className="h-8 w-8"
+                    className="h-12 w-12 object-contain"
                   />
                 </div>
 
@@ -755,17 +755,12 @@ export default function LoginPage() {
                   </p>
 
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-100">
-                    Naic Community Portal
+                  OMDRRMO - NAIC, CAVITE
                   </p>
                 </div>
               </div>
 
               <div className="mt-12 lg:mt-20">
-                <span className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-bold text-blue-50">
-                  <CheckCircle2 className="h-4 w-4" />
-                  Community safety access
-                </span>
-
                 <h1 className="mt-5 text-3xl font-black leading-tight tracking-tight sm:text-4xl">
                   Welcome back to your
                   safer community.
@@ -773,26 +768,11 @@ export default function LoginPage() {
 
                 <p className="mt-4 max-w-md text-sm leading-6 text-blue-50/80 sm:text-base">
                   Sign in to request emergency assistance,
-                  monitor your submitted reports, and access
-                  public safety information.
+                  monitor your submitted reports.
                 </p>
               </div>
 
-              <div className="mt-10 space-y-3 lg:mt-auto">
-                {[
-                  "Submit and monitor emergency requests",
-                  "View public hazard hotspot information",
-                  "Access incident and hazard trends",
-                ].map((item) => (
-                  <div
-                    key={item}
-                    className="flex items-start gap-3 text-sm text-blue-50/90"
-                  >
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-                    <span>{item}</span>
-                  </div>
-                ))}
-              </div>
+             
             </div>
           </section>
 
@@ -800,11 +780,7 @@ export default function LoginPage() {
           <section className="p-6 sm:p-10 lg:p-12">
             <div className="mx-auto max-w-md">
               <div className="mb-8">
-                <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-purple-600 text-white shadow-lg shadow-blue-600/20">
-                  <LogIn className="h-6 w-6" />
-                </div>
-
-                <h2 className="text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">
+                <h2 className="text-3xl font-black tracking-tight text-slate-900 sm:text-4xl">
                   Resident login
                 </h2>
 

@@ -10,7 +10,7 @@ import {
   X,
 } from "lucide-react";
 import { useEffect, useState } from "react";
-import imgLogo from "../Images/icon.png";
+import imgLogo from "../Images/logo.png";
 
 export default function GuestNavbar() {
   const location = useLocation();
@@ -29,11 +29,11 @@ export default function GuestNavbar() {
             to="/"
             className="flex min-w-0 items-center gap-2.5"
           >
-            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/15 shadow-inner ring-1 ring-white/20">
+            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/15 shadow-inner ring-1 ring-white/20">
               <img
                 src={imgLogo}
                 alt="MDRRMO logo"
-                className="h-8 w-8 object-contain"
+                className="h-10 w-10 object-contain"
               />
             </div>
 
@@ -42,9 +42,7 @@ export default function GuestNavbar() {
                 SafeResponse
               </p>
 
-              <p className="hidden text-[10px] font-semibold uppercase tracking-[0.18em] text-blue-100 sm:block">
-                Naic Community Safety
-              </p>
+             
             </div>
           </Link>
 

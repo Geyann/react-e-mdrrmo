@@ -14,6 +14,7 @@ import {
   CalendarDays,
   Camera,
   CheckCircle2,
+  ChevronDown,
   Eye,
   EyeOff,
   IdCard,
@@ -43,9 +44,10 @@ const GRADIENT_CLASS =
 const PASSWORD_SALT = "hackerai-salt-2024";
 const ID_BUCKET = "pending_ids";
 const MAX_ID_FILE_BYTES = 8 * 1024 * 1024;
+const MAX_CAPTURE_DIMENSION = 1920;
 
-const USERNAME_PATTERN =
-  /^[a-z0-9._-]{3,50}$/;
+const USERNAME_PATTERN = /^[a-z0-9._-]{3,50}$/;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const ACCEPTED_IMAGE_TYPES = new Set([
   "image/jpeg",
@@ -54,8 +56,56 @@ const ACCEPTED_IMAGE_TYPES = new Set([
   "image/webp",
 ]);
 
+const ID_TYPE_OPTIONS = [
+  {
+    value: "philippine-passport",
+    label: "Philippine Passport",
+  },
+  {
+    value: "drivers-license",
+    label: "Driver's License / LTO ID",
+  },
+  {
+    value: "philsys-id",
+    label: "PhilSys ID",
+  },
+  {
+    value: "umid",
+    label: "UMID",
+  },
+  {
+    value: "barangay-id",
+    label: "Barangay ID",
+  },
+  {
+    value: "voter-id",
+    label: "Voter ID",
+  },
+  {
+    value: "philhealth-id",
+    label: "PhilHealth ID",
+  },
+  {
+    value: "postal-id",
+    label: "Postal ID",
+  },
+  {
+    value: "tin",
+    label: "Tax Identification Number (TIN)",
+  },
+  {
+    value: "school-id",
+    label: "School ID",
+  },
+  {
+    value: "other-valid-id",
+    label: "Other Valid ID",
+  },
+];
+
 const INITIAL_FORM = {
   username: "",
+  email: "",
   password: "",
   confirmPassword: "",
   firstName: "",
@@ -65,8 +115,56 @@ const INITIAL_FORM = {
   address: "",
   mobileNumber: "",
   birthdate: "",
+  idType: "",
   idNumber: "",
 };
+
+const INITIAL_ID_FILES = {
+  front: null,
+  back: null,
+  holder: null,
+};
+
+const INITIAL_ID_PREVIEWS = {
+  front: null,
+  back: null,
+  holder: null,
+};
+
+const ID_UPLOAD_FIELDS = [
+  {
+    key: "front",
+    inputId: "id-front-input",
+    label: "Front Side of ID",
+    description:
+      "Upload a clear and complete image of the front side of your valid ID.",
+    icon: IdCard,
+    cameraOnly: false,
+  },
+  {
+    key: "back",
+    inputId: "id-back-input",
+    label: "Back Side of ID",
+    description:
+      "Upload a clear and complete image of the back side of your valid ID.",
+    icon: IdCard,
+    cameraOnly: false,
+  },
+  {
+    key: "holder",
+    inputId: null,
+    label: "Person Holding ID Photo",
+    description:
+      "Capture a clear photo of yourself while holding your valid ID. Your face and the ID must both be visible.",
+    icon: UserRound,
+    cameraOnly: true,
+  },
+];
+
+const FILE_UPLOAD_FIELDS =
+  ID_UPLOAD_FIELDS.filter(
+    ({ cameraOnly }) => !cameraOnly,
+  );
 
 /* =============================================================
  * HELPERS
@@ -78,25 +176,12 @@ const clean = (value) =>
 const normalizeUsername = (value) =>
   clean(value).toLowerCase();
 
-const cleanName = (...parts) =>
-  parts
-    .filter(Boolean)
-    .map((part) => clean(part))
-    .filter(Boolean)
-    .join(" ")
-    .trim();
+const getFieldByKey = (key) =>
+  ID_UPLOAD_FIELDS.find(
+    (field) => field.key === key,
+  );
 
 const getSafeFileExtension = (file) => {
-  const extension = file.name
-    .split(".")
-    .pop()
-    ?.toLowerCase()
-    .replace(/[^a-z0-9]/g, "");
-
-  if (extension) {
-    return extension;
-  }
-
   const typeExtensions = {
     "image/jpeg": "jpg",
     "image/jpg": "jpg",
@@ -112,17 +197,14 @@ const getTodayKey = () => {
 
   return [
     date.getFullYear(),
-    String(date.getMonth() + 1).padStart(
-      2,
-      "0",
-    ),
+    String(date.getMonth() + 1).padStart(2, "0"),
     String(date.getDate()).padStart(2, "0"),
   ].join("-");
 };
 
 const createUuid = () => {
   if (
-    globalThis.crypto?.randomUUID
+    typeof globalThis.crypto?.randomUUID === "function"
   ) {
     return globalThis.crypto.randomUUID();
   }
@@ -143,14 +225,23 @@ const createUuid = () => {
   );
 };
 
+const createRandomPart = () => {
+  if (
+    typeof globalThis.crypto?.randomUUID === "function"
+  ) {
+    return globalThis.crypto.randomUUID().slice(0, 8);
+  }
+
+  return Math.random()
+    .toString(36)
+    .slice(2, 10);
+};
+
 const getPhoneDigits = (value) =>
-  String(value ?? "")
-    .replace(/\D/g, "");
+  String(value ?? "").replace(/\D/g, "");
 
 async function hashPassword(password) {
-  if (
-    !globalThis.crypto?.subtle
-  ) {
+  if (!globalThis.crypto?.subtle) {
     throw new Error(
       "Secure password encryption is not available in this browser.",
     );
@@ -168,81 +259,127 @@ async function hashPassword(password) {
       data,
     );
 
-  return Array.from(
-    new Uint8Array(hashBuffer),
-  )
+  return Array.from(new Uint8Array(hashBuffer))
     .map((byte) =>
       byte.toString(16).padStart(2, "0"),
     )
     .join("");
 }
 
-const uploadIdImage = async ({
-  file,
+/**
+ * Uploads all three identity-verification images.
+ *
+ * If one upload fails, previously uploaded images
+ * are automatically removed.
+ */
+const uploadIdImages = async ({
+  files,
   registrationId,
 }) => {
-  if (!file) {
-    return null;
-  }
+  const uploadedImages = {};
+  const uploadedPaths = [];
 
-  const safeFileName = file.name
-    .replace(/[^a-zA-Z0-9._-]/g, "_")
-    .slice(-100);
+  try {
+    for (const field of ID_UPLOAD_FIELDS) {
+      const file = files[field.key];
 
-  const extension =
-    getSafeFileExtension(file);
+      if (!file) {
+        throw new Error(
+          `${field.label} is required.`,
+        );
+      }
 
-  const filePath =
-    `registrations/${registrationId}/${Date.now()}-${crypto
-      .randomUUID()
-      .slice(0, 8)}.${extension}`;
+      if (
+        !ACCEPTED_IMAGE_TYPES.has(file.type)
+      ) {
+        throw new Error(
+          `${field.label} must be a JPG, PNG, or WEBP image.`,
+        );
+      }
 
-  const { error: uploadError } =
-    await supabase.storage
-      .from(ID_BUCKET)
-      .upload(
+      if (file.size > MAX_ID_FILE_BYTES) {
+        throw new Error(
+          `${field.label} must be smaller than 8 MB.`,
+        );
+      }
+
+      const extension =
+        getSafeFileExtension(file);
+
+      const randomPart =
+        createRandomPart();
+
+      const filePath =
+        `registrations/${registrationId}/${field.key}/${Date.now()}-${randomPart}.${extension}`;
+
+      const { error: uploadError } =
+        await supabase.storage
+          .from(ID_BUCKET)
+          .upload(filePath, file, {
+            cacheControl: "3600",
+            contentType: file.type,
+            upsert: false,
+          });
+
+      if (uploadError) {
+        throw new Error(
+          `${field.label} upload failed: ${uploadError.message}`,
+        );
+      }
+
+      uploadedPaths.push(filePath);
+
+      const {
+        data: publicData,
+        error: publicUrlError,
+      } =
+        await supabase.storage
+          .from(ID_BUCKET)
+          .getPublicUrl(filePath);
+
+      if (publicUrlError) {
+        throw new Error(
+          `${field.label} could not be processed: ${publicUrlError.message}`,
+        );
+      }
+
+      const publicUrl =
+        publicData?.publicUrl || null;
+
+      if (!publicUrl) {
+        throw new Error(
+          `${field.label} did not receive a valid URL.`,
+        );
+      }
+
+      uploadedImages[field.key] = {
         filePath,
-        file,
-        {
-          cacheControl: "3600",
-          contentType: file.type,
-          upsert: false,
-        },
-      );
+        publicUrl,
+      };
+    }
 
-  if (uploadError) {
-    throw new Error(
-      `ID image upload failed: ${uploadError.message}`,
-    );
+    return uploadedImages;
+  } catch (uploadError) {
+    if (uploadedPaths.length > 0) {
+      const { error: cleanupError } =
+        await supabase.storage
+          .from(ID_BUCKET)
+          .remove(uploadedPaths);
+
+      if (cleanupError) {
+        console.warn(
+          "Unable to clean up incomplete ID uploads:",
+          cleanupError,
+        );
+      }
+    }
+
+    throw uploadError;
   }
-
-  const { data: publicData } =
-    await supabase.storage
-      .from(ID_BUCKET)
-      .getPublicUrl(filePath);
-
-  const publicUrl =
-    publicData?.publicUrl || null;
-
-  if (!publicUrl) {
-    await supabase.storage
-      .from(ID_BUCKET)
-      .remove([filePath])
-      .catch(() => null);
-
-    throw new Error(
-      "The uploaded ID image did not receive a public URL.",
-    );
-  }
-
-  return {
-    filePath,
-    publicUrl,
-  };
 };
 
 /* =============================================================
- * REUSABLE UI
+ * FORM COMPONENTS
  * ============================================================= */
 
 function FieldError({ children }) {
@@ -251,10 +388,9 @@ function FieldError({ children }) {
   }
 
   return (
-    <p
-      className="mt-1.5 flex items-start gap-1.5 text-xs font-semibold text-rose-600 dark:text-rose-300"
-    >
+    <p className="mt-1.5 flex items-start gap-1.5 text-xs font-semibold text-rose-600 dark:text-rose-300">
       <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+
       <span>{children}</span>
     </p>
   );
@@ -310,6 +446,7 @@ function PasswordField({
   onToggle,
   onChange,
   error,
+  disabled,
 }) {
   return (
     <div>
@@ -329,16 +466,19 @@ function PasswordField({
 
         <input
           id={id}
+          name={id}
           type={show ? "text" : "password"}
           value={value}
           onChange={onChange}
           placeholder={placeholder}
           autoComplete={autoComplete}
           required
+          disabled={disabled}
+          aria-invalid={Boolean(error)}
           aria-describedby={
             error ? `${id}-error` : undefined
           }
-          className={`min-h-12 w-full rounded-2xl border bg-slate-50 py-3 pl-12 pr-12 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:bg-white focus:ring-4 focus:ring-purple-500/10 ${
+          className={`min-h-12 w-full rounded-2xl border bg-slate-50 py-3 pl-12 pr-12 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:bg-white focus:ring-4 focus:ring-purple-500/10 disabled:cursor-not-allowed disabled:bg-slate-200 ${
             error
               ? "border-rose-300 focus:border-rose-500"
               : "border-slate-300 focus:border-purple-500"
@@ -348,12 +488,13 @@ function PasswordField({
         <button
           type="button"
           onClick={onToggle}
+          disabled={disabled}
           aria-label={
             show
               ? `Hide ${label}`
               : `Show ${label}`
           }
-          className="absolute right-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-700"
+          className="absolute right-3 top-1/2 flex h-8 w-8 -translate-y-1/2 items-center justify-center rounded-lg text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 disabled:cursor-not-allowed disabled:opacity-50"
         >
           {show ? (
             <EyeOff className="h-5 w-5" />
@@ -369,10 +510,689 @@ function PasswordField({
           className="mt-1.5 flex items-start gap-1.5 text-xs font-semibold text-rose-600 dark:text-rose-300"
         >
           <AlertCircle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+
           <span>{error}</span>
         </p>
       )}
     </div>
+  );
+}
+
+function IdImageUploadField({
+  id,
+  label,
+  description,
+  icon: IconComponent,
+  file,
+  preview,
+  inputRef,
+  error,
+  disabled,
+  onChange,
+  onRemove,
+}) {
+  return (
+    <div>
+      <label
+        htmlFor={id}
+        className="mb-2 flex items-center gap-2 text-sm font-black text-slate-700 dark:text-slate-200"
+      >
+        <IconComponent className="h-4 w-4 text-blue-600 dark:text-blue-300" />
+
+        <span>{label}</span>
+
+        <span className="text-rose-500">*</span>
+      </label>
+
+      <div className="rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 p-4 transition hover:border-blue-400 focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/10">
+        {preview ? (
+          <div className="flex flex-col items-center gap-4 sm:flex-row">
+            <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-2xl border-4 border-white bg-blue-100 shadow-md">
+              <img
+                src={preview}
+                alt={`${label} preview`}
+                className="h-full w-full object-cover"
+              />
+            </div>
+
+            <div className="min-w-0 flex-1 text-center sm:text-left">
+              <p className="truncate text-sm font-black text-slate-800 dark:text-white">
+                {file?.name}
+              </p>
+
+              <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+                Image selected successfully.
+              </p>
+
+              <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+                <label
+                  htmlFor={id}
+                  className="inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-xl border border-blue-200 bg-white px-4 py-2 text-xs font-black text-blue-700 transition hover:bg-blue-50"
+                >
+                  <Upload className="h-4 w-4" />
+
+                  Change image
+                </label>
+
+                <button
+                  type="button"
+                  onClick={onRemove}
+                  disabled={disabled}
+                  className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-rose-200 bg-white px-4 py-2 text-xs font-black text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <X className="h-4 w-4" />
+
+                  Remove
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <label
+            htmlFor={id}
+            className="flex min-h-44 cursor-pointer flex-col items-center justify-center rounded-xl p-5 text-center"
+          >
+            <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-blue-600 shadow-sm">
+              <Camera className="h-7 w-7" />
+            </div>
+
+            <p className="mt-3 text-sm font-black text-slate-700 dark:text-slate-200">
+              Upload {label.toLowerCase()}
+            </p>
+
+            <p className="mt-1 max-w-sm text-xs leading-5 text-slate-500 dark:text-slate-400">
+              {description}
+            </p>
+
+            <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
+              JPG, PNG, or WEBP · Maximum 8 MB
+            </p>
+          </label>
+        )}
+
+        <input
+          ref={inputRef}
+          id={id}
+          type="file"
+          accept="image/jpeg,image/png,image/webp"
+          onChange={onChange}
+          disabled={disabled}
+          className="hidden"
+        />
+      </div>
+
+      <FieldError>{error}</FieldError>
+    </div>
+  );
+}
+
+/* =============================================================
+ * CAMERA CAPTURE MODAL
+ * ============================================================= */
+
+function CameraCaptureModal({
+  onClose,
+  onCapture,
+}) {
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
+
+  const [cameraStatus, setCameraStatus] =
+    useState("starting");
+
+  const [cameraError, setCameraError] =
+    useState("");
+
+  /*
+   * Request access to the front-facing camera.
+   */
+  useEffect(() => {
+    let isActive = true;
+
+    const stopCamera = () => {
+      if (streamRef.current) {
+        streamRef.current
+          .getTracks()
+          .forEach((track) => track.stop());
+      }
+
+      streamRef.current = null;
+    };
+
+    const startCamera = async () => {
+      try {
+        if (
+          typeof navigator === "undefined" ||
+          !navigator.mediaDevices?.getUserMedia
+        ) {
+          throw new Error(
+            "Camera access is not supported by this browser.",
+          );
+        }
+
+        if (!window.isSecureContext) {
+          throw new Error(
+            "Camera access requires HTTPS or localhost.",
+          );
+        }
+
+        const mediaStream =
+          await navigator.mediaDevices.getUserMedia({
+            audio: false,
+            video: {
+              facingMode: {
+                ideal: "user",
+              },
+              width: {
+                ideal: 1920,
+              },
+              height: {
+                ideal: 1080,
+              },
+            },
+          });
+
+        if (!isActive) {
+          mediaStream
+            .getTracks()
+            .forEach((track) => track.stop());
+
+          return;
+        }
+
+        streamRef.current = mediaStream;
+
+        if (!videoRef.current) {
+          throw new Error(
+            "The camera preview could not be displayed.",
+          );
+        }
+
+        videoRef.current.srcObject =
+          mediaStream;
+
+        await videoRef.current.play();
+
+        if (isActive) {
+          setCameraStatus("ready");
+        }
+      } catch (cameraException) {
+        if (!isActive) {
+          return;
+        }
+
+        if (streamRef.current) {
+          streamRef.current
+            .getTracks()
+            .forEach((track) => track.stop());
+
+          streamRef.current = null;
+        }
+
+        let errorMessage =
+          "Unable to open the camera. Please check your device and browser permissions.";
+
+        if (
+          cameraException.name === "NotAllowedError"
+        ) {
+          errorMessage =
+            "Camera permission was denied. Allow camera access in your browser settings and try again.";
+        }
+
+        if (
+          cameraException.name === "NotFoundError"
+        ) {
+          errorMessage =
+            "No available camera was found on this device.";
+        }
+
+        if (
+          cameraException.name === "NotReadableError"
+        ) {
+          errorMessage =
+            "The camera may already be in use by another application.";
+        }
+
+        if (
+          cameraException.name === "SecurityError"
+        ) {
+          errorMessage =
+            "Camera access was blocked. Make sure the website is running on HTTPS or localhost.";
+        }
+
+        setCameraError(errorMessage);
+        setCameraStatus("error");
+      }
+    };
+
+    startCamera();
+
+    return () => {
+      isActive = false;
+      stopCamera();
+
+      if (videoRef.current) {
+        videoRef.current.srcObject = null;
+      }
+    };
+  }, []);
+
+  /*
+   * Prevent background scrolling while the camera is open.
+   */
+  useEffect(() => {
+    const previousOverflow =
+      document.body.style.overflow;
+
+    document.body.style.overflow = "hidden";
+
+    return () => {
+      document.body.style.overflow =
+        previousOverflow;
+    };
+  }, []);
+
+  /*
+   * Allow Escape to close the camera.
+   */
+  useEffect(() => {
+    const handleEscape = (event) => {
+      if (event.key === "Escape") {
+        onClose();
+      }
+    };
+
+    window.addEventListener(
+      "keydown",
+      handleEscape,
+    );
+
+    return () => {
+      window.removeEventListener(
+        "keydown",
+        handleEscape,
+      );
+    };
+  }, [onClose]);
+
+  const capturePhoto = async () => {
+    const video = videoRef.current;
+
+    if (
+      !video ||
+      !video.videoWidth ||
+      !video.videoHeight
+    ) {
+      setCameraError(
+        "The camera is not ready yet. Please wait a moment and try again.",
+      );
+
+      return;
+    }
+
+    setCameraStatus("capturing");
+    setCameraError("");
+
+    try {
+      const sourceWidth = video.videoWidth;
+      const sourceHeight = video.videoHeight;
+
+      /*
+       * Limit the captured dimensions so the resulting
+       * file does not become unnecessarily large.
+       */
+      const scale = Math.min(
+        1,
+        MAX_CAPTURE_DIMENSION /
+          Math.max(sourceWidth, sourceHeight),
+      );
+
+      const canvas =
+        document.createElement("canvas");
+
+      canvas.width = Math.round(
+        sourceWidth * scale,
+      );
+
+      canvas.height = Math.round(
+        sourceHeight * scale,
+      );
+
+      const context =
+        canvas.getContext("2d");
+
+      if (!context) {
+        throw new Error(
+          "Unable to process the captured photo.",
+        );
+      }
+
+      /*
+       * Save the original camera orientation so text
+       * on the ID is not reversed.
+       */
+      context.drawImage(
+        video,
+        0,
+        0,
+        canvas.width,
+        canvas.height,
+      );
+
+      const blob = await new Promise(
+        (resolve) => {
+          canvas.toBlob(
+            resolve,
+            "image/jpeg",
+            0.9,
+          );
+        },
+      );
+
+      if (!blob) {
+        throw new Error(
+          "The photo could not be captured. Please try again.",
+        );
+      }
+
+      const capturedFile = new File(
+        [blob],
+        `person-holding-id-${Date.now()}.jpg`,
+        {
+          type: "image/jpeg",
+          lastModified: Date.now(),
+        },
+      );
+
+      onCapture(capturedFile);
+    } catch (captureException) {
+      setCameraError(
+        captureException?.message ||
+          "The photo could not be captured. Please try again.",
+      );
+
+      setCameraStatus("ready");
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-slate-950/85 p-4 backdrop-blur-sm">
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="camera-capture-title"
+        className="w-full max-w-2xl overflow-hidden rounded-[1.75rem] border border-white/15 bg-white shadow-2xl"
+      >
+        {/* Header */}
+        <div className="flex items-center justify-between border-b border-slate-200 px-5 py-4">
+          <div className="flex items-center gap-3">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-50 text-blue-700">
+              <Camera className="h-5 w-5" />
+            </div>
+
+            <div>
+              <h3
+                id="camera-capture-title"
+                className="text-base font-black text-slate-900"
+              >
+                Capture Person Holding ID
+              </h3>
+
+              <p className="text-xs text-slate-500">
+                Your face and ID must be clearly visible.
+              </p>
+            </div>
+          </div>
+
+          <button
+            type="button"
+            onClick={onClose}
+            aria-label="Close camera"
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-slate-500 transition hover:bg-slate-100 hover:text-slate-800"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        {/* Camera preview */}
+        <div className="p-5">
+          <div className="relative aspect-video overflow-hidden rounded-2xl bg-slate-950">
+            <video
+              ref={videoRef}
+              autoPlay
+              muted
+              playsInline
+              aria-label="Live camera preview"
+              className="h-full w-full scale-x-[-1] object-cover"
+            />
+
+            {/* Loading state */}
+            {cameraStatus === "starting" && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/85 p-6 text-center text-white">
+                <Loader2 className="h-9 w-9 animate-spin" />
+
+                <p className="mt-3 text-sm font-black">
+                  Starting camera...
+                </p>
+
+                <p className="mt-1 max-w-sm text-xs leading-5 text-slate-300">
+                  Allow camera access when your browser
+                  asks for permission.
+                </p>
+              </div>
+            )}
+
+            {/* Error state */}
+            {cameraError && (
+              <div className="absolute inset-0 flex flex-col items-center justify-center bg-slate-950/95 p-6 text-center">
+                <AlertCircle className="h-10 w-10 text-rose-400" />
+
+                <p className="mt-3 max-w-md text-sm font-bold leading-6 text-white">
+                  {cameraError}
+                </p>
+
+                <p className="mt-2 max-w-md text-xs leading-5 text-slate-300">
+                  Camera access works on HTTPS websites
+                  and localhost. You may also need to
+                  reload the page after changing browser
+                  permissions.
+                </p>
+              </div>
+            )}
+
+            {/* Capture guide */}
+            {!cameraError &&
+              cameraStatus === "ready" && (
+                <div className="pointer-events-none absolute inset-5 rounded-3xl border-2 border-white/70 shadow-[0_0_0_999px_rgba(15,23,42,0.18)]">
+                  <span className="absolute -top-7 left-0 rounded bg-slate-950/60 px-2 py-1 text-xs font-bold text-white">
+                    Keep your face and ID inside the frame
+                  </span>
+                </div>
+              )}
+
+            {/* Processing state */}
+            {cameraStatus === "capturing" && (
+              <div className="absolute inset-0 flex items-center justify-center bg-slate-950/50">
+                <div className="flex items-center gap-3 rounded-2xl bg-slate-950/80 px-5 py-3 text-sm font-bold text-white">
+                  <Loader2 className="h-5 w-5 animate-spin" />
+
+                  Processing photo...
+                </div>
+              </div>
+            )}
+          </div>
+
+          <div className="mt-4 rounded-xl border border-blue-100 bg-blue-50 p-3">
+            <p className="text-xs leading-5 text-blue-800">
+              Hold your government-issued ID beside your
+              face. Make sure your full face, ID number,
+              ID picture, and other important details are
+              clear and not covered.
+            </p>
+          </div>
+        </div>
+
+        {/* Actions */}
+        <div className="flex flex-col-reverse gap-3 border-t border-slate-200 px-5 py-4 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            onClick={onClose}
+            className="min-h-11 rounded-xl border border-slate-300 bg-white px-5 py-2.5 text-sm font-black text-slate-700 transition hover:bg-slate-50"
+          >
+            Cancel
+          </button>
+
+          <button
+            type="button"
+            onClick={capturePhoto}
+            disabled={
+              cameraStatus !== "ready" ||
+              Boolean(cameraError)
+            }
+            className="inline-flex min-h-11 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 to-purple-600 px-6 py-2.5 text-sm font-black text-white shadow-lg shadow-blue-600/20 transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            {cameraStatus === "capturing" ? (
+              <>
+                <Loader2 className="h-4 w-4 animate-spin" />
+
+                Processing...
+              </>
+            ) : (
+              <>
+                <Camera className="h-4 w-4" />
+
+                Capture Photo
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* =============================================================
+ * CAMERA-ONLY ID HOLDER FIELD
+ * ============================================================= */
+
+function IdHolderCameraField({
+  file,
+  preview,
+  error,
+  disabled,
+  onCapture,
+  onRemove,
+}) {
+  const [cameraOpen, setCameraOpen] =
+    useState(false);
+
+  const openCamera = () => {
+    if (!disabled) {
+      setCameraOpen(true);
+    }
+  };
+
+  return (
+    <>
+      <div>
+        <div className="mb-2 flex items-center gap-2 text-sm font-black text-slate-700 dark:text-slate-200">
+          <UserRound className="h-4 w-4 text-blue-600 dark:text-blue-300" />
+
+          <span>Person Holding ID Photo</span>
+
+          <span className="text-rose-500">*</span>
+        </div>
+
+        {preview ? (
+          <div className="rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 p-4">
+            <div className="overflow-hidden rounded-xl border border-slate-200 bg-slate-950">
+              <img
+                src={preview}
+                alt="Person holding ID preview"
+                className="h-80 w-full object-contain"
+              />
+            </div>
+
+            <div className="mt-4 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+              <div className="min-w-0">
+                <p className="truncate text-sm font-black text-slate-800">
+                  {file?.name}
+                </p>
+
+                <p className="mt-1 flex items-center gap-1.5 text-xs font-semibold text-emerald-600">
+                  <CheckCircle2 className="h-3.5 w-3.5" />
+
+                  Photo captured successfully
+                </p>
+              </div>
+
+              <div className="flex flex-col gap-2 sm:flex-row">
+                <button
+                  type="button"
+                  onClick={openCamera}
+                  disabled={disabled}
+                  className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-blue-200 bg-white px-4 py-2 text-xs font-black text-blue-700 transition hover:bg-blue-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <Camera className="h-4 w-4" />
+
+                  Retake Photo
+                </button>
+
+                <button
+                  type="button"
+                  onClick={onRemove}
+                  disabled={disabled}
+                  className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-rose-200 bg-white px-4 py-2 text-xs font-black text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  <X className="h-4 w-4" />
+
+                  Remove
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (
+          <button
+            type="button"
+            onClick={openCamera}
+            disabled={disabled}
+            className="flex min-h-64 w-full flex-col items-center justify-center rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 p-6 text-center transition hover:border-blue-400 hover:bg-blue-50/40 focus:outline-none focus:ring-4 focus:ring-blue-500/10 disabled:cursor-not-allowed disabled:opacity-50"
+          >
+            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-white text-blue-600 shadow-md">
+              <Camera className="h-8 w-8" />
+            </div>
+
+            <p className="mt-4 text-sm font-black text-slate-800">
+              Capture Photo with Camera
+            </p>
+
+            <p className="mt-2 max-w-md text-xs leading-5 text-slate-500">
+              Open your device camera and take a clear
+              photo of yourself while holding your valid
+              government-issued ID.
+            </p>
+
+            <span className="mt-4 inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-blue-600 px-5 py-2 text-xs font-black text-white shadow-lg shadow-blue-600/20">
+              <Camera className="h-4 w-4" />
+
+              Open Camera
+            </span>
+          </button>
+        )}
+
+        <FieldError>{error}</FieldError>
+      </div>
+
+      {cameraOpen && (
+        <CameraCaptureModal
+          onClose={() => setCameraOpen(false)}
+          onCapture={(capturedFile) => {
+            onCapture(capturedFile);
+            setCameraOpen(false);
+          }}
+        />
+      )}
+    </>
   );
 }
 
@@ -384,45 +1204,58 @@ export default function CreateUser() {
   const navigate = useNavigate();
 
   const formRef = useRef(null);
-  const fileInputRef = useRef(null);
   const successTimerRef = useRef(null);
 
-  const [formData, setFormData] =
-    useState({
-      ...INITIAL_FORM,
-    });
+  const fileInputRefs = useRef({
+    front: null,
+    back: null,
+    holder: null,
+  });
 
-  const [idFile, setIdFile] = useState(null);
-  const [idPreview, setIdPreview] =
-    useState(null);
+  const previewUrlsRef = useRef({
+    front: null,
+    back: null,
+    holder: null,
+  });
+
+  const [formData, setFormData] = useState({
+    ...INITIAL_FORM,
+  });
+
+  const [idFiles, setIdFiles] = useState({
+    ...INITIAL_ID_FILES,
+  });
+
+  const [idPreviews, setIdPreviews] = useState({
+    ...INITIAL_ID_PREVIEWS,
+  });
 
   const [showPassword, setShowPassword] =
     useState(false);
 
-  const [showConfirmPassword, setShowConfirmPassword] =
-    useState(false);
+  const [
+    showConfirmPassword,
+    setShowConfirmPassword,
+  ] = useState(false);
 
-  const [loading, setLoading] =
-    useState(false);
-
-  const [error, setError] =
-    useState("");
-
-  const [success, setSuccess] =
-    useState("");
-
-  const [fieldErrors, setFieldErrors] =
-    useState({});
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [fieldErrors, setFieldErrors] = useState({});
 
   /* ===========================================================
-     CLEAN UP TEMPORARY PREVIEW AND TIMER
+     CLEAN UP IMAGE PREVIEWS AND TIMER
   =========================================================== */
 
   useEffect(() => {
     return () => {
-      if (idPreview) {
-        URL.revokeObjectURL(idPreview);
-      }
+      Object.values(
+        previewUrlsRef.current,
+      ).forEach((previewUrl) => {
+        if (previewUrl) {
+          URL.revokeObjectURL(previewUrl);
+        }
+      });
 
       if (successTimerRef.current) {
         window.clearTimeout(
@@ -430,7 +1263,7 @@ export default function CreateUser() {
         );
       }
     };
-  }, [idPreview]);
+  }, []);
 
   /* ===========================================================
      HANDLE FIELD CHANGES
@@ -440,12 +1273,19 @@ export default function CreateUser() {
     const { name, value } = event.target;
 
     setFormData((previous) => {
-      const nextValue =
-        name === "username"
-          ? value
-              .toLowerCase()
-              .replace(/\s+/g, "")
-          : value;
+      let nextValue = value;
+
+      if (name === "username") {
+        nextValue = value
+          .toLowerCase()
+          .replace(/\s+/g, "");
+      }
+
+      if (name === "email") {
+        nextValue = value
+          .trim()
+          .toLowerCase();
+      }
 
       return {
         ...previous,
@@ -463,19 +1303,19 @@ export default function CreateUser() {
   };
 
   /* ===========================================================
-     HANDLE ID FILE
+     SET AND VALIDATE A SELECTED ID IMAGE
   =========================================================== */
 
-  const handleFileChange = (event) => {
-    const file = event.target.files?.[0];
+  const setSelectedIdImage = (
+    file,
+    imageType,
+  ) => {
+    const field = getFieldByKey(imageType);
+    const errorKey = `${imageType}IdFile`;
+    const fieldLabel =
+      field?.label || "Identity image";
 
-    /*
-     * Reset the input so selecting the same file again
-     * still triggers a change event.
-     */
-    event.target.value = "";
-
-    if (!file) {
+    if (!(file instanceof Blob)) {
       return;
     }
 
@@ -484,7 +1324,7 @@ export default function CreateUser() {
     ) {
       setFieldErrors((previous) => ({
         ...previous,
-        idFile:
+        [errorKey]:
           "Please select a JPG, PNG, or WEBP image.",
       }));
 
@@ -495,48 +1335,148 @@ export default function CreateUser() {
     if (file.size > MAX_ID_FILE_BYTES) {
       setFieldErrors((previous) => ({
         ...previous,
-        idFile:
-          "The ID image must be smaller than 8 MB.",
+        [errorKey]:
+          `${fieldLabel} must be smaller than 8 MB.`,
       }));
 
       setError("");
       return;
     }
 
-    if (idPreview) {
-      URL.revokeObjectURL(idPreview);
+    const oldPreview =
+      previewUrlsRef.current[imageType];
+
+    if (oldPreview) {
+      URL.revokeObjectURL(oldPreview);
     }
 
-    setIdFile(file);
-    setIdPreview(
-      URL.createObjectURL(file),
-    );
+    const previewUrl =
+      URL.createObjectURL(file);
+
+    previewUrlsRef.current[imageType] =
+      previewUrl;
+
+    setIdFiles((previous) => ({
+      ...previous,
+      [imageType]: file,
+    }));
+
+    setIdPreviews((previous) => ({
+      ...previous,
+      [imageType]: previewUrl,
+    }));
 
     setFieldErrors((previous) => ({
       ...previous,
-      idFile: "",
+      [errorKey]: "",
     }));
 
     setError("");
     setSuccess("");
   };
 
-  const clearIdFile = () => {
-    if (idPreview) {
-      URL.revokeObjectURL(idPreview);
+  /* ===========================================================
+     HANDLE FRONT AND BACK ID FILE INPUTS
+  =========================================================== */
+
+  const handleIdFileChange = (
+    event,
+    imageType,
+  ) => {
+    const file = event.target.files?.[0];
+
+    /*
+     * Reset the input so selecting the same file
+     * again still triggers a change event.
+     */
+    event.target.value = "";
+
+    if (!file) {
+      return;
     }
 
-    setIdFile(null);
-    setIdPreview(null);
+    setSelectedIdImage(file, imageType);
+  };
 
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
+  /* ===========================================================
+     HANDLE CAMERA CAPTURE
+  =========================================================== */
+
+  const handleHolderCapture = (
+    capturedFile,
+  ) => {
+    setSelectedIdImage(
+      capturedFile,
+      "holder",
+    );
+  };
+
+  /* ===========================================================
+     REMOVE IMAGE
+  =========================================================== */
+
+  const clearIdFile = (imageType) => {
+    const previewUrl =
+      previewUrlsRef.current[imageType];
+
+    if (previewUrl) {
+      URL.revokeObjectURL(previewUrl);
     }
+
+    previewUrlsRef.current[imageType] = null;
+
+    const inputRef =
+      fileInputRefs.current[imageType];
+
+    if (inputRef) {
+      inputRef.value = "";
+    }
+
+    setIdFiles((previous) => ({
+      ...previous,
+      [imageType]: null,
+    }));
+
+    setIdPreviews((previous) => ({
+      ...previous,
+      [imageType]: null,
+    }));
 
     setFieldErrors((previous) => ({
       ...previous,
-      idFile: "",
+      [`${imageType}IdFile`]: "",
     }));
+  };
+
+  const clearAllIdFiles = () => {
+    Object.keys(INITIAL_ID_FILES).forEach(
+      (imageType) => {
+        const previewUrl =
+          previewUrlsRef.current[imageType];
+
+        if (previewUrl) {
+          URL.revokeObjectURL(previewUrl);
+        }
+
+        previewUrlsRef.current[imageType] =
+          null;
+
+        const inputRef =
+          fileInputRefs.current[imageType];
+
+        if (inputRef) {
+          inputRef.value = "";
+        }
+      },
+    );
+
+    setIdFiles({
+      ...INITIAL_ID_FILES,
+    });
+
+    setIdPreviews({
+      ...INITIAL_ID_PREVIEWS,
+    });
   };
 
   /* ===========================================================
@@ -548,6 +1488,9 @@ export default function CreateUser() {
 
     const username =
       normalizeUsername(formData.username);
+
+    const email =
+      clean(formData.email).toLowerCase();
 
     const firstName =
       clean(formData.firstName);
@@ -562,13 +1505,12 @@ export default function CreateUser() {
       getPhoneDigits(mobileNumber);
 
     const address = clean(formData.address);
+    const idType = clean(formData.idType);
     const idNumber = clean(formData.idNumber);
     const age = Number(formData.age);
     const birthdate = formData.birthdate;
 
-    if (
-      !USERNAME_PATTERN.test(username)
-    ) {
+    if (!USERNAME_PATTERN.test(username)) {
       errors.username =
         "Use 3–50 letters, numbers, dots, underscores, or hyphens.";
     }
@@ -576,6 +1518,17 @@ export default function CreateUser() {
     if (username.length < 3) {
       errors.username =
         "Username must be at least 3 characters.";
+    }
+
+    if (!email) {
+      errors.email =
+        "Email address is required.";
+    } else if (!EMAIL_PATTERN.test(email)) {
+      errors.email =
+        "Enter a valid email address.";
+    } else if (email.length > 254) {
+      errors.email =
+        "Email address is too long.";
     }
 
     if (!firstName) {
@@ -621,19 +1574,28 @@ export default function CreateUser() {
         new Date(`${birthdate}T00:00:00`);
 
       if (
-        Number.isNaN(
-          selectedDate.getTime(),
-        )
+        Number.isNaN(selectedDate.getTime())
       ) {
         errors.birthdate =
           "Enter a valid birthdate.";
       } else if (
-        selectedDate.getTime() >
-        Date.now()
+        selectedDate.getTime() > Date.now()
       ) {
         errors.birthdate =
           "Birthdate cannot be in the future.";
       }
+    }
+
+    if (!idType) {
+      errors.idType =
+        "Please select the type of ID.";
+    } else if (
+      !ID_TYPE_OPTIONS.some(
+        (option) => option.value === idType,
+      )
+    ) {
+      errors.idType =
+        "Please select a valid ID type.";
     }
 
     if (!idNumber) {
@@ -641,9 +1603,19 @@ export default function CreateUser() {
         "Valid ID number is required.";
     }
 
-    if (!idFile) {
-      errors.idFile =
-        "Please upload a photo of your valid ID.";
+    if (!idFiles.front) {
+      errors.frontIdFile =
+        "Please upload the front side of your valid ID.";
+    }
+
+    if (!idFiles.back) {
+      errors.backIdFile =
+        "Please upload the back side of your valid ID.";
+    }
+
+    if (!idFiles.holder) {
+      errors.holderIdFile =
+        "Please capture a photo of yourself holding your valid ID.";
     }
 
     if (!mobileNumber) {
@@ -671,9 +1643,7 @@ export default function CreateUser() {
      REGISTER
   =========================================================== */
 
-  const handleRegister = async (
-    event,
-  ) => {
+  const handleRegister = async (event) => {
     event.preventDefault();
 
     if (loading) {
@@ -693,21 +1663,20 @@ export default function CreateUser() {
     const username =
       normalizeUsername(formData.username);
 
-    const generatedEmail =
-      `${username}@local.user`;
+    const email =
+      clean(formData.email).toLowerCase();
 
-    const registrationId = createUuid();
+    const idType =
+      clean(formData.idType);
 
-    let uploadedPath = null;
+    const registrationId =
+      createUuid();
+
+    let uploadedPaths = [];
 
     try {
       /*
-       * Check the username before uploading a file.
-       *
-       * Some Supabase projects do not allow public reads
-       * from pending_registrations. If the lookup is
-       * blocked, the insert below remains the final
-       * source of truth.
+       * Check username before uploading images.
        */
       const {
         data: existingUsername,
@@ -731,13 +1700,16 @@ export default function CreateUser() {
         );
       }
 
+      /*
+       * Check email before uploading images.
+       */
       const {
         data: existingEmail,
         error: emailLookupError,
       } = await supabase
         .from("pending_registrations")
         .select("id, email")
-        .eq("email", generatedEmail)
+        .eq("email", email)
         .maybeSingle();
 
       if (emailLookupError) {
@@ -749,32 +1721,37 @@ export default function CreateUser() {
 
       if (existingEmail) {
         throw new Error(
-          "An account already exists for this username.",
+          "An account with this email already exists.",
         );
       }
 
-      const uploaded =
-        await uploadIdImage({
-          file: idFile,
+      /*
+       * Upload:
+       * 1. Front side of ID
+       * 2. Back side of ID
+       * 3. Camera-captured person holding ID
+       */
+      const uploadedImages =
+        await uploadIdImages({
+          files: idFiles,
           registrationId,
         });
 
-      if (uploaded) {
-        uploadedPath = uploaded.filePath;
-      }
+      uploadedPaths =
+        Object.values(uploadedImages).map(
+          (image) => image.filePath,
+        );
 
       const hashedPassword =
-        await hashPassword(
-          formData.password,
-        );
+        await hashPassword(formData.password);
 
       const registration = {
         id: registrationId,
         user_id: registrationId,
 
         username,
+        email,
         password: hashedPassword,
-        email: generatedEmail,
 
         first_name:
           clean(formData.firstName),
@@ -793,13 +1770,29 @@ export default function CreateUser() {
         mobile_number:
           clean(formData.mobileNumber),
 
-        birthdate: formData.birthdate,
+        birthdate:
+          formData.birthdate,
+
+        id_type: idType,
 
         id_number:
           clean(formData.idNumber),
 
+        /*
+         * Keep id_image_url for compatibility with
+         * the existing administrator approval page.
+         */
         id_image_url:
-          uploaded?.publicUrl || null,
+          uploadedImages.front.publicUrl,
+
+        id_front_image_url:
+          uploadedImages.front.publicUrl,
+
+        id_back_image_url:
+          uploadedImages.back.publicUrl,
+
+        id_holder_image_url:
+          uploadedImages.holder.publicUrl,
 
         status: "pending",
         role: "user",
@@ -812,11 +1805,19 @@ export default function CreateUser() {
 
       if (dbError) {
         const message =
-          dbError.message || "";
+          String(dbError.message || "");
+
+        const errorDetails =
+          String(dbError.details || "");
+
+        const lowerMessage =
+          `${message} ${errorDetails}`.toLowerCase();
 
         if (
-          message.includes("username") ||
-          dbError.code === "23505"
+          lowerMessage.includes("username") ||
+          lowerMessage.includes(
+            "pending_registrations_username",
+          )
         ) {
           throw new Error(
             "That username is already taken. Please choose another username.",
@@ -824,30 +1825,43 @@ export default function CreateUser() {
         }
 
         if (
-          message.includes("email") ||
-          dbError.code === "23505"
+          lowerMessage.includes("email") ||
+          lowerMessage.includes(
+            "pending_registrations_email",
+          )
         ) {
           throw new Error(
-            "An account already exists for this username.",
+            "An account with this email already exists.",
+          );
+        }
+
+        if (dbError.code === "23505") {
+          throw new Error(
+            "That username or email is already registered.",
           );
         }
 
         if (
-          message.toLowerCase().includes(
+          lowerMessage.includes(
             "row-level security",
           ) ||
           dbError.code === "42501"
         ) {
           throw new Error(
-            "Registration could not be submitted because the database registration policy is not enabled for this account. Please contact the administrator.",
+            "Registration could not be submitted because the database registration policy is not enabled. Please contact the administrator.",
           );
         }
 
         throw new Error(
-          message ||
-            "Unable to create your account.",
+          message || "Unable to create your account.",
         );
       }
+
+      /*
+       * Database insert succeeded, so the uploaded
+       * images are no longer orphaned.
+       */
+      uploadedPaths = [];
 
       setSuccess(
         "Your account request was submitted successfully. Wait for administrator approval before signing in.",
@@ -857,13 +1871,8 @@ export default function CreateUser() {
         ...INITIAL_FORM,
       });
 
-      setIdFile(null);
-      setIdPreview(null);
+      clearAllIdFiles();
       setFieldErrors({});
-
-      if (fileInputRef.current) {
-        fileInputRef.current.value = "";
-      }
 
       if (formRef.current) {
         formRef.current.reset();
@@ -892,15 +1901,21 @@ export default function CreateUser() {
       );
 
       /*
-       * If a new image was uploaded but the
-       * database insert failed, remove the
-       * orphaned image.
+       * Remove uploaded images when registration
+       * fails after the upload was completed.
        */
-      if (uploadedPath) {
-        await supabase.storage
-          .from(ID_BUCKET)
-          .remove([uploadedPath])
-          .catch(() => null);
+      if (uploadedPaths.length > 0) {
+        const { error: cleanupError } =
+          await supabase.storage
+            .from(ID_BUCKET)
+            .remove(uploadedPaths);
+
+        if (cleanupError) {
+          console.warn(
+            "Unable to remove uploaded ID images:",
+            cleanupError,
+          );
+        }
       }
 
       setError(
@@ -913,16 +1928,8 @@ export default function CreateUser() {
   };
 
   /* ===========================================================
-     GENERATED VALUES
+     PASSWORD STATUS
   =========================================================== */
-
-  const normalizedUsername =
-    normalizeUsername(formData.username);
-
-  const generatedEmail =
-    normalizedUsername
-      ? `${normalizedUsername}@local.user`
-      : "username@local.user";
 
   const passwordMatches =
     Boolean(formData.confirmPassword) &&
@@ -937,7 +1944,9 @@ export default function CreateUser() {
   =========================================================== */
 
   return (
-    <main className="relative min-h-screen overflow-hidden bg-gradient-to-br from-blue-700 via-blue-6 to-purple-700 px-4 py-6 sm:px-6 lg:px-8">
+    <main
+      className={`${GRADIENT_CLASS} relative min-h-screen overflow-hidden px-4 py-6 sm:px-6 lg:px-8`}
+    >
       {/* Decorative background */}
       <div
         aria-hidden="true"
@@ -988,7 +1997,7 @@ export default function CreateUser() {
                   <img
                     src={Icon}
                     alt="SafeResponse Logo"
-                    className="h-8 w-8 object-contain"
+                    className="h-12 w-12 object-contain"
                   />
                 </div>
 
@@ -998,16 +2007,14 @@ export default function CreateUser() {
                   </p>
 
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-100">
-                    Naic Community Portal
+                    OMDRRMO - NAIC, CAVITE
                   </p>
                 </div>
               </div>
 
               <div className="mt-12 lg:mt-20">
-                <span className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-bold text-blue-50">
-                  <CheckCircle2 className="h-4 w-4" />
-
-                  Resident registration
+                <span className="inline-flex items-center gap-2 rounded-full border border-blue-200/25 bg-blue-300/10 px-3 py-1.5 text-xs font-bold text-blue-50">
+                  Resident Registration
                 </span>
 
                 <h1 className="mt-5 text-3xl font-black leading-tight tracking-tight sm:text-4xl">
@@ -1016,15 +2023,17 @@ export default function CreateUser() {
                 </h1>
 
                 <p className="mt-4 max-w-md text-sm leading-6 text-blue-50/80 sm:text-base">
-                  Create your resident account to request emergency assistance, submit reports, and track your services through SafeResponse.
+                  Create your account to request emergency
+                  assistance, submit reports, and track your
+                  services through SafeResponse.
                 </p>
               </div>
 
               <div className="mt-10 space-y-3 lg:mt-auto">
                 {[
                   "Submit emergency and hazard reports",
-                  "Request appointments and check-ups",
-                  "Monitor your submitted requests",
+                  "Request community safety services",
+                  "Track requests and notifications",
                 ].map((item) => (
                   <div
                     key={item}
@@ -1037,10 +2046,12 @@ export default function CreateUser() {
                 ))}
               </div>
 
-              <div className="mt-8 flex items-center gap-2 border-t border-white/15 pt-5 text-xs text-blue-100/75">
-                <ShieldCheck className="h-4 w-4" />
+              <div className="mt-8 flex items-start gap-2 border-t border-white/15 pt-5 text-xs leading-5 text-blue-100/75">
+                <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
 
-                Your account will be reviewed by an administrator before access is activated.
+                Your account and identity documents will
+                be reviewed by an administrator before
+                access is activated.
               </div>
             </div>
           </section>
@@ -1051,18 +2062,19 @@ export default function CreateUser() {
 
           <section className="max-h-[calc(100vh-7rem)] overflow-y-auto p-6 sm:p-10 lg:p-12">
             <div className="mx-auto max-w-2xl">
-              {/* Form heading */}
+              {/* Heading */}
               <div className="mb-8">
                 <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-purple-600 text-white shadow-lg shadow-blue-600/20">
                   <UserPlus className="h-6 w-6" />
                 </div>
 
                 <h2 className="text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">
-                  Create resident account
+                  Create User Account
                 </h2>
 
                 <p className="mt-2 text-sm leading-6 text-slate-500">
-                  Fill in your details below. Fields marked with an asterisk are required.
+                  Fill in your details below. Fields marked
+                  with an asterisk are required.
                 </p>
               </div>
 
@@ -1124,29 +2136,44 @@ export default function CreateUser() {
                       spellCheck={false}
                       maxLength={50}
                       disabled={loading}
+                      aria-invalid={Boolean(
+                        fieldErrors.username,
+                      )}
                       className="min-h-12 w-full rounded-2xl border border-slate-300 bg-slate-50 py-3 pl-12 pr-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-purple-500 focus:bg-white focus:ring-4 focus:ring-purple-500/10 disabled:cursor-not-allowed disabled:bg-slate-200"
                     />
                   </div>
                 </FormField>
 
-                {/* Generated login email */}
-                <div className="flex items-start gap-3 rounded-2xl border border-blue-100 bg-blue-50 p-4">
-                  <Mail className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" />
+                {/* Email */}
+                <FormField
+                  id="email"
+                  label="Email Address"
+                  icon={Mail}
+                  required
+                  hint="Use an active email address for account verification and communication."
+                  error={fieldErrors.email}
+                >
+                  <div className="relative">
+                    <Mail className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
 
-                  <div className="min-w-0">
-                    <p className="text-sm font-black text-blue-900">
-                      Reserved login email
-                    </p>
-
-                    <p className="mt-1 break-all text-xs font-semibold text-blue-700">
-                      {generatedEmail}
-                    </p>
-
-                    <p className="mt-1 text-[11px] leading-5 text-blue-600">
-                      This account uses your username for local login. An administrator can update the email record if needed.
-                    </p>
+                    <input
+                      id="email"
+                      name="email"
+                      type="email"
+                      value={formData.email}
+                      onChange={handleChange}
+                      placeholder="Enter your email address"
+                      autoComplete="email"
+                      inputMode="email"
+                      maxLength={254}
+                      disabled={loading}
+                      aria-invalid={Boolean(
+                        fieldErrors.email,
+                      )}
+                      className="min-h-12 w-full rounded-2xl border border-slate-300 bg-slate-50 py-3 pl-12 pr-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-purple-500 focus:bg-white focus:ring-4 focus:ring-purple-500/10 disabled:cursor-not-allowed disabled:bg-slate-200"
+                    />
                   </div>
-                </div>
+                </FormField>
 
                 {/* Names */}
                 <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
@@ -1219,16 +2246,21 @@ export default function CreateUser() {
                     autoComplete="new-password"
                     show={showPassword}
                     onToggle={() =>
-                      setShowPassword((visible) => !visible)
+                      setShowPassword(
+                        (visible) => !visible,
+                      )
                     }
                     onChange={handleChange}
                     error={fieldErrors.password}
+                    disabled={loading}
                   />
 
                   <PasswordField
                     id="confirmPassword"
                     label="Confirm Password"
-                    value={formData.confirmPassword}
+                    value={
+                      formData.confirmPassword
+                    }
                     placeholder="Repeat your password"
                     autoComplete="new-password"
                     show={showConfirmPassword}
@@ -1238,7 +2270,10 @@ export default function CreateUser() {
                       )
                     }
                     onChange={handleChange}
-                    error={fieldErrors.confirmPassword}
+                    error={
+                      fieldErrors.confirmPassword
+                    }
+                    disabled={loading}
                   />
                 </div>
 
@@ -1328,126 +2363,177 @@ export default function CreateUser() {
                   </FormField>
                 </div>
 
-                {/* ID number */}
-                <FormField
-                  id="idNumber"
-                  label="Valid ID Number"
-                  icon={IdCard}
-                  required
-                  hint="Enter the ID number exactly as shown on your government-issued ID."
-                  error={fieldErrors.idNumber}
-                >
-                  <div className="relative">
-                    <IdCard className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
-
-                    <input
-                      id="idNumber"
-                      name="idNumber"
-                      type="text"
-                      value={formData.idNumber}
-                      onChange={handleChange}
-                      placeholder="e.g. Passport or Driver's License No."
-                      autoComplete="off"
-                      maxLength={100}
-                      disabled={loading}
-                      className="min-h-12 w-full rounded-2xl border border-slate-300 bg-slate-50 py-3 pl-12 pr-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-purple-500 focus:bg-white focus:ring-4 focus:ring-purple-500/10 disabled:cursor-not-allowed disabled:bg-slate-200"
-                    />
-                  </div>
-                </FormField>
-
-                {/* ID picture */}
-                <div>
-                  <label
-                    htmlFor="id-picture-input"
-                    className="mb-2 flex items-center gap-2 text-sm font-black text-slate-700 dark:text-slate-200"
+                {/* ID type and ID number */}
+                <div className="grid grid-cols-1 gap-5 lg:grid-cols-2">
+                  <FormField
+                    id="idType"
+                    label="Type of ID"
+                    icon={IdCard}
+                    required
+                    error={fieldErrors.idType}
                   >
+                    <div className="relative">
+                      <IdCard className="pointer-events-none absolute left-4 top-1/2 z-10 h-5 w-5 -translate-y-1/2 text-slate-400" />
+
+                      <select
+                        id="idType"
+                        name="idType"
+                        value={formData.idType}
+                        onChange={handleChange}
+                        disabled={loading}
+                        required
+                        aria-invalid={Boolean(
+                          fieldErrors.idType,
+                        )}
+                        className={`min-h-12 w-full appearance-none rounded-2xl border bg-slate-50 py-3 pl-12 pr-12 text-sm text-slate-900 outline-none transition focus:bg-white focus:ring-4 focus:ring-purple-500/10 disabled:cursor-not-allowed disabled:bg-slate-200 ${
+                          fieldErrors.idType
+                            ? "border-rose-300 focus:border-rose-500"
+                            : "border-slate-300 focus:border-purple-500"
+                        }`}
+                      >
+                        <option value="" disabled>
+                          Select ID type
+                        </option>
+
+                        {ID_TYPE_OPTIONS.map((option) => (
+                          <option
+                            key={option.value}
+                            value={option.value}
+                          >
+                            {option.label}
+                          </option>
+                        ))}
+                      </select>
+
+                      <ChevronDown className="pointer-events-none absolute right-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+                    </div>
+                  </FormField>
+
+                  <FormField
+                    id="idNumber"
+                    label="ID Number"
+                    icon={IdCard}
+                    required
+                    hint="Enter the number exactly as shown on your ID."
+                    error={fieldErrors.idNumber}
+                  >
+                    <div className="relative">
+                      <IdCard className="pointer-events-none absolute left-4 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+
+                      <input
+                        id="idNumber"
+                        name="idNumber"
+                        type="text"
+                        value={formData.idNumber}
+                        onChange={handleChange}
+                        placeholder="Enter your ID number"
+                        autoComplete="off"
+                        maxLength={100}
+                        disabled={loading}
+                        aria-invalid={Boolean(
+                          fieldErrors.idNumber,
+                        )}
+                        className="min-h-12 w-full rounded-2xl border border-slate-300 bg-slate-50 py-3 pl-12 pr-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-purple-500 focus:bg-white focus:ring-4 focus:ring-purple-500/10 disabled:cursor-not-allowed disabled:bg-slate-200"
+                      />
+                    </div>
+                  </FormField>
+                </div>
+
+                {/* Identity verification uploads */}
+                <div>
+                  <div className="mb-2 flex items-center gap-2 text-sm font-black text-slate-700 dark:text-slate-200">
                     <Camera className="h-4 w-4 text-blue-600 dark:text-blue-300" />
 
-                    <span>ID Picture</span>
+                    <span>
+                      Identity Verification Images
+                    </span>
 
-                    <span className="text-rose-500">*</span>
-                  </label>
-
-                  <div className="rounded-2xl border-2 border-dashed border-slate-300 bg-slate-50 p-4 transition hover:border-blue-400 focus-within:border-blue-500 focus-within:ring-4 focus-within:ring-blue-500/10">
-                    {idPreview ? (
-                      <div className="flex flex-col items-center gap-4 sm:flex-row sm:items-center">
-                        <div className="relative h-28 w-28 shrink-0 overflow-hidden rounded-2xl border-4 border-white bg-blue-100 shadow-md">
-                          <img
-                            src={idPreview}
-                            alt="Selected ID preview"
-                            className="h-full w-full object-cover"
-                          />
-                        </div>
-
-                        <div className="min-w-0 flex-1 text-center sm:text-left">
-                          <p className="truncate text-sm font-black text-slate-800 dark:text-white">
-                            {idFile?.name}
-                          </p>
-
-                          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                            Image selected successfully.
-                          </p>
-
-                          <div className="mt-3 flex flex-col gap-2 sm:flex-row">
-                            <label
-                              htmlFor="id-picture-input"
-                              className="inline-flex min-h-10 cursor-pointer items-center justify-center gap-2 rounded-xl border border-blue-200 bg-white px-4 py-2 text-xs font-black text-blue-700 transition hover:bg-blue-50"
-                            >
-                              <Upload className="h-4 w-4" />
-
-                              Change image
-                            </label>
-
-                            <button
-                              type="button"
-                              onClick={clearIdFile}
-                              disabled={loading}
-                              className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl border border-rose-200 bg-white px-4 py-2 text-xs font-black text-rose-700 transition hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50"
-                            >
-                              <X className="h-4 w-4" />
-
-                              Remove
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    ) : (
-                      <label
-                        htmlFor="id-picture-input"
-                        className="flex min-h-44 cursor-pointer flex-col items-center justify-center rounded-xl p-5 text-center"
-                      >
-                        <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-white text-blue-600 shadow-sm">
-                          <Camera className="h-7 w-7" />
-                        </div>
-
-                        <p className="mt-3 text-sm font-black text-slate-700 dark:text-slate-200">
-                          Upload your valid ID
-                        </p>
-
-                        <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
-                          Take a photo or choose a JPG, PNG, or WEBP file.
-                        </p>
-
-                        <p className="mt-1 text-[11px] text-slate-400 dark:text-slate-500">
-                          Maximum file size: 8 MB
-                        </p>
-                      </label>
-                    )}
-
-                    <input
-                      ref={fileInputRef}
-                      id="id-picture-input"
-                      type="file"
-                      accept="image/jpeg,image/png,image/webp"
-                      onChange={handleFileChange}
-                      disabled={loading}
-                      className="hidden"
-                    />
+                    <span className="text-rose-500">
+                      *
+                    </span>
                   </div>
 
-                  <FieldError>
-                    {fieldErrors.idFile}
-                  </FieldError>
+                  <p className="mb-4 text-xs leading-5 text-slate-500 dark:text-slate-400">
+                    Upload clear front and back images of
+                    the selected ID, then use your camera
+                    to capture a photo of yourself holding
+                    the ID.
+                  </p>
+
+                  <div className="grid grid-cols-1 gap-5 md:grid-cols-2">
+                    {/* Front and back ID uploads */}
+                    {FILE_UPLOAD_FIELDS.map(
+                      ({
+                        key,
+                        inputId,
+                        label,
+                        description,
+                        icon,
+                      }) => (
+                        <IdImageUploadField
+                          key={key}
+                          id={inputId}
+                          label={label}
+                          description={description}
+                          icon={icon}
+                          file={idFiles[key]}
+                          preview={idPreviews[key]}
+                          inputRef={(element) => {
+                            fileInputRefs.current[
+                              key
+                            ] = element;
+                          }}
+                          error={
+                            fieldErrors[
+                              `${key}IdFile`
+                            ]
+                          }
+                          disabled={loading}
+                          onChange={(event) =>
+                            handleIdFileChange(
+                              event,
+                              key,
+                            )
+                          }
+                          onRemove={() =>
+                            clearIdFile(key)
+                          }
+                        />
+                      ),
+                    )}
+
+                    {/* Camera-only ID holder upload */}
+                    <div className="md:col-span-2">
+                      <IdHolderCameraField
+                        file={idFiles.holder}
+                        preview={
+                          idPreviews.holder
+                        }
+                        error={
+                          fieldErrors.holderIdFile
+                        }
+                        disabled={loading}
+                        onCapture={
+                          handleHolderCapture
+                        }
+                        onRemove={() =>
+                          clearIdFile("holder")
+                        }
+                      />
+                    </div>
+                  </div>
+
+                  <div className="mt-4 flex items-start gap-3 rounded-2xl border border-amber-100 bg-amber-50 p-4">
+                    <Info className="mt-0.5 h-4 w-4 shrink-0 text-amber-600" />
+
+                    <p className="text-xs leading-5 text-amber-800">
+                      Make sure the selected ID belongs
+                      to you and every image is clear,
+                      complete, and readable. Blurred,
+                      cropped, or covered details may
+                      delay approval.
+                    </p>
+                  </div>
                 </div>
 
                 {/* Mobile number */}
@@ -1470,6 +2556,7 @@ export default function CreateUser() {
                       onChange={handleChange}
                       placeholder="e.g. 09171234567"
                       autoComplete="tel"
+                      inputMode="tel"
                       disabled={loading}
                       className="min-h-12 w-full rounded-2xl border border-slate-300 bg-slate-50 py-3 pl-12 pr-4 text-sm text-slate-900 outline-none transition placeholder:text-slate-400 focus:border-purple-500 focus:bg-white focus:ring-4 focus:ring-purple-500/10 disabled:cursor-not-allowed disabled:bg-slate-200"
                     />
@@ -1507,14 +2594,17 @@ export default function CreateUser() {
                   <Info className="mt-0.5 h-4 w-4 shrink-0 text-blue-600" />
 
                   <p className="text-xs leading-5 text-blue-800">
-                    After you submit this form, an administrator must review and approve your account before you can sign in. Emergency requests should be submitted through the official MDRRMO channels while your account is pending.
+                    After you submit this form, an
+                    administrator must review and approve
+                    your account before you can sign in.
+                    Emergency requests should be submitted
+                    through official MDRRMO channels while
+                    your account is pending.
                   </p>
                 </div>
 
-                {/* Actions */}
+                {/* Submit */}
                 <div className="flex flex-col gap-3 pt-2 sm:flex-row sm:items-center">
-                
-
                   <button
                     type="submit"
                     disabled={loading}
@@ -1546,16 +2636,14 @@ export default function CreateUser() {
 
                   <button
                     type="button"
-                    onClick={() => navigate("/login")}
+                    onClick={() =>
+                      navigate("/login")
+                    }
                     disabled={loading}
                     className="font-black text-blue-700 underline decoration-blue-300 underline-offset-4 transition hover:text-purple-700 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     Login here
                   </button>
-                </p>
-
-                <p className="mt-4 text-[10px] font-semibold uppercase tracking-[0.14em] text-slate-400">
-                  SafeResponse · Naic Community Portal
                 </p>
               </div>
             </div>

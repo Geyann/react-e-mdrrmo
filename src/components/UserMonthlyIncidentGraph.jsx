@@ -673,11 +673,7 @@ export default function UserMonthlyIncidentGraph() {
           )}
         </div>
 
-        <p className="mt-3 text-center text-xs text-slate-400">
-          Showing {summary.activeMonths} active month
-          {summary.activeMonths === 1 ? "" : "s"}{" "}
-          for the selected period
-        </p>
+       
       </div>
     </section>
   );

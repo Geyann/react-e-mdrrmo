@@ -1,23 +1,26 @@
 import { Link } from "react-router-dom";
 import {
+  Ambulance,
+  CalendarDays,
+  ClipboardList,
+  Map,
+  Phone,
+  ShieldCheck,
+  Siren,
+  TrendingUp,
   AlertTriangle,
   ArrowRight,
   BellRing,
-  CheckCircle2,
   Clock3,
-  Eye,
   Mail,
-  Map,
-  MapPin,
   Navigation,
-  Phone,
   Radio,
-  Siren,
-  TrendingUp,
 } from "lucide-react";
 import Icon from "../Images/logo.png";
+import Icon1 from "../Images/icon3.png";
 
 import earthquakeImg from "../Images/earthquake.png";
+import backgroundImg from "../Images/background.png";
 import floodingImg from "../Images/flooding.png";
 import hazardImg from "../Images/hazard-map-icon.png";
 import hotImg from "../Images/hotline-h1.png";
@@ -29,7 +32,7 @@ const PUBLIC_TOOLS = [
   {
     title: "Public Hazard Map",
     description:
-      "Explore approved hazard hotspots across Naic using the public hotspot map.",
+      "Explore approved hazard Markers across Naic using the public Hazard map.",
     icon: Map,
     href: "/guest/hazardmap",
     iconClass:
@@ -53,24 +56,55 @@ const PUBLIC_TOOLS = [
 
 const SAFETY_FEATURES = [
   {
-    title: "Approved Hotspots Only",
+    title: "Incident & Hazard Reporting",
     description:
-      "Public maps display only hazard reports approved for community visibility.",
-    icon: CheckCircle2,
+      "Report emergencies, unsafe conditions, exact locations, and supporting evidence.",
+    icon: Siren,
   },
   {
-    title: "Boundary-Limited",
+    title: "Emergency Transport Requests",
     description:
-      "Hazard information is displayed only within the official Naic boundary.",
-    icon: MapPin,
+      "Request an ambulance, rescue truck, or utility vehicle for urgent response.",
+    icon: Ambulance,
   },
   {
-    title: "Community Analytics",
+    title: "Appointments & Check-Ups",
     description:
-      "Charts make monthly incident and hazard patterns easier to understand.",
+      "Schedule office visits and submit outpatient transportation or care requests.",
+    icon: CalendarDays,
+  },
+  {
+    title: "Track Requests & Notifications",
+    description:
+      "Follow every submission and receive updates whenever its status changes.",
+    icon: ClipboardList,
+  },
+  {
+    title: "Public Hazard Map",
+    description:
+      "Explore administrator-approved hazard areas within Naic’s official boundary.",
+    icon: Map,
+  },
+  {
+    title: "Community Safety Analytics",
+    description:
+      "View monthly incident, hazard category, risk level, and service trends.",
     icon: TrendingUp,
   },
+  {
+    title: "Reviewed Public Information",
+    description:
+      "Only reviewed and approved hazard information appears on the public map.",
+    icon: ShieldCheck,
+  },
+  {
+    title: "24/7 Emergency Support",
+    description:
+      "Contact the MDRRMO Command Center for urgent assistance and official information.",
+    icon: Phone,
+  },
 ];
+
 
 const EMERGENCY_CONTACTS = [
   {
@@ -185,7 +219,7 @@ export default function Guest() {
                 <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
               </span>
 
-              SafeResponse · Naic, Cavite
+              Naic, Cavite
             </div>
 
             <h1 className="mx-auto max-w-4xl text-4xl font-black leading-[1.05] tracking-[-0.04em] text-white sm:text-5xl lg:mx-0 lg:text-6xl xl:text-7xl">
@@ -198,9 +232,10 @@ export default function Guest() {
             </h1>
 
             <p className="mx-auto mt-6 max-w-2xl text-base leading-7 text-slate-300 sm:text-lg lg:mx-0">
-              View public hazard hotspots, understand community
-              incident trends, and quickly contact the MDRRMO
-              Command Center when help is needed.
+             Community safety portal for reporting hazards and incidents, 
+             requesting emergency transport, appointments, and check-ups, 
+             while providing public hazard maps, trends, and coordinated 
+             management for residents.
             </p>
 
             <div className="mt-8 flex flex-col gap-3 sm:flex-row sm:justify-center lg:justify-start">
@@ -237,25 +272,7 @@ export default function Guest() {
               </Link>
             </div>
 
-            <div className="mt-7 flex flex-col items-center gap-3 text-sm text-slate-300 sm:flex-row sm:justify-center lg:justify-start">
-              <span className="flex items-center gap-2">
-                <CheckCircle2
-                  className="h-4 w-4 text-emerald-400"
-                  aria-hidden="true"
-                />
-                Approved public hotspots
-              </span>
-
-              <span className="hidden h-1 w-1 rounded-full bg-slate-500 sm:block" />
-
-              <span className="flex items-center gap-2">
-                <CheckCircle2
-                  className="h-4 w-4 text-emerald-400"
-                  aria-hidden="true"
-                />
-                No public report details
-              </span>
-            </div>
+          
           </div>
 
           {/* Hero visual */}
@@ -264,7 +281,7 @@ export default function Guest() {
               {/* Main image */}
               <div className="absolute right-0 top-0 h-[370px] w-[84%] overflow-hidden rounded-[2rem] border-4 border-white/10 bg-slate-800 shadow-2xl sm:h-[440px]">
                 <img
-                  src={floodingImg}
+                  src="https://scontent.fmnl32-1.fna.fbcdn.net/v/t39.30808-6/487484417_986179746991123_6882168323920284120_n.jpg?stp=dst-jpg_tt6&cstp=mx2968x1412&ctp=s2968x1412&_nc_cat=107&_nc_map=urlgen_bucketless&ccb=1-7&_nc_sid=86c6b0&_nc_eui2=AeGoL0HVLW0CHe62Bzsw5lGRGXGJNzyVCPMZcYk3PJUI8z2J8wzFaZSguNZkgvz1Xd5mJftlVm27LF4Zn5aXxsBN&_nc_ohc=93WsnA_OA-QQ7kNvwHLARac&_nc_oc=AdpHJSfivekx9WAzLZDtwwn9Fmjbe-6t5rT982SxuEZVu1uv4qeFYLzj0rg5JaNdpeQ&_nc_zt=23&_nc_ht=scontent.fmnl32-1.fna&_nc_gid=OqIO8BLz8-dkB2T2boq2bQ&_nc_ss=7b2a8&oh=00_AQO1DUpd3danpaILbfPOzjLDYaAtZ_pIrH29ZN6iiZtydw&oe=6AC76FF7"
                   alt="Flooding affecting a community"
                   className="h-full w-full object-cover"
                 />
@@ -287,90 +304,18 @@ export default function Guest() {
 
                 <div className="absolute bottom-0 left-0 right-0 p-6">
                   <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-blue-300">
-                    Public Safety Information
+                    OFFICE OF THE MUNICIPAL DISASTER RISK REDUCTION AND MANAGEMENT OFFICER - NAIC
                   </p>
 
-                  <p className="mt-2 text-2xl font-black leading-tight text-white sm:text-3xl">
-                    Prepared communities respond faster.
-                  </p>
-                </div>
-              </div>
-
-              {/* Supporting image */}
-              <div className="absolute left-0 top-20 h-48 w-48 overflow-hidden rounded-[1.75rem] border-4 border-white/10 bg-slate-800 shadow-2xl sm:h-60 sm:w-60">
-                <img
-                  src={earthquakeImg}
-                  alt="Earthquake preparedness"
-                  className="h-full w-full object-cover"
-                />
-
-                <div className="absolute inset-0 bg-gradient-to-t from-slate-950/85 to-transparent" />
-
-                <div className="absolute bottom-4 left-4 right-4">
-                  <p className="text-[9px] font-extrabold uppercase tracking-[0.16em] text-orange-300">
-                    Preparedness
-                  </p>
-
-                  <p className="mt-1 text-sm font-black leading-5 text-white">
-                    Plan before an emergency happens.
+                  <p className="mt-2 text-xl font-black leading-tight text-white sm:text-2xl">
+                    Naghahanda at Kumikilos tungo sa panatag na bagong pilipinas
                   </p>
                 </div>
               </div>
 
-              {/* Hotspot map card */}
-              <div className="absolute bottom-2 left-5 z-20 w-[250px] rounded-2xl border border-white/15 bg-slate-950/90 p-4 shadow-2xl backdrop-blur-xl sm:bottom-5 sm:left-10 sm:w-[285px]">
-                <div className="flex items-center gap-3">
-                  <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-purple-500/15">
-                    <img
-                      src={hazardImg}
-                      alt=""
-                      className="h-9 w-9 object-contain"
-                    />
-                  </div>
+           
 
-                  <div className="min-w-0">
-                    <p className="text-sm font-black text-white">
-                      Public Hotspot Map
-                    </p>
-
-                    <p className="mt-1 text-xs text-slate-400">
-                      View approved risk areas
-                    </p>
-                  </div>
-                </div>
-
-                <div className="mt-4 flex items-center justify-between border-t border-white/10 pt-3">
-                  <span className="flex items-center gap-1.5 text-[10px] font-bold text-slate-300">
-                    <Eye
-                      className="h-3.5 w-3.5"
-                      aria-hidden="true"
-                    />
-                    No report details
-                  </span>
-
-                  <span className="h-2.5 w-2.5 rounded-full bg-emerald-400 shadow-[0_0_10px_#34d399]" />
-                </div>
-              </div>
-
-              {/* Command center card */}
-              <div className="absolute right-2 bottom-32 z-20 flex items-center gap-3 rounded-2xl border border-red-300/20 bg-red-950/90 px-4 py-3 shadow-2xl backdrop-blur-xl sm:right-4">
-                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-red-500/20">
-                  <Siren
-                    className="h-5 w-5 text-red-300"
-                    aria-hidden="true"
-                  />
-                </div>
-
-                <div>
-                  <p className="text-[9px] font-extrabold uppercase tracking-[0.16em] text-red-300">
-                    Command Center
-                  </p>
-
-                  <p className="mt-1 text-sm font-black text-white">
-                    Available 24/7
-                  </p>
-                </div>
-              </div>
+           
             </div>
           </div>
         </div>
@@ -431,22 +376,22 @@ export default function Guest() {
           <div className="mx-auto max-w-3xl text-center">
             <div className="inline-flex items-center gap-2 rounded-full border border-blue-200 bg-blue-50 px-4 py-2 text-[10px] font-extrabold uppercase tracking-[0.18em] text-blue-700 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
               <img
-                                  src={Icon}
+                                  src={Icon1}
                                   alt="SafeResponse Logo"
                                   className="h-8 w-8"
                                 />
               Public Information
             </div>
 
-            <h2 className="mt-5 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl dark:text-white">
-              Designed for community awareness
-            </h2>
+           <h2 className="mt-5 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl dark:text-white">
+  Everything you need for community safety
+</h2>
 
-            <p className="mt-4 text-base leading-7 text-slate-600 dark:text-slate-300">
-              The public portal presents general safety information
-              without exposing individual reports or sensitive
-              report details.
-            </p>
+<p className="mt-4 text-base leading-7 text-slate-600 dark:text-slate-300">
+  Report concerns, request emergency services, track submissions, and access
+  verified public safety information in one convenient portal.
+</p>
+
           </div>
 
           <div className="mt-10 grid gap-5 md:grid-cols-3">
@@ -501,21 +446,13 @@ export default function Guest() {
                 and recognize the importance of preparation.
               </p>
             </div>
-
-            <span className="inline-flex w-fit items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-xs font-bold text-slate-600 shadow-sm dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
-              <BellRing
-                className="h-4 w-4 text-orange-500"
-                aria-hidden="true"
-              />
-              Prepare early. Respond calmly.
-            </span>
           </div>
 
           <div className="mt-10 grid gap-6 lg:grid-cols-2">
             {/* Earthquake */}
             <article className="group relative min-h-[390px] overflow-hidden rounded-[1.75rem] bg-slate-900 shadow-xl">
               <img
-                src={earthquakeImg}
+                src="https://scontent-mnl3-3.xx.fbcdn.net/v/t39.30808-6/799142888_1411213911154369_4908433955169539951_n.jpg?stp=dst-jpg_tt6&cstp=mx2048x1536&ctp=s2048x1536&_nc_cat=109&ccb=1-7&_nc_sid=127cfc&_nc_eui2=AeE9hslBG0LEkSuPdtPMCA5OPvAX6rkI5Mg-8BfquQjkyE0TMFTImAiLWQOm2EuK2HyBak4ubGXSXAGT5AAMWXOX&_nc_ohc=4kjKJ_IQTtIQ7kNvwEzOuD7&_nc_oc=AdpSiMONHpiZouG8pbHFUyRjafNthURIxhqyrm9h2SPw6C4Z_YwGWFHOR79BLYaJ4a8&_nc_zt=23&_nc_ht=scontent-mnl3-3.xx&_nc_gid=gpz5UelXY16X8-fo_JDhzA&_nc_ss=7b2a8&oh=00_AQO_bW9dzcgIV13JHQf4ZzWSCvToAyvpTRSbhlbGTitsrg&oe=6AC77844"
                 alt="Earthquake preparedness"
                 className="absolute inset-0 h-full w-full object-cover transition duration-700 group-hover:scale-105"
               />
@@ -723,13 +660,7 @@ export default function Guest() {
                   </div>
                 </div>
 
-                <a
-                  href="tel:+639178128187"
-                  className="inline-flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-black text-red-700 shadow-xl transition hover:-translate-y-0.5 hover:bg-red-50 focus:outline-none focus-visible:ring-2 focus-visible:ring-white focus-visible:ring-offset-2 focus-visible:ring-offset-red-950"
-                >
-                  <Phone className="h-4 w-4" aria-hidden="true" />
-                  Call Emergency Hotline
-                </a>
+               
               </div>
 
               {/* Contact cards */}
@@ -783,26 +714,16 @@ export default function Guest() {
 
             <div>
               <p className="text-sm font-black text-slate-900 dark:text-white">
-                SafeResponse · Naic
+                SafeResponse
               </p>
 
               <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                Municipal Disaster Risk Reduction and
-                Management Office
+               Office of the Municipal Disaster Risk Reduction and Management Officer - Naic, Cavite
               </p>
             </div>
           </div>
 
-          <div className="text-center md:text-right">
-            <p className="text-xs font-bold text-slate-600 dark:text-slate-300">
-              Public safety information and emergency contacts
-            </p>
-
-            <p className="mt-1 text-[10px] text-slate-400">
-              Community Hazard Map · Incident Trends ·
-              Emergency Response
-            </p>
-          </div>
+          
         </div>
       </footer>
     </main>

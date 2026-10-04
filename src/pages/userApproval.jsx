@@ -1,3 +1,5 @@
+"use client";
+
 import {
   useCallback,
   useEffect,
@@ -11,6 +13,7 @@ import {
   Calendar,
   Camera,
   CheckCircle,
+  ChevronDown,
   Clock,
   CreditCard,
   Download,
@@ -50,9 +53,9 @@ import {
   YAxis,
 } from "recharts";
 
-/* ══════════════════════════════════════════════════════════════════
-   CONSTANTS
-   ══════════════════════════════════════════════════════════════════ */
+/* =============================================================
+ * CONSTANTS
+ * ============================================================= */
 
 const PHOTO_BUCKETS = [
   "pending_ids",
@@ -70,6 +73,20 @@ const TABLE_PRIORITY = {
   pending_registrations: 1,
 };
 
+const TABLE_LABELS = {
+  admin_users: "Administrators",
+  staff_users: "Staff Users",
+  profiles: "Approved Users",
+  pending_registrations: "Pending Registrations",
+};
+
+const ACCOUNT_TABLES = [
+  "admin_users",
+  "staff_users",
+  "profiles",
+  "pending_registrations",
+];
+
 const EMPTY_CREATE_FORM = {
   work_id: "",
   username: "",
@@ -84,26 +101,54 @@ const EMPTY_CREATE_FORM = {
 };
 
 const USERNAME_PATTERN = /^[a-z0-9._-]{3,50}$/;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
-const reportStatusClass = (status) => {
-  const map = {
-    pending_approval:
-      "bg-yellow-100 text-yellow-700 border-yellow-200",
-    approved:
-      "bg-emerald-100 text-emerald-700 border-emerald-200",
-    rejected:
-      "bg-red-100 text-red-700 border-red-red-200",
-    pending:
-      "bg-yellow-100 text-yellow-700 border-yellow-200",
-    inactive:
-      "bg-red-100 text-red-700 border-red-200",
-  };
-
-  return (
-    map[status] ||
-    "bg-slate-100 text-slate-700 border border-slate-200"
-  );
-};
+const ID_TYPE_OPTIONS = [
+  {
+    value: "philippine-passport",
+    label: "Philippine Passport",
+  },
+  {
+    value: "drivers-license",
+    label: "Driver's License / LTO ID",
+  },
+  {
+    value: "philsys-id",
+    label: "PhilSys ID",
+  },
+  {
+    value: "umid",
+    label: "UMID",
+  },
+  {
+    value: "barangay-id",
+    label: "Barangay ID",
+  },
+  {
+    value: "voter-id",
+    label: "Voter ID",
+  },
+  {
+    value: "philhealth-id",
+    label: "PhilHealth ID",
+  },
+  {
+    value: "postal-id",
+    label: "Postal ID",
+  },
+  {
+    value: "tin",
+    label: "Tax Identification Number (TIN)",
+  },
+  {
+    value: "school-id",
+    label: "School ID",
+  },
+  {
+    value: "other-valid-id",
+    label: "Other Valid ID",
+  },
+];
 
 const prettyStatus = (status) => {
   const value = String(status || "pending")
@@ -115,14 +160,15 @@ const prettyStatus = (status) => {
     .split(" ")
     .map(
       (word) =>
-        word.charAt(0).toUpperCase() + word.slice(1),
+        word.charAt(0).toUpperCase() +
+        word.slice(1),
     )
     .join(" ");
 };
 
-/* ══════════════════════════════════════════════════════════════════
-   HELPERS
-   ══════════════════════════════════════════════════════════════════ */
+/* =============================================================
+ * HELPERS
+ * ============================================================= */
 
 const rawText = (value) =>
   String(value ?? "").trim();
@@ -130,15 +176,36 @@ const rawText = (value) =>
 const normalizeUsername = (value) =>
   rawText(value).toLowerCase();
 
+const normalizeEmail = (value) =>
+  rawText(value).toLowerCase();
+
 const validUsername = (value) =>
   USERNAME_PATTERN.test(
     normalizeUsername(value),
   );
 
+const getIdTypeLabel = (value) => {
+  const idType = rawText(value);
+
+  if (!idType) {
+    return "Not provided";
+  }
+
+  return (
+    ID_TYPE_OPTIONS.find(
+      (option) => option.value === idType,
+    )?.label || idType
+  );
+};
+
 const readCurrentStaff = () => {
   try {
-    const raw = localStorage.getItem("currentStaff");
-    if (!raw) return null;
+    const raw =
+      localStorage.getItem("currentStaff");
+
+    if (!raw) {
+      return null;
+    }
 
     const parsed = JSON.parse(raw);
 
@@ -151,7 +218,9 @@ const readCurrentStaff = () => {
 };
 
 const resolveImageUrl = (value) => {
-  if (!value) return null;
+  if (!value) {
+    return null;
+  }
 
   const text = String(value);
 
@@ -185,7 +254,7 @@ const resolveImageUrl = (value) => {
         return data.publicUrl;
       }
     } catch {
-      // Try the next bucket.
+      // Continue to the next possible bucket.
     }
   }
 
@@ -203,26 +272,60 @@ const normalizePhotos = (record) => {
     record.avatar ||
     null;
 
-  const idPhoto =
+  /*
+   * Front ID:
+   * id_image_url remains a fallback for older records.
+   */
+  const idFrontPhoto =
+    record.id_front_image_url ||
+    record.front_id_image_url ||
     record.id_image_url ||
+    record.id_photo_url ||
     record.id_preview ||
     record.id_picture ||
     record.id_photo ||
-    record.id_photo_url ||
     record.id_card ||
     record.id_pic ||
     record.id_url ||
     record.identification ||
     null;
 
+  const idBackPhoto =
+    record.id_back_image_url ||
+    record.back_id_image_url ||
+    record.id_back ||
+    record.back_id ||
+    record.id_back_photo ||
+    record.id_back_picture ||
+    record.id_back_preview ||
+    null;
+
+  const idHolderPhoto =
+    record.id_holder_image_url ||
+    record.person_holding_id_image_url ||
+    record.id_holder_photo ||
+    record.holder_image_url ||
+    record.holder_photo ||
+    record.selfie_with_id ||
+    null;
+
   return {
     avatar_url: avatar,
-    id_photo_url: idPhoto,
+
+    // Compatibility fields.
+    id_image_url: idFrontPhoto,
+    id_photo_url: idFrontPhoto,
+
+    id_front_image_url: idFrontPhoto,
+    id_back_image_url: idBackPhoto,
+    id_holder_image_url: idHolderPhoto,
   };
 };
 
 const formatDate = (value) => {
-  if (!value) return "N/A";
+  if (!value) {
+    return "N/A";
+  }
 
   const date = new Date(value);
 
@@ -240,14 +343,23 @@ const formatDate = (value) => {
 };
 
 const hashPassword = async (password) => {
+  if (!globalThis.crypto?.subtle) {
+    throw new Error(
+      "Secure password encryption is not available in this browser.",
+    );
+  }
+
   const salt = "hackerai-salt-2024";
   const encoder = new TextEncoder();
-  const data = encoder.encode(`${password}${salt}`);
-
-  const hashBuffer = await crypto.subtle.digest(
-    "SHA-256",
-    data,
+  const data = encoder.encode(
+    `${password}${salt}`,
   );
+
+  const hashBuffer =
+    await globalThis.crypto.subtle.digest(
+      "SHA-256",
+      data,
+    );
 
   const hashArray = Array.from(
     new Uint8Array(hashBuffer),
@@ -272,7 +384,9 @@ const parseFunctionError = async (error) => {
   ];
 
   for (const context of possibleContexts) {
-    if (!context) continue;
+    if (!context) {
+      continue;
+    }
 
     if (typeof context.json === "function") {
       try {
@@ -303,10 +417,7 @@ const parseFunctionError = async (error) => {
   );
 };
 
-const getWorkId = (
-  record,
-  sourceTable,
-) => {
+const getWorkId = (record, sourceTable) => {
   if (sourceTable === "admin_users") {
     return (
       record.custom_id ||
@@ -339,7 +450,7 @@ const getAccountIdentity = ({
   recordId,
 }) => {
   return String(
-    rawText(email).toLowerCase() ||
+    normalizeEmail(email) ||
       normalizeUsername(username) ||
       rawText(workId).toLowerCase() ||
       recordId ||
@@ -347,38 +458,107 @@ const getAccountIdentity = ({
   );
 };
 
-/* ══════════════════════════════════════════════════════════════════
-   REUSABLE UI
-   ══════════════════════════════════════════════════════════════════ */
+/**
+ * Copies missing photos and identity fields from a
+ * lower-priority duplicate record.
+ */
+const mergeMissingFields = (
+  primary,
+  fallback,
+) => {
+  const merged = {
+    ...primary,
+  };
+
+  const fieldsToMerge = [
+    "avatar_url",
+    "id_photo_url",
+    "id_image_url",
+    "id_front_image_url",
+    "id_back_image_url",
+    "id_holder_image_url",
+    "id_type",
+    "id_number",
+    "birthdate",
+    "address",
+    "mobile_number",
+    "age",
+    "department",
+    "full_name",
+    "first_name",
+    "middle_name",
+    "last_name",
+    "created_at",
+    "updated_at",
+  ];
+
+  for (const field of fieldsToMerge) {
+    const primaryValue = primary[field];
+    const fallbackValue = fallback[field];
+
+    const primaryMissing =
+      primaryValue === null ||
+      primaryValue === undefined ||
+      primaryValue === "";
+
+    if (
+      primaryMissing &&
+      fallbackValue !== null &&
+      fallbackValue !== undefined &&
+      fallbackValue !== ""
+    ) {
+      merged[field] = fallbackValue;
+    }
+  }
+
+  return merged;
+};
+
+/* =============================================================
+ * REUSABLE UI
+ * ============================================================= */
 
 function StatusBadge({ user }) {
+  const status = String(
+    user.status || "",
+  ).toLowerCase();
+
   const isActive =
-    user.status === "approved" ||
+    status === "approved" ||
     user.is_active === true;
 
-  const isPending = user.status === "pending";
+  const isPending =
+    status === "pending" ||
+    status === "pending_approval";
 
   const isInactive =
-    user.status === "rejected" ||
-    user.status === "inactive" ||
+    status === "rejected" ||
+    status === "inactive" ||
     user.is_active === false;
 
   let className =
-    "bg-slate-100 text-slate-700 border border-slate-200";
+    "border border-slate-200 bg-slate-100 text-slate-700";
+
   let label = "Unknown";
 
   if (isActive) {
     className =
-      "bg-emerald-100 text-emerald-700 border border-emerald-200";
+      "border border-emerald-200 bg-emerald-100 text-emerald-700";
+
     label = "Active";
   } else if (isPending) {
     className =
-      "bg-yellow-100 text-yellow-700 border border-yellow-200";
+      "border border-yellow-200 bg-yellow-100 text-yellow-700";
+
     label = "Pending";
   } else if (isInactive) {
     className =
-      "bg-red-100 text-red-700 border border-red-200";
-    label = "Inactive";
+      "border border-red-200 bg-red-100 text-red-700";
+
+    label =
+      status === "rejected"
+        ? "Rejected"
+        : "Inactive";
   }
 
   return (
@@ -393,20 +573,20 @@ function StatusBadge({ user }) {
 function RoleBadge({ role }) {
   const colors = {
     admin:
-      "bg-purple-100 text-purple-700 border border-purple-200",
+      "border border-purple-200 bg-purple-100 text-purple-700",
     staff:
-      "bg-blue-100 text-blue-700 border border-blue-200",
+      "border border-blue-200 bg-blue-100 text-blue-700",
     moderator:
-      "bg-indigo-100 text-indigo-700 border border-indigo-200",
+      "border border-indigo-200 bg-indigo-100 text-indigo-700",
     user:
-      "bg-emerald-100 text-emerald-700 border border-emerald-200",
+      "border border-emerald-200 bg-emerald-100 text-emerald-700",
   };
 
   return (
     <span
       className={`inline-flex items-center rounded-full border px-2 py-1 text-xs font-bold capitalize ${
         colors[role] ||
-        "bg-slate-100 text-slate-700 border border-slate-200"
+        "border border-slate-200 bg-slate-100 text-slate-700"
       }`}
     >
       {role || "user"}
@@ -450,24 +630,43 @@ function Avatar({ user, size = "md" }) {
         ? "bg-blue-600"
         : "bg-emerald-600";
 
-  const initials = (
-    user.first_name?.charAt(0) ||
-    user.full_name?.charAt(0) ||
-    "?"
-  ).toUpperCase();
+  const fullName =
+    user.full_name ||
+    [
+      user.first_name,
+      user.middle_name,
+      user.last_name,
+    ]
+      .filter(Boolean)
+      .join(" ") ||
+    user.username ||
+    user.email ||
+    "";
+
+  const nameParts = String(fullName)
+    .trim()
+    .split(/\s+/)
+    .filter(Boolean);
+
+  const initials =
+    nameParts
+      .slice(0, 2)
+      .map((part) => part.charAt(0))
+      .join("")
+      .toUpperCase() || "?";
 
   const src = resolveImageUrl(user.avatar_url);
 
   return (
     <div
-      className={`relative ${sizeClasses[size]} ${colorClasses} flex shrink-0 items-center justify-center overflow-hidden rounded-full font-bold text-white`}
+      className={`relative flex shrink-0 items-center justify-center overflow-hidden rounded-full font-bold text-white ${sizeClasses[size]} ${colorClasses}`}
     >
       <span>{initials}</span>
 
       {src && (
         <img
           src={src}
-          alt="Profile"
+          alt={`${fullName || "User"} profile`}
           className="absolute inset-0 h-full w-full object-cover"
           onError={(event) => {
             event.currentTarget.style.display =
@@ -501,9 +700,77 @@ function DetailField({
   );
 }
 
-/* ══════════════════════════════════════════════════════════════════
-   MAIN COMPONENT
-   ══════════════════════════════════════════════════════════════════ */
+function PhotoCard({
+  label,
+  value,
+  alt,
+  icon: IconComponent = CreditCard,
+  contain = false,
+}) {
+  const source = resolveImageUrl(value);
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+      <p className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-400">
+        <IconComponent className="h-3.5 w-3.5" />
+
+        {label}
+      </p>
+
+      <SmartImage
+        src={source}
+        alt={alt}
+        className={`h-48 w-full rounded-lg border border-slate-200 bg-slate-50 dark:border-slate-700 ${
+          contain
+            ? "object-contain"
+            : "object-cover"
+        }`}
+        fallback={
+          <div className="flex h-48 w-full flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-700">
+            <IconComponent className="mb-2 h-8 w-8" />
+
+            <p className="px-3 text-center text-xs font-semibold">
+              No {label.toLowerCase()}
+            </p>
+          </div>
+        }
+      />
+    </div>
+  );
+}
+
+function ActiveToggle({
+  value,
+  onToggle,
+  disabled = false,
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      disabled={disabled}
+      aria-pressed={value}
+      aria-label={
+        value
+          ? "Set account as inactive"
+          : "Set account as active"
+      }
+      className={`relative h-6 w-12 rounded-full transition disabled:cursor-not-allowed disabled:opacity-50 ${
+        value ? "bg-green-500" : "bg-red-400"
+      }`}
+    >
+      <span
+        className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow transition-all ${
+          value ? "left-7" : "left-1"
+        }`}
+      />
+    </button>
+  );
+}
+
+/* =============================================================
+ * MAIN COMPONENT
+ * ============================================================= */
 
 export default function AdminUserManagement() {
   const [loading, setLoading] = useState(true);
@@ -515,13 +782,18 @@ export default function AdminUserManagement() {
 
   const [users, setUsers] = useState([]);
 
-  const [selectedUser, setSelectedUser] = useState(null);
-  const [detailsUser, setDetailsUser] = useState(null);
+  const [selectedUser, setSelectedUser] =
+    useState(null);
+
+  const [detailsUser, setDetailsUser] =
+    useState(null);
 
   const [showEditModal, setShowEditModal] =
     useState(false);
+
   const [showPassword, setShowPassword] =
     useState(false);
+
   const [showConfirm, setShowConfirm] =
     useState(false);
 
@@ -535,6 +807,7 @@ export default function AdminUserManagement() {
     password: "",
     confirmPassword: "",
     full_name: "",
+    id_type: "",
     role: "user",
     is_active: true,
   });
@@ -544,6 +817,7 @@ export default function AdminUserManagement() {
 
   const [showCreateModal, setShowCreateModal] =
     useState(false);
+
   const [createRole, setCreateRole] =
     useState("staff");
 
@@ -553,8 +827,10 @@ export default function AdminUserManagement() {
 
   const [createSaving, setCreateSaving] =
     useState(false);
+
   const [createError, setCreateError] =
     useState("");
+
   const [createSuccess, setCreateSuccess] =
     useState("");
 
@@ -567,6 +843,11 @@ export default function AdminUserManagement() {
     user?.sourceTable === "staff_users" ||
     user?.sourceTable === "admin_users";
 
+  const supportsIdType = (user) =>
+    user?.sourceTable === "profiles" ||
+    user?.sourceTable === "pending_registrations" ||
+    Boolean(user?.id_type);
+
   const isCurrentAccount = useCallback(
     (user) => {
       if (!currentStaff || !user) {
@@ -576,16 +857,18 @@ export default function AdminUserManagement() {
       const currentId = String(
         currentStaff.id || "",
       );
+
       const sourceId = String(
         user.sourceId || "",
       );
 
-      const currentEmail = String(
-        currentStaff.email || "",
-      ).toLowerCase();
-      const userEmail = String(
-        user.email || "",
-      ).toLowerCase();
+      const currentEmail = normalizeEmail(
+        currentStaff.email,
+      );
+
+      const userEmail = normalizeEmail(
+        user.email,
+      );
 
       return Boolean(
         (currentId && currentId === sourceId) ||
@@ -596,252 +879,265 @@ export default function AdminUserManagement() {
     [currentStaff],
   );
 
-  /* ── Fetch users ────────────────────────────────────────────── */
+  /* ===========================================================
+     FETCH ALL USERS
+  =========================================================== */
 
-  const fetchAllUsers = useCallback(async (
-    showLoading = true,
-  ) => {
-    if (showLoading) {
-      setLoading(true);
-    } else {
-      setRefreshing(true);
-    }
+  const fetchAllUsers = useCallback(
+    async (showLoading = true) => {
+      if (showLoading) {
+        setLoading(true);
+      } else {
+        setRefreshing(true);
+      }
 
-    setError("");
+      setError("");
 
-    try {
-      const results = await Promise.allSettled([
-        supabase
-          .from("admin_users")
-          .select("*")
-          .order("created_at", {
-            ascending: false,
-          }),
+      try {
+        const results =
+          await Promise.allSettled([
+            supabase
+              .from("admin_users")
+              .select("*")
+              .order("created_at", {
+                ascending: false,
+              }),
 
-        supabase
-          .from("staff_users")
-          .select("*")
-          .order("created_at", {
-            ascending: false,
-          }),
+            supabase
+              .from("staff_users")
+              .select("*")
+              .order("created_at", {
+                ascending: false,
+              }),
 
-        supabase
-          .from("profiles")
-          .select("*")
-          .order("created_at", {
-            ascending: false,
-          }),
+            supabase
+              .from("profiles")
+              .select("*")
+              .order("created_at", {
+                ascending: false,
+              }),
 
-        supabase
-          .from("pending_registrations")
-          .select("*")
-          .order("created_at", {
-            ascending: false,
-          }),
-      ]);
+            supabase
+              .from("pending_registrations")
+              .select("*")
+              .order("created_at", {
+                ascending: false,
+              }),
+          ]);
 
-      const failed = [];
-      const accountMap = new Map();
+        const failed = [];
+        const accountMap = new Map();
 
-      const addUser = (
-        record,
-        sourceTable,
-        sourceId,
-      ) => {
-        if (!record) return;
-
-        const workId = getWorkId(
+        const addUser = (
           record,
           sourceTable,
-        );
+        ) => {
+          if (!record) {
+            return;
+          }
 
-        const username = rawText(
-          record.username,
-        );
+          const sourceId = record.id;
+          const workId = getWorkId(
+            record,
+            sourceTable,
+          );
 
-        const identity = getAccountIdentity({
-          email: record.email,
-          username,
-          workId,
-          recordId: sourceId ?? record.id,
-        });
+          const username = rawText(
+            record.username,
+          );
 
-        if (!identity) return;
+          const identity = getAccountIdentity({
+            email: record.email,
+            username,
+            workId,
+            recordId: sourceId,
+          });
 
-        const key = `account:${identity}`;
-        const previous = accountMap.get(key);
-        const priority =
-          TABLE_PRIORITY[sourceTable] || 0;
-        const previousPriority =
-          previous?.priority || 0;
+          if (!identity) {
+            return;
+          }
 
-        if (
-          previous &&
-          previousPriority >= priority
-        ) {
-          return;
-        }
+          const isAdminRow =
+            sourceTable === "admin_users";
 
-        const isAdminRow =
-          sourceTable === "admin_users";
+          const isStaffRow =
+            sourceTable === "staff_users";
 
-        const isStaffRow =
-          sourceTable === "staff_users";
+          const fullName =
+            record.full_name ||
+            [
+              record.first_name,
+              record.middle_name,
+              record.last_name,
+            ]
+              .filter(Boolean)
+              .join(" ") ||
+            "";
 
-        const fullName =
-          record.full_name ||
-          [
-            record.first_name,
-            record.middle_name,
-            record.last_name,
-          ]
-            .filter(Boolean)
-            .join(" ") ||
-          "";
+          const photos =
+            normalizePhotos(record);
 
-        const normalized = {
-          ...record,
-          ...normalizePhotos(record),
+          const priority =
+            TABLE_PRIORITY[sourceTable] || 0;
 
-          source: sourceTable,
-          sourceTable,
-          sourceId: sourceId ?? record.id,
-          databaseId: record.id,
-          priority,
+          const normalized = {
+            ...record,
+            ...photos,
 
-          workId,
-          username: username || rawText(workId),
+            source: sourceTable,
+            sourceTable,
+            sourceId,
+            databaseId: record.id,
+            priority,
 
-          full_name: fullName,
+            workId,
+            username:
+              username || rawText(workId),
 
-          displayRole: isAdminRow
-            ? record.role || "admin"
-            : isStaffRow
-              ? record.role || "staff"
-              : record.role || "user",
+            full_name: fullName,
 
-          status: isAdminRow
-            ? "approved"
-            : isStaffRow
-              ? record.is_active === false
-                ? "inactive"
-                : "approved"
-              : record.status ||
-                (record.is_active === false
+            displayRole: isAdminRow
+              ? "admin"
+              : isStaffRow
+                ? "staff"
+                : record.role || "user",
+
+            status: isAdminRow
+              ? "approved"
+              : isStaffRow
+                ? record.is_active === false
                   ? "inactive"
-                  : "approved"),
+                  : "approved"
+                : record.status ||
+                  (record.is_active === false
+                    ? "inactive"
+                    : "approved"),
 
-          is_active: isAdminRow
-            ? true
-            : record.is_active,
+            is_active: isAdminRow
+              ? true
+              : record.is_active,
 
-          password: null,
+            // Never expose password hashes in the UI.
+            password: null,
+          };
+
+          const key = `account:${identity}`;
+          const previous =
+            accountMap.get(key);
+
+          if (!previous) {
+            accountMap.set(key, normalized);
+            return;
+          }
+
+          if (
+            priority >
+            (previous.priority || 0)
+          ) {
+            accountMap.set(
+              key,
+              mergeMissingFields(
+                normalized,
+                previous,
+              ),
+            );
+            return;
+          }
+
+          accountMap.set(
+            key,
+            mergeMissingFields(
+              previous,
+              normalized,
+            ),
+          );
         };
 
-        if (previous) {
-          normalized.avatar_url =
-            normalized.avatar_url ||
-            previous.avatar_url;
-          normalized.id_photo_url =
-            normalized.id_photo_url ||
-            previous.id_photo_url;
-          normalized.id_image_url =
-            normalized.id_image_url ||
-            previous.id_image_url;
-        }
+        results.forEach((result, index) => {
+          const table = ACCOUNT_TABLES[index];
 
-        accountMap.set(key, normalized);
-      };
+          if (result.status === "rejected") {
+            failed.push(
+              TABLE_LABELS[table],
+            );
+            return;
+          }
 
-      results.forEach((result, index) => {
-        if (result.status === "rejected") {
-          failed.push(
-            [
-              "administrators",
-              "staff users",
-              "profiles",
-              "pending registrations",
-            ][index],
-          );
-          return;
-        }
+          if (result.value.error) {
+            failed.push(
+              TABLE_LABELS[table],
+            );
+            return;
+          }
 
-        if (result.value.error) {
-          failed.push(
-            [
-              "administrators",
-              "staff users",
-              "profiles",
-              "pending registrations",
-            ][index],
-          );
-          return;
-        }
+          const rows =
+            result.value.data || [];
 
-        const rows = result.value.data || [];
-
-        rows.forEach((record) => {
-          addUser(
-            record,
-            [
-              "admin_users",
-              "staff_users",
-              "profiles",
-              "pending_registrations",
-            ][index],
-            record.id,
-          );
+          rows.forEach((record) => {
+            addUser(record, table);
+          });
         });
-      });
 
-      const sortedUsers = [...accountMap.values()].sort(
-        (a, b) => {
+        const sortedUsers = [
+          ...accountMap.values(),
+        ].sort((a, b) => {
           const aTime = a.created_at
             ? new Date(a.created_at).getTime()
             : 0;
+
           const bTime = b.created_at
             ? new Date(b.created_at).getTime()
             : 0;
 
           return bTime - aTime;
-        },
-      );
+        });
 
-      setUsers(sortedUsers);
+        setUsers(sortedUsers);
 
-      if (failed.length > 0) {
-        setError(
-          `Some account tables could not be read: ${failed.join(
-            ", ",
-          )}. Check your Supabase RLS policies.`,
+        if (failed.length > 0) {
+          setError(
+            `Some account tables could not be read: ${failed.join(
+              ", ",
+            )}. Check your Supabase RLS policies.`,
+          );
+        }
+      } catch (err) {
+        console.error(
+          "Error fetching users:",
+          err,
         );
-      }
-    } catch (err) {
-      console.error(
-        "Error fetching users:",
-        err,
-      );
 
-      setError(
-        err?.message ||
-          "Failed to load user accounts.",
-      );
-    } finally {
-      setLoading(false);
-      setRefreshing(false);
-    }
-  }, []);
+        setError(
+          err?.message ||
+            "Failed to load user accounts.",
+        );
+      } finally {
+        setLoading(false);
+        setRefreshing(false);
+      }
+    },
+    [],
+  );
 
   useEffect(() => {
     fetchAllUsers(true);
   }, [fetchAllUsers]);
 
-  /* ── Derived filters ────────────────────────────────────────── */
+  /* ===========================================================
+     DERIVED FILTERS
+  =========================================================== */
 
   const filteredUsers = useMemo(() => {
-    const query = searchTerm.trim().toLowerCase();
+    const query = searchTerm
+      .trim()
+      .toLowerCase();
 
     return users.filter((user) => {
+      const idTypeLabel =
+        user.id_type
+          ? getIdTypeLabel(user.id_type)
+          : "";
+
       const matchesSearch =
         !query ||
         [
@@ -855,6 +1151,9 @@ export default function AdminUserManagement() {
           user.user_id,
           user.databaseId,
           user.sourceTable,
+          user.id_type,
+          idTypeLabel,
+          user.id_number,
         ]
           .filter(Boolean)
           .map((value) =>
@@ -890,15 +1189,19 @@ export default function AdminUserManagement() {
       ).length,
 
       staff: users.filter(
-        (user) => user.displayRole === "staff",
+        (user) =>
+          user.displayRole === "staff",
       ).length,
 
       admins: users.filter(
-        (user) => user.displayRole === "admin",
+        (user) =>
+          user.displayRole === "admin",
       ).length,
 
       pending: users.filter(
-        (user) => user.status === "pending",
+        (user) =>
+          user.status === "pending" ||
+          user.status === "pending_approval",
       ).length,
 
       active: users.filter(
@@ -909,7 +1212,9 @@ export default function AdminUserManagement() {
     };
   }, [users]);
 
-  /* ── Edit account ───────────────────────────────────────────── */
+  /* ===========================================================
+     EDIT ACCOUNT
+  =========================================================== */
 
   const openEditModal = (user) => {
     setSelectedUser(user);
@@ -920,12 +1225,16 @@ export default function AdminUserManagement() {
           user.user_id ||
           user.custom_id,
       ),
+
       username: normalizeUsername(
         user.username || user.workId,
       ),
-      email: user.email || "",
+
+      email: normalizeEmail(user.email),
+
       password: "",
       confirmPassword: "",
+
       full_name:
         user.full_name ||
         [
@@ -935,12 +1244,18 @@ export default function AdminUserManagement() {
         ]
           .filter(Boolean)
           .join(" "),
+
+      id_type: rawText(user.id_type),
+
       role: user.displayRole || "user",
+
       is_active:
         user.is_active !== false &&
         user.status !== "rejected",
     });
 
+    setShowPassword(false);
+    setShowConfirm(false);
     setError("");
     setShowEditModal(true);
   };
@@ -948,26 +1263,50 @@ export default function AdminUserManagement() {
   const handleSaveEdit = async (event) => {
     event.preventDefault();
 
-    if (saving) return;
+    if (saving) {
+      return;
+    }
 
     setError("");
 
-    const workId = rawText(editForm.work_id);
+    const workId = rawText(
+      editForm.work_id,
+    );
+
     const username = normalizeUsername(
       editForm.username,
     );
+
     const fullName = rawText(
       editForm.full_name,
     );
-    const email = rawText(editForm.email);
+
+    const email = normalizeEmail(
+      editForm.email,
+    );
+
+    const idType = rawText(
+      editForm.id_type,
+    );
 
     if (!fullName) {
       setError("Full name is required.");
       return;
     }
 
-    if (!email) {
-      setError("Email address is required.");
+    if (!EMAIL_PATTERN.test(email)) {
+      setError("Enter a valid email address.");
+      return;
+    }
+
+    if (
+      idType &&
+      !ID_TYPE_OPTIONS.some(
+        (option) =>
+          option.value === idType,
+      )
+    ) {
+      setError("Select a valid ID type.");
       return;
     }
 
@@ -999,7 +1338,8 @@ export default function AdminUserManagement() {
 
     if (
       editForm.password &&
-      editForm.password !== editForm.confirmPassword
+      editForm.password !==
+        editForm.confirmPassword
     ) {
       setError("Passwords do not match.");
       return;
@@ -1013,18 +1353,31 @@ export default function AdminUserManagement() {
       const updateData = {};
 
       if (table === "profiles") {
-        const nameParts = fullName.split(/\s+/);
+        const nameParts =
+          fullName.split(/\s+/);
 
         updateData.first_name =
           nameParts.shift() || "";
+
+        updateData.middle_name =
+          nameParts.length > 1
+            ? nameParts.shift()
+            : "";
+
         updateData.last_name =
           nameParts.join(" ") || "";
+
         updateData.full_name = fullName;
         updateData.email = email;
         updateData.username =
           username || null;
+
+        updateData.id_type =
+          idType || null;
+
         updateData.is_active =
           editForm.is_active;
+
         updateData.role =
           editForm.role || "user";
       }
@@ -1032,20 +1385,36 @@ export default function AdminUserManagement() {
       if (
         table === "pending_registrations"
       ) {
-        const nameParts = fullName.split(/\s+/);
+        const nameParts =
+          fullName.split(/\s+/);
 
         updateData.first_name =
           nameParts.shift() || "";
+
+        updateData.middle_name =
+          nameParts.length > 1
+            ? nameParts.shift()
+            : "";
+
         updateData.last_name =
           nameParts.join(" ") || "";
+
         updateData.full_name = fullName;
         updateData.email = email;
+
         updateData.username =
           username || null;
+
+        updateData.id_type =
+          idType || null;
+
         updateData.status =
           editForm.is_active
             ? "approved"
             : "rejected";
+
+        updateData.is_active =
+          editForm.is_active;
       }
 
       if (table === "staff_users") {
@@ -1054,6 +1423,7 @@ export default function AdminUserManagement() {
         updateData.user_id = workId;
         updateData.username = username;
         updateData.role = "staff";
+
         updateData.is_active =
           editForm.is_active;
       }
@@ -1064,19 +1434,23 @@ export default function AdminUserManagement() {
         updateData.custom_id = workId;
         updateData.username = username;
         updateData.role = "admin";
+
         updateData.updated_at =
           new Date().toISOString();
       }
 
       if (editForm.password) {
         updateData.password =
-          await hashPassword(editForm.password);
+          await hashPassword(
+            editForm.password,
+          );
       }
 
-      const { error: updateError } = await supabase
-        .from(table)
-        .update(updateData)
-        .eq("id", recordId);
+      const { error: updateError } =
+        await supabase
+          .from(table)
+          .update(updateData)
+          .eq("id", recordId);
 
       if (updateError) {
         throw updateError;
@@ -1101,7 +1475,9 @@ export default function AdminUserManagement() {
     }
   };
 
-  /* ── Delete account ─────────────────────────────────────────── */
+  /* ===========================================================
+     DELETE ACCOUNT
+  =========================================================== */
 
   const handleDeleteUser = async (user) => {
     const userName =
@@ -1116,17 +1492,19 @@ export default function AdminUserManagement() {
       return;
     }
 
-    const firstConfirmation = window.confirm(
-      `Delete ${userName}?\n\nThis removes the record from the ${user.sourceTable} table.`,
-    );
+    const firstConfirmation =
+      window.confirm(
+        `Delete ${userName}?\n\nThis removes the record from the ${user.sourceTable} table.`,
+      );
 
     if (!firstConfirmation) {
       return;
     }
 
-    const secondConfirmation = window.confirm(
-      "FINAL CONFIRMATION\n\nThis action cannot be undone. Continue?",
-    );
+    const secondConfirmation =
+      window.confirm(
+        "FINAL CONFIRMATION\n\nThis action cannot be undone. Continue?",
+      );
 
     if (!secondConfirmation) {
       return;
@@ -1162,7 +1540,9 @@ export default function AdminUserManagement() {
     }
   };
 
-  /* ── Create staff/admin account ────────────────────────────── */
+  /* ===========================================================
+     CREATE STAFF OR ADMIN ACCOUNT
+  =========================================================== */
 
   const openCreateAccountModal = (
     role = "staff",
@@ -1181,10 +1561,14 @@ export default function AdminUserManagement() {
     setShowCreateModal(true);
   };
 
-  const handleCreateAccount = async (event) => {
+  const handleCreateAccount = async (
+    event,
+  ) => {
     event.preventDefault();
 
-    if (createSaving) return;
+    if (createSaving) {
+      return;
+    }
 
     setCreateSaving(true);
     setCreateError("");
@@ -1194,18 +1578,25 @@ export default function AdminUserManagement() {
       const workId = rawText(
         createForm.work_id,
       );
-      const username = normalizeUsername(
-        createForm.username,
-      );
+
+      const username =
+        normalizeUsername(
+          createForm.username,
+        );
+
       const fullName = rawText(
         createForm.full_name,
       );
-      const email = rawText(
+
+      const email = normalizeEmail(
         createForm.email,
-      ).toLowerCase();
+      );
+
       const password = createForm.password;
+
       const confirmPassword =
         createForm.confirmPassword;
+
       const requesterPassword =
         createForm.requester_password;
 
@@ -1227,9 +1618,9 @@ export default function AdminUserManagement() {
         );
       }
 
-      if (!email) {
+      if (!EMAIL_PATTERN.test(email)) {
         throw new Error(
-          "Email address is required.",
+          "Enter a valid email address.",
         );
       }
 
@@ -1271,24 +1662,30 @@ export default function AdminUserManagement() {
               full_name: fullName,
               email,
               password,
+
               department:
                 rawText(
                   createForm.department,
                 ) || null,
+
               mobile_number:
                 rawText(
                   createForm.mobile_number,
                 ) || null,
+
               requester_work_id:
                 currentStaff.user_id ||
                 currentStaff.id ||
                 null,
+
               requester_username:
                 currentStaff.username ||
                 null,
+
               requester_email:
                 currentStaff.email ||
                 null,
+
               requester_password:
                 requesterPassword,
             },
@@ -1341,7 +1738,9 @@ export default function AdminUserManagement() {
     }
   };
 
-  /* ── Detail fields ─────────────────────────────────────────── */
+  /* ===========================================================
+     DETAIL FIELDS
+  =========================================================== */
 
   const getDetailFields = (user) => {
     const fields = [];
@@ -1410,6 +1809,16 @@ export default function AdminUserManagement() {
       });
     }
 
+    if (user.id_type) {
+      fields.push({
+        label: "ID Type",
+        value: getIdTypeLabel(
+          user.id_type,
+        ),
+        icon: CreditCard,
+      });
+    }
+
     if (user.id_number) {
       fields.push({
         label: "ID Number",
@@ -1437,7 +1846,9 @@ export default function AdminUserManagement() {
     if (user.birthdate) {
       fields.push({
         label: "Birthdate",
-        value: formatDate(user.birthdate),
+        value: formatDate(
+          user.birthdate,
+        ),
         icon: Calendar,
       });
     }
@@ -1475,7 +1886,9 @@ export default function AdminUserManagement() {
     ) {
       fields.push({
         label: "Active",
-        value: user.is_active ? "Yes" : "No",
+        value: user.is_active
+          ? "Yes"
+          : "No",
         icon: UserCheck,
       });
     }
@@ -1488,10 +1901,20 @@ export default function AdminUserManagement() {
       });
     }
 
+    if (user.sourceTable) {
+      fields.push({
+        label: "Source Table",
+        value: user.sourceTable,
+        icon: Building2,
+      });
+    }
+
     if (user.created_at) {
       fields.push({
         label: "Created",
-        value: formatDate(user.created_at),
+        value: formatDate(
+          user.created_at,
+        ),
         icon: Clock,
       });
     }
@@ -1499,7 +1922,9 @@ export default function AdminUserManagement() {
     if (user.updated_at) {
       fields.push({
         label: "Last Updated",
-        value: formatDate(user.updated_at),
+        value: formatDate(
+          user.updated_at,
+        ),
         icon: Clock,
       });
     }
@@ -1507,13 +1932,15 @@ export default function AdminUserManagement() {
     return fields;
   };
 
-  /* ── Loading ───────────────────────────────────────────────── */
+  /* ===========================================================
+     LOADING
+  =========================================================== */
 
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50">
         <div className="text-center">
-          <Loader2 className="mx-auto h-12 w-12 animate-spin border-b-2 border-purple-600" />
+          <Loader2 className="mx-auto h-12 w-12 animate-spin text-purple-600" />
 
           <p className="mt-4 font-semibold text-gray-600">
             Loading all user accounts...
@@ -1523,7 +1950,13 @@ export default function AdminUserManagement() {
     );
   }
 
-  /* ── Main page ─────────────────────────────────────────────── */
+  const detailFields = detailsUser
+    ? getDetailFields(detailsUser)
+    : [];
+
+  /* ===========================================================
+     MAIN PAGE
+  =========================================================== */
 
   return (
     <div className="min-h-screen bg-slate-50 p-4 dark:bg-slate-950 sm:p-6 lg:p-10">
@@ -1534,11 +1967,13 @@ export default function AdminUserManagement() {
           <div>
             <h1 className="flex items-center gap-3 text-2xl font-black text-slate-800 dark:text-slate-100 sm:text-3xl">
               <Users className="h-7 w-7 text-purple-600 sm:h-8 sm:w-8" />
+
               User Management
             </h1>
 
             <p className="mt-1 text-slate-500 dark:text-slate-400">
-              Manage resident, staff, and administrator accounts
+              Manage resident, staff, and administrator
+              accounts
             </p>
           </div>
 
@@ -1551,6 +1986,7 @@ export default function AdminUserManagement() {
               className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-blue-700"
             >
               <Users className="h-4 w-4" />
+
               Add Staff
             </button>
 
@@ -1562,16 +1998,20 @@ export default function AdminUserManagement() {
               className="flex items-center gap-2 rounded-xl bg-purple-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-purple-700"
             >
               <Shield className="h-4 w-4" />
+
               Add Admin
             </button>
 
             <button
               type="button"
-              onClick={() => setShowReport(true)}
+              onClick={() =>
+                setShowReport(true)
+              }
               disabled={users.length === 0}
               className="flex items-center gap-2 rounded-xl border border-purple-300 px-4 py-2 text-sm font-bold text-purple-700 transition hover:bg-purple-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-purple-700 dark:text-purple-300 dark:hover:bg-purple-950/30"
             >
               <Download className="h-4 w-4" />
+
               Summary Report
             </button>
 
@@ -1585,9 +2025,12 @@ export default function AdminUserManagement() {
             >
               <RefreshCw
                 className={`h-4 w-4 ${
-                  refreshing ? "animate-spin" : ""
+                  refreshing
+                    ? "animate-spin"
+                    : ""
                 }`}
               />
+
               Refresh
             </button>
           </div>
@@ -1712,10 +2155,12 @@ export default function AdminUserManagement() {
               <input
                 type="search"
                 aria-label="Search accounts"
-                placeholder="Search by name, email, username, Work ID..."
+                placeholder="Search by name, email, username, ID type, ID number, or Work ID..."
                 value={searchTerm}
                 onChange={(event) =>
-                  setSearchTerm(event.target.value)
+                  setSearchTerm(
+                    event.target.value,
+                  )
                 }
                 className="w-full rounded-xl border border-slate-300 bg-white py-2 pl-10 pr-4 text-sm outline-none transition focus:ring-2 focus:ring-purple-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
               />
@@ -1725,38 +2170,55 @@ export default function AdminUserManagement() {
               aria-label="Filter by role"
               value={roleFilter}
               onChange={(event) =>
-                setRoleFilter(event.target.value)
+                setRoleFilter(
+                  event.target.value,
+                )
               }
               className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-purple-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
             >
-              <option value="all">All Roles</option>
+              <option value="all">
+                All Roles
+              </option>
+
               <option value="user">
                 Regular User
               </option>
-              <option value="staff">Staff</option>
-              <option value="admin">Admin</option>
+
+              <option value="staff">
+                Staff
+              </option>
+
+              <option value="admin">
+                Admin
+              </option>
             </select>
 
             <select
               aria-label="Filter by status"
               value={statusFilter}
               onChange={(event) =>
-                setStatusFilter(event.target.value)
+                setStatusFilter(
+                  event.target.value,
+                )
               }
               className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-purple-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
             >
               <option value="all">
                 All Statuses
               </option>
+
               <option value="approved">
                 Active
               </option>
+
               <option value="pending">
                 Pending
               </option>
+
               <option value="rejected">
                 Rejected
               </option>
+
               <option value="inactive">
                 Inactive
               </option>
@@ -1777,6 +2239,7 @@ export default function AdminUserManagement() {
                     "Work ID",
                     "Username",
                     "Email",
+                    "ID Type",
                     "Role",
                     "Source",
                     "Status",
@@ -1796,14 +2259,14 @@ export default function AdminUserManagement() {
                 {filteredUsers.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={9}
+                      colSpan={10}
                       className="px-6 py-12 text-center"
                     >
                       <AlertCircle className="mx-auto mb-3 h-12 w-12 text-slate-400" />
 
                       <p className="font-semibold text-slate-600 dark:text-slate-300">
-                        No user accounts found matching
-                        your criteria.
+                        No user accounts found
+                        matching your criteria.
                       </p>
                     </td>
                   </tr>
@@ -1862,9 +2325,23 @@ export default function AdminUserManagement() {
                             {user.email || "N/A"}
                           </td>
 
+                          <td className="px-4 py-4 text-sm text-slate-600 dark:text-slate-400">
+                            {user.id_type ? (
+                              <span className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700">
+                                {getIdTypeLabel(
+                                  user.id_type,
+                                )}
+                              </span>
+                            ) : (
+                              "N/A"
+                            )}
+                          </td>
+
                           <td className="px-4 py-4">
                             <RoleBadge
-                              role={user.displayRole}
+                              role={
+                                user.displayRole
+                              }
                             />
                           </td>
 
@@ -1875,7 +2352,9 @@ export default function AdminUserManagement() {
                           </td>
 
                           <td className="px-4 py-4">
-                            <StatusBadge user={user} />
+                            <StatusBadge
+                              user={user}
+                            />
                           </td>
 
                           <td className="px-4 py-4">
@@ -1883,11 +2362,14 @@ export default function AdminUserManagement() {
                               <button
                                 type="button"
                                 onClick={() =>
-                                  setDetailsUser(user)
+                                  setDetailsUser(
+                                    user,
+                                  )
                                 }
                                 className="flex items-center gap-1 rounded-lg bg-slate-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-slate-700"
                               >
                                 <Info className="h-3 w-3" />
+
                                 Details
                               </button>
 
@@ -1905,13 +2387,16 @@ export default function AdminUserManagement() {
                                 className="flex items-center gap-1 rounded-lg bg-blue-500 px-3 py-2 text-xs font-bold text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
                               >
                                 <Edit3 className="h-3 w-3" />
+
                                 Edit
                               </button>
 
                               <button
                                 type="button"
                                 onClick={() =>
-                                  handleDeleteUser(user)
+                                  handleDeleteUser(
+                                    user,
+                                  )
                                 }
                                 disabled={current}
                                 title={
@@ -1922,6 +2407,7 @@ export default function AdminUserManagement() {
                                 className="flex items-center gap-1 rounded-lg bg-red-500 px-3 py-2 text-xs font-bold text-white transition hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50"
                               >
                                 <Trash2 className="h-3 w-3" />
+
                                 Delete
                               </button>
                             </div>
@@ -1973,17 +2459,18 @@ export default function AdminUserManagement() {
             role="dialog"
             aria-modal="true"
             aria-labelledby="account-details-title"
-            className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-800"
+            className="max-h-[80vh] w-full max-w-5xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-800"
             onClick={(event) =>
               event.stopPropagation()
             }
           >
-            <div className="mb-4 flex items-center justify-between">
+            <div className="mb-4 flex items-center justify-between gap-3">
               <h2
                 id="account-details-title"
                 className="flex items-center gap-2 text-xl font-bold text-slate-800 dark:text-slate-100"
               >
                 <Info className="h-5 w-5 text-slate-600" />
+
                 Account Details
               </h2>
 
@@ -2015,10 +2502,22 @@ export default function AdminUserManagement() {
 
                 <div className="mt-2 flex flex-wrap gap-2">
                   <RoleBadge
-                    role={detailsUser.displayRole}
+                    role={
+                      detailsUser.displayRole
+                    }
                   />
 
-                  <StatusBadge user={detailsUser} />
+                  <StatusBadge
+                    user={detailsUser}
+                  />
+
+                  {detailsUser.id_type && (
+                    <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700">
+                      {getIdTypeLabel(
+                        detailsUser.id_type,
+                      )}
+                    </span>
+                  )}
 
                   <span className="rounded-full bg-slate-200 px-2 py-1 font-mono text-xs text-slate-600 dark:bg-slate-700 dark:text-slate-300">
                     {detailsUser.sourceTable}
@@ -2027,69 +2526,74 @@ export default function AdminUserManagement() {
               </div>
             </div>
 
-            {/* Photos */}
+            {/* Identity and verification photos */}
 
             <div className="mb-5">
-              <p className="mb-3 flex items-center gap-2 text-sm font-bold text-slate-600 dark:text-slate-300">
-                <Camera className="h-4 w-4 text-purple-600" />
-                Photos
-              </p>
+              <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <p className="flex items-center gap-2 text-sm font-bold text-slate-600 dark:text-slate-300">
+                  <Camera className="h-4 w-4 text-purple-600" />
+
+                  Identity and Verification Photos
+                </p>
+
+                {detailsUser.id_type && (
+                  <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                    {getIdTypeLabel(
+                      detailsUser.id_type,
+                    )}
+                  </span>
+                )}
+              </div>
 
               <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
-                  <p className="mb-3 flex items-center gap-1 text-xs font-bold uppercase tracking-wide text-slate-400">
-                    <Camera className="h-3.5 w-3.5" />
-                    Profile Picture
-                  </p>
+                <PhotoCard
+                  label="Profile Picture"
+                  value={detailsUser.avatar_url}
+                  alt={`${
+                    detailsUser.full_name ||
+                    "User"
+                  } profile picture`}
+                  icon={Camera}
+                />
 
-                  <SmartImage
-                    src={resolveImageUrl(
-                      detailsUser.avatar_url,
-                    )}
-                    alt="Profile"
-                    className="h-44 w-full rounded-lg border border-slate-200 bg-slate-50 object-cover"
-                    fallback={
-                      <div className="flex h-44 w-full flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-200 bg-slate-50 text-slate-400">
-                        <Camera className="mb-2 h-8 w-8" />
+                <PhotoCard
+                  label="Front Side of ID"
+                  value={
+                    detailsUser.id_front_image_url ||
+                    detailsUser.id_photo_url ||
+                    detailsUser.id_image_url
+                  }
+                  alt="Front side of government ID"
+                  icon={CreditCard}
+                  contain
+                />
 
-                        <p className="text-xs font-semibold">
-                          No profile picture
-                        </p>
-                      </div>
-                    }
-                  />
-                </div>
+                <PhotoCard
+                  label="Back Side of ID"
+                  value={
+                    detailsUser.id_back_image_url
+                  }
+                  alt="Back side of government ID"
+                  icon={CreditCard}
+                  contain
+                />
 
-                <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
-                  <p className="mb-3 flex items-center gap-1 text-xs font-bold uppercase tracking-wide text-slate-400">
-                    <CreditCard className="h-3.5 w-3.5" />
-                    ID Picture
-                  </p>
-
-                  <SmartImage
-                    src={resolveImageUrl(
-                      detailsUser.id_photo_url,
-                    )}
-                    alt="Government ID"
-                    className="h-44 w-full rounded-lg border border-slate-200 bg-slate-50 object-cover"
-                    fallback={
-                      <div className="flex h-44 w-full flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-200 bg-slate-50 text-slate-400">
-                        <CreditCard className="mb-2 h-8 w-8" />
-
-                        <p className="text-xs font-semibold">
-                          No ID picture
-                        </p>
-                      </div>
-                    }
-                  />
-                </div>
+                <PhotoCard
+                  label="Person Holding ID"
+                  value={
+                    detailsUser.id_holder_image_url
+                  }
+                  alt="Person holding government ID"
+                  icon={Camera}
+                  contain
+                />
               </div>
             </div>
 
-            {/* Fields */}
+            {/* Account fields */}
 
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {getDetailFields(detailsUser).map(
+              {detailFields.map(
                 (field, index) => (
                   <DetailField
                     key={`${field.label}-${index}`}
@@ -2101,25 +2605,28 @@ export default function AdminUserManagement() {
               )}
             </div>
 
-            {getDetailFields(detailsUser).length ===
-              0 && (
+            {detailFields.length === 0 && (
               <p className="py-6 text-center text-slate-500">
                 No additional details available.
               </p>
             )}
 
-            <div className="mt-5 flex gap-3 border-t border-slate-200 pt-5">
+            <div className="mt-5 flex flex-col gap-3 border-t border-slate-200 pt-5 sm:flex-row">
               <button
                 type="button"
                 onClick={() => {
                   const user = detailsUser;
+
                   setDetailsUser(null);
                   openEditModal(user);
                 }}
-                disabled={isCurrentAccount(detailsUser)}
+                disabled={
+                  isCurrentAccount(detailsUser)
+                }
                 className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Edit3 className="h-4 w-4" />
+
                 Edit Account
               </button>
 
@@ -2163,6 +2670,7 @@ export default function AdminUserManagement() {
                 className="flex items-center gap-2 text-xl font-bold text-slate-800 dark:text-slate-100"
               >
                 <Edit3 className="h-5 w-5 text-blue-600" />
+
                 Edit User
               </h2>
 
@@ -2187,17 +2695,19 @@ export default function AdminUserManagement() {
               </p>
 
               <p className="text-xs text-slate-500">
-                Table: {selectedUser.sourceTable} ·
-                Role: {selectedUser.displayRole}
+                Table:{" "}
+                {selectedUser.sourceTable} · Role:{" "}
+                {selectedUser.displayRole}
               </p>
             </div>
 
             {error && (
               <div
                 role="alert"
-                className="mb-4 flex items-center gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+                className="mb-4 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700"
               >
-                <AlertCircle className="h-4 w-4 shrink-0" />
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+
                 <p>{error}</p>
               </div>
             )}
@@ -2207,11 +2717,15 @@ export default function AdminUserManagement() {
               className="space-y-4"
             >
               <div>
-                <label className="mb-1 block text-sm font-bold text-slate-700 dark:text-slate-200">
+                <label
+                  htmlFor="edit-full-name"
+                  className="mb-1 block text-sm font-bold text-slate-700 dark:text-slate-200"
+                >
                   Full Name
                 </label>
 
                 <input
+                  id="edit-full-name"
                   type="text"
                   required
                   value={editForm.full_name}
@@ -2228,11 +2742,15 @@ export default function AdminUserManagement() {
 
               {isPortalAccount(selectedUser) && (
                 <div>
-                  <label className="mb-1 block text-sm font-bold text-slate-700 dark:text-slate-200">
+                  <label
+                    htmlFor="edit-work-id"
+                    className="mb-1 block text-sm font-bold text-slate-700 dark:text-slate-200"
+                  >
                     Work ID
                   </label>
 
                   <input
+                    id="edit-work-id"
                     type="text"
                     required
                     minLength={3}
@@ -2252,11 +2770,15 @@ export default function AdminUserManagement() {
               )}
 
               <div>
-                <label className="mb-1 block text-sm font-bold text-slate-700 dark:text-slate-200">
+                <label
+                  htmlFor="edit-username"
+                  className="mb-1 block text-sm font-bold text-slate-700 dark:text-slate-200"
+                >
                   Username
                 </label>
 
                 <input
+                  id="edit-username"
                   type="text"
                   required={isPortalAccount(
                     selectedUser,
@@ -2288,56 +2810,94 @@ export default function AdminUserManagement() {
               </div>
 
               <div>
-                <label className="mb-1 block text-sm font-bold text-slate-700 dark:text-slate-200">
+                <label
+                  htmlFor="edit-email"
+                  className="mb-1 block text-sm font-bold text-slate-700 dark:text-slate-200"
+                >
                   Email Address
                 </label>
 
                 <input
+                  id="edit-email"
                   type="email"
                   required
                   value={editForm.email}
                   onChange={(event) =>
                     setEditForm({
                       ...editForm,
-                      email: event.target.value,
+                      email:
+                        event.target.value,
                     })
                   }
                   className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-purple-500 dark:border-slate-600 dark:bg-slate-900"
                 />
               </div>
 
+              {supportsIdType(selectedUser) && (
+                <div>
+                  <label
+                    htmlFor="edit-id-type"
+                    className="mb-1 block text-sm font-bold text-slate-700 dark:text-slate-200"
+                  >
+                    Type of ID
+                  </label>
+
+                  <div className="relative">
+                    <CreditCard className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+
+                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+
+                    <select
+                      id="edit-id-type"
+                      value={editForm.id_type}
+                      onChange={(event) =>
+                        setEditForm({
+                          ...editForm,
+                          id_type:
+                            event.target.value,
+                        })
+                      }
+                      className="w-full appearance-none rounded-xl border border-slate-300 bg-white py-2.5 pl-10 pr-10 text-sm outline-none focus:ring-2 focus:ring-purple-500 dark:border-slate-600 dark:bg-slate-900"
+                    >
+                      <option value="">
+                        Not provided
+                      </option>
+
+                      {ID_TYPE_OPTIONS.map(
+                        (option) => (
+                          <option
+                            key={option.value}
+                            value={option.value}
+                          >
+                            {option.label}
+                          </option>
+                        ),
+                      )}
+                    </select>
+                  </div>
+                </div>
+              )}
+
               {selectedUser?.sourceTable ===
                 "staff_users" && (
                 <div className="flex items-center gap-3 rounded-xl bg-slate-50 p-3 dark:bg-slate-900">
                   <label className="flex items-center gap-2 text-sm font-bold text-slate-700 dark:text-slate-200">
                     <UserCheck className="h-4 w-4 text-green-600" />
+
                     Account Active:
                   </label>
 
-                  <button
-                    type="button"
-                    onClick={() =>
+                  <ActiveToggle
+                    value={editForm.is_active}
+                    disabled={saving}
+                    onToggle={() =>
                       setEditForm({
                         ...editForm,
                         is_active:
                           !editForm.is_active,
                       })
                     }
-                    aria-pressed={editForm.is_active}
-                    className={`relative h-6 w-12 rounded-full transition ${
-                      editForm.is_active
-                        ? "bg-green-500"
-                        : "bg-red-400"
-                    }`}
-                  >
-                    <span
-                      className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow transition-all ${
-                        editForm.is_active
-                          ? "left-7"
-                          : "left-1"
-                      }`}
-                    />
-                  </button>
+                  />
 
                   <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
                     {editForm.is_active
@@ -2350,7 +2910,9 @@ export default function AdminUserManagement() {
               <div className="border-t border-slate-200 pt-4 dark:border-slate-700">
                 <p className="mb-3 flex items-center gap-2 text-sm font-bold text-slate-600 dark:text-slate-300">
                   <Lock className="h-4 w-4 text-yellow-600" />
+
                   Change Password
+
                   <span className="text-xs font-normal text-slate-400">
                     (leave blank to keep current)
                   </span>
@@ -2358,11 +2920,15 @@ export default function AdminUserManagement() {
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
                   <div className="relative">
-                    <label className="mb-1 block text-sm font-bold text-slate-700 dark:text-slate-200">
+                    <label
+                      htmlFor="edit-password"
+                      className="mb-1 block text-sm font-bold text-slate-700 dark:text-slate-200"
+                    >
                       New Password
                     </label>
 
                     <input
+                      id="edit-password"
                       type={
                         showPassword
                           ? "text"
@@ -2401,11 +2967,15 @@ export default function AdminUserManagement() {
                   </div>
 
                   <div className="relative">
-                    <label className="mb-1 block text-sm font-bold text-slate-700 dark:text-slate-200">
+                    <label
+                      htmlFor="edit-confirm-password"
+                      className="mb-1 block text-sm font-bold text-slate-700 dark:text-slate-200"
+                    >
                       Confirm Password
                     </label>
 
                     <input
+                      id="edit-confirm-password"
                       type={
                         showConfirm
                           ? "text"
@@ -2514,9 +3084,9 @@ export default function AdminUserManagement() {
   );
 }
 
-/* ══════════════════════════════════════════════════════════════════
-   CREATE ACCOUNT MODAL
-   ══════════════════════════════════════════════════════════════════ */
+/* =============================================================
+ * CREATE ACCOUNT MODAL
+ * ============================================================= */
 
 function CreateAccountModal({
   role,
@@ -2529,10 +3099,16 @@ function CreateAccountModal({
 }) {
   const [showPassword, setShowPassword] =
     useState(false);
-  const [showConfirmPassword, setShowConfirmPassword] =
-    useState(false);
-  const [showRequesterPassword, setShowRequesterPassword] =
-    useState(false);
+
+  const [
+    showConfirmPassword,
+    setShowConfirmPassword,
+  ] = useState(false);
+
+  const [
+    showRequesterPassword,
+    setShowRequesterPassword,
+  ] = useState(false);
 
   const isAdmin = role === "admin";
 
@@ -2543,8 +3119,10 @@ function CreateAccountModal({
       ...previous,
       [name]:
         name === "username"
-          ? value.toLowerCase()
-          : value,
+          ? value.toLowerCase().replace(/\s+/g, "")
+          : name === "email"
+            ? value.trim().toLowerCase()
+            : value,
     }));
   };
 
@@ -2555,7 +3133,9 @@ function CreateAccountModal({
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black/50 p-4"
       onClick={() => {
-        if (!saving) onClose();
+        if (!saving) {
+          onClose();
+        }
       }}
     >
       <div
@@ -2588,12 +3168,13 @@ function CreateAccountModal({
                 id="create-account-title"
                 className="text-xl font-bold text-slate-800"
               >
-                Add {isAdmin ? "Admin" : "Staff"}{" "}
+                Add{" "}
+                {isAdmin ? "Admin" : "Staff"}{" "}
                 Account
               </h2>
 
               <p className="text-xs text-slate-500">
-                The username is saved in{" "}
+                Stored in{" "}
                 {isAdmin
                   ? "admin_users"
                   : "staff_users"}
@@ -2636,8 +3217,9 @@ function CreateAccountModal({
                   ? "admin_users"
                   : "staff_users"}
               </strong>
-              . Work ID, username, and email are checked
-              before creating or updating an account.
+              . Work ID, username, and email are
+              checked before creating or updating an
+              account.
             </p>
           </div>
 
@@ -2647,6 +3229,7 @@ function CreateAccountModal({
               className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"
             >
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+
               <p>{error}</p>
             </div>
           )}
@@ -2906,7 +3489,9 @@ function CreateAccountModal({
                     : "password"
                 }
                 required
-                value={form.requester_password}
+                value={
+                  form.requester_password
+                }
                 onChange={handleChange}
                 placeholder="Enter your current password"
                 autoComplete="current-password"
@@ -2932,9 +3517,9 @@ function CreateAccountModal({
             </div>
 
             <p className="mt-1 text-xs text-slate-500">
-              This verifies that the current
-              administrator is authorized to create
-              or update another account.
+              This verifies that the current administrator
+              is authorized to create or update another
+              account.
             </p>
           </div>
 
@@ -2961,7 +3546,9 @@ function CreateAccountModal({
 
               {saving
                 ? "Saving Account..."
-                : `Save ${isAdmin ? "Admin" : "Staff"} Account`}
+                : `Save ${
+                    isAdmin ? "Admin" : "Staff"
+                  } Account`}
             </button>
           </div>
         </form>
@@ -2970,20 +3557,131 @@ function CreateAccountModal({
   );
 }
 
-/* ══════════════════════════════════════════════════════════════════
-   USER ACCOUNTS SUMMARY REPORT
-   ══════════════════════════════════════════════════════════════════ */
+/* =============================================================
+ * USER ACCOUNTS SUMMARY REPORT
+ * ============================================================= */
 
-function UserSummaryReportModal({ onClose }) {
+function ReportCard({
+  label,
+  value,
+  sub,
+  color,
+}) {
+  return (
+    <div
+      className={`rounded-xl border p-4 ${color}`}
+    >
+      <p className="text-xs font-bold opacity-70">
+        {label}
+      </p>
+
+      <p className="mt-1 text-2xl font-bold">
+        {value}
+      </p>
+
+      {sub && (
+        <p className="mt-1 text-xs opacity-70">
+          {sub}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function ReportCountTable({
+  title,
+  data,
+  total,
+  percent,
+  max = 12,
+}) {
+  return (
+    <div className="print-break-avoid">
+      <h2 className="mb-3 font-bold text-slate-800">
+        {title}
+      </h2>
+
+      {data.length === 0 ? (
+        <p className="text-sm text-slate-500">
+          No accounts in the covered range.
+        </p>
+      ) : (
+        <table className="w-full border-collapse text-sm">
+          <thead>
+            <tr className="bg-slate-100">
+              <th className="border border-slate-200 p-2 text-left font-bold text-slate-700">
+                Name
+              </th>
+
+              <th className="border border-slate-200 p-2 text-center font-bold text-slate-700">
+                Count
+              </th>
+
+              <th className="border border-slate-200 p-2 text-center font-bold text-slate-700">
+                Share
+              </th>
+            </tr>
+          </thead>
+
+          <tbody>
+            {data
+              .slice(0, max)
+              .map((entry) => (
+                <tr
+                  key={entry.name}
+                  className="border-b border-slate-100"
+                >
+                  <td className="border border-slate-200 p-2 font-semibold text-slate-700">
+                    {prettyStatus(
+                      entry.name,
+                    )}
+                  </td>
+
+                  <td className="border border-slate-200 p-2 text-center text-slate-600">
+                    {entry.count}
+                  </td>
+
+                  <td className="border border-slate-200 p-2 text-center text-slate-600">
+                    {percent(
+                      entry.count,
+                    )}
+                    %
+                  </td>
+                </tr>
+              ))}
+          </tbody>
+        </table>
+      )}
+
+      {data.length > max && (
+        <p className="mt-2 text-xs text-slate-500">
+          …and {data.length - max} more entries.
+        </p>
+      )}
+
+      {total !== undefined && (
+        <p className="mt-1 text-xs text-slate-400">
+          Total in coverage: {total}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function UserSummaryReportModal({
+  onClose,
+}) {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
 
   const [rows, setRows] = useState([]);
-  const [fetching, setFetching] = useState(true);
+  const [fetching, setFetching] =
+    useState(true);
+
   const [fetchError, setFetchError] =
     useState("");
 
-  const todayKey = (() => {
+  const todayKey = useMemo(() => {
     const date = new Date();
 
     return [
@@ -2992,9 +3690,12 @@ function UserSummaryReportModal({ onClose }) {
         2,
         "0",
       ),
-      String(date.getDate()).padStart(2, "0"),
+      String(date.getDate()).padStart(
+        2,
+        "0",
+      ),
     ].join("-");
-  })();
+  }, []);
 
   const applyPreset = (from, to) => {
     setFromDate(from);
@@ -3009,7 +3710,7 @@ function UserSummaryReportModal({ onClose }) {
       setFetchError("");
 
       try {
-        const range = (query) => {
+        const applyRange = (query) => {
           let next = query;
 
           if (fromDate) {
@@ -3035,7 +3736,7 @@ function UserSummaryReportModal({ onClose }) {
           adminRes,
           pendingRes,
         ] = await Promise.all([
-          range(
+          applyRange(
             supabase
               .from("profiles")
               .select(
@@ -3043,7 +3744,7 @@ function UserSummaryReportModal({ onClose }) {
               ),
           ),
 
-          range(
+          applyRange(
             supabase
               .from("staff_users")
               .select(
@@ -3051,13 +3752,15 @@ function UserSummaryReportModal({ onClose }) {
               ),
           ),
 
-          range(
+          applyRange(
             supabase
               .from("admin_users")
-              .select("id, role, created_at"),
+              .select(
+                "id, role, created_at",
+              ),
           ),
 
-          range(
+          applyRange(
             supabase
               .from("pending_registrations")
               .select(
@@ -3071,7 +3774,9 @@ function UserSummaryReportModal({ onClose }) {
           staffRes,
           adminRes,
           pendingRes,
-        ].find((result) => result.error);
+        ].find(
+          (result) => result.error,
+        );
 
         if (firstError?.error) {
           throw firstError.error;
@@ -3095,14 +3800,17 @@ function UserSummaryReportModal({ onClose }) {
             profilesRes.data,
             "profiles",
           ),
+
           ...normalize(
             staffRes.data,
             "staff_users",
           ),
+
           ...normalize(
             adminRes.data,
             "admin_users",
           ),
+
           ...normalize(
             pendingRes.data,
             "pending_registrations",
@@ -3147,6 +3855,7 @@ function UserSummaryReportModal({ onClose }) {
 
       rows.forEach((row) => {
         const key = row[field] || fallback;
+
         counts[key] =
           (counts[key] || 0) + 1;
       });
@@ -3156,11 +3865,18 @@ function UserSummaryReportModal({ onClose }) {
           name,
           count,
         }))
-        .sort((a, b) => b.count - a.count);
+        .sort(
+          (a, b) => b.count - a.count,
+        );
     };
 
-    const roleData = countBy("role", "user");
+    const roleData = countBy(
+      "role",
+      "user",
+    );
+
     const statusData = countBy("status");
+
     const sourceData = countBy(
       "table",
       "other",
@@ -3174,9 +3890,13 @@ function UserSummaryReportModal({ onClose }) {
     const monthlyCounts = {};
 
     rows.forEach((row) => {
-      if (!row.created_at) return;
+      if (!row.created_at) {
+        return;
+      }
 
-      const date = new Date(row.created_at);
+      const date = new Date(
+        row.created_at,
+      );
 
       if (Number.isNaN(date.getTime())) {
         return;
@@ -3217,6 +3937,7 @@ function UserSummaryReportModal({ onClose }) {
       )
       .map(([key, count]) => {
         const year = key.slice(0, 4);
+
         const monthNumber = Number(
           key.slice(5, 7),
         );
@@ -3234,14 +3955,17 @@ function UserSummaryReportModal({ onClose }) {
     ).length;
 
     const pendingCount = rows.filter(
-      (row) => row.status === "pending",
+      (row) =>
+        row.status === "pending" ||
+        row.status === "pending_approval",
     ).length;
 
     const busiestMonth =
       monthlyData.length > 0
         ? monthlyData.reduce(
             (largest, current) =>
-              current.count > largest.count
+              current.count >
+              largest.count
                 ? current
                 : largest,
           )
@@ -3259,9 +3983,11 @@ function UserSummaryReportModal({ onClose }) {
     };
   }, [rows]);
 
-  const pct = (count) =>
+  const percent = (count) =>
     rows.length > 0
-      ? Math.round((count / rows.length) * 100)
+      ? Math.round(
+          (count / rows.length) * 100,
+        )
       : 0;
 
   const pieColors = [
@@ -3288,102 +4014,6 @@ function UserSummaryReportModal({ onClose }) {
           toDate || "End"
         }`
       : "All dates";
-
-  const Card = ({
-    label,
-    value,
-    sub,
-    color,
-  }) => (
-    <div
-      className={`rounded-xl border p-4 ${color}`}
-    >
-      <p className="text-xs font-bold opacity-70">
-        {label}
-      </p>
-
-      <p className="mt-1 text-2xl font-bold">
-        {value}
-      </p>
-
-      {sub && (
-        <p className="mt-1 text-xs opacity-70">
-          {sub}
-        </p>
-      )}
-    </div>
-  );
-
-  const CountTable = ({
-    title,
-    data,
-    total,
-    max = 12,
-  }) => (
-    <div className="print-break-avoid">
-      <h2 className="mb-3 font-bold text-slate-800">
-        {title}
-      </h2>
-
-      {data.length === 0 ? (
-        <p className="text-sm text-slate-500">
-          No accounts in the covered range.
-        </p>
-      ) : (
-        <table className="w-full border-collapse text-sm">
-          <thead>
-            <tr className="bg-slate-100">
-              <th className="border border-slate-200 p-2 text-left font-bold text-slate-700">
-                Name
-              </th>
-
-              <th className="border border-slate-200 p-2 text-center font-bold text-slate-700">
-                Count
-              </th>
-
-              <th className="border border-slate-200 p-2 text-center font-bold text-slate-700">
-                Share
-              </th>
-            </tr>
-          </thead>
-
-          <tbody>
-            {data.slice(0, max).map((entry) => (
-              <tr
-                key={entry.name}
-                className="border-b border-slate-100"
-              >
-                <td className="border border-slate-200 p-2 font-semibold capitalize text-slate-700">
-                  {entry.name}
-                </td>
-
-                <td className="border border-slate-200 p-2 text-center text-slate-600">
-                  {entry.count}
-                </td>
-
-                <td className="border border-slate-200 p-2 text-center text-slate-600">
-                  {pct(entry.count)}%
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-
-      {data.length > max && (
-        <p className="mt-2 text-xs text-slate-500">
-          …and {data.length - max} more
-          entries.
-        </p>
-      )}
-
-      {total !== undefined && (
-        <p className="mt-1 text-xs text-slate-400">
-          Total in coverage: {total}
-        </p>
-      )}
-    </div>
-  );
 
   return (
     <>
@@ -3446,8 +4076,10 @@ function UserSummaryReportModal({ onClose }) {
           }
 
           * {
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
+            -webkit-print-color-adjust: exact
+              !important;
+            print-color-adjust: exact
+              !important;
           }
         }
       `}</style>
@@ -3483,13 +4115,16 @@ function UserSummaryReportModal({ onClose }) {
               <div className="flex shrink-0 items-center gap-2">
                 <button
                   type="button"
-                  onClick={() => window.print()}
+                  onClick={() =>
+                    window.print()
+                  }
                   disabled={fetching}
                   className="flex items-center gap-2 rounded-xl bg-purple-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-purple-700 disabled:opacity-50"
                 >
                   <Download className="h-4 w-4" />
+
                   {fetching
-                    ? "Loading…"
+                    ? "Loading..."
                     : "Print / Save PDF"}
                 </button>
 
@@ -3511,9 +4146,12 @@ function UserSummaryReportModal({ onClose }) {
 
               <input
                 type="date"
+                max={todayKey}
                 value={fromDate}
                 onChange={(event) =>
-                  setFromDate(event.target.value)
+                  setFromDate(
+                    event.target.value,
+                  )
                 }
                 className="rounded-xl border border-slate-300 px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-500"
               />
@@ -3524,9 +4162,12 @@ function UserSummaryReportModal({ onClose }) {
 
               <input
                 type="date"
+                max={todayKey}
                 value={toDate}
                 onChange={(event) =>
-                  setToDate(event.target.value)
+                  setToDate(
+                    event.target.value,
+                  )
                 }
                 className="rounded-xl border border-slate-300 px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-500"
               />
@@ -3540,7 +4181,10 @@ function UserSummaryReportModal({ onClose }) {
                   },
                   {
                     label: "This Month",
-                    from: `${todayKey.slice(0, 8)}01`,
+                    from: `${todayKey.slice(
+                      0,
+                      8,
+                    )}01`,
                     to: todayKey,
                   },
                   {
@@ -3550,7 +4194,8 @@ function UserSummaryReportModal({ onClose }) {
                   },
                 ].map((preset) => {
                   const active =
-                    fromDate === preset.from &&
+                    fromDate ===
+                      preset.from &&
                     toDate === preset.to;
 
                   return (
@@ -3577,7 +4222,8 @@ function UserSummaryReportModal({ onClose }) {
 
               <span className="ml-auto rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-500">
                 {rows.length} account
-                {rows.length === 1 ? "" : "s"} loaded
+                {rows.length === 1 ? "" : "s"}{" "}
+                loaded
               </span>
             </div>
           </div>
@@ -3615,26 +4261,28 @@ function UserSummaryReportModal({ onClose }) {
               </div>
             ) : fetching ? (
               <div className="py-16 text-center font-semibold text-slate-500">
-                Loading report data…
+                Loading report data...
               </div>
             ) : (
               <>
                 <div className="print-break-avoid mb-8 grid grid-cols-2 gap-3 md:grid-cols-4">
-                  <Card
+                  <ReportCard
                     label="Total Accounts"
                     value={rows.length}
                     sub="In coverage"
                     color="border-blue-200 bg-blue-50 text-blue-700"
                   />
 
-                  <Card
+                  <ReportCard
                     label="Active"
                     value={stats.activeCount}
-                    sub={`${pct(stats.activeCount)}% of total`}
+                    sub={`${percent(
+                      stats.activeCount,
+                    )}% of total`}
                     color="border-emerald-200 bg-emerald-50 text-emerald-700"
                   />
 
-                  <Card
+                  <ReportCard
                     label="Pending"
                     value={stats.pendingCount}
                     sub={
@@ -3645,7 +4293,7 @@ function UserSummaryReportModal({ onClose }) {
                     color="border-yellow-200 bg-yellow-50 text-yellow-700"
                   />
 
-                  <Card
+                  <ReportCard
                     label="Busiest Month"
                     value={
                       stats.busiestMonth
@@ -3674,14 +4322,15 @@ function UserSummaryReportModal({ onClose }) {
                     <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
                       {stats.roleData.map(
                         (entry) => (
-                          <Card
+                          <ReportCard
                             key={entry.name}
-                            label={
-                              entry.name.charAt(0).toUpperCase() +
-                              entry.name.slice(1)
-                            }
+                            label={prettyStatus(
+                              entry.name,
+                            )}
                             value={entry.count}
-                            sub={`${pct(entry.count)}% of total`}
+                            sub={`${percent(
+                              entry.count,
+                            )}% of total`}
                             color={
                               entry.name === "admin"
                                 ? "border-purple-200 bg-purple-50 text-purple-700"
@@ -3719,6 +4368,7 @@ function UserSummaryReportModal({ onClose }) {
                             outerRadius={95}
                             paddingAngle={5}
                             dataKey="value"
+                            nameKey="name"
                           >
                             {stats.roleData.map(
                               (_, index) => (
@@ -3727,7 +4377,7 @@ function UserSummaryReportModal({ onClose }) {
                                   fill={
                                     pieColors[
                                       index %
-                                      pieColors.length
+                                        pieColors.length
                                     ]
                                   }
                                 />
@@ -3760,7 +4410,9 @@ function UserSummaryReportModal({ onClose }) {
                         height="100%"
                       >
                         <BarChart
-                          data={stats.monthlyData}
+                          data={
+                            stats.monthlyData
+                          }
                         >
                           <CartesianGrid
                             strokeDasharray="3 3"
@@ -3776,7 +4428,9 @@ function UserSummaryReportModal({ onClose }) {
                           />
 
                           <YAxis
-                            allowDecimals={false}
+                            allowDecimals={
+                              false
+                            }
                             fontSize={10}
                             tickLine={false}
                             axisLine={false}
@@ -3807,33 +4461,39 @@ function UserSummaryReportModal({ onClose }) {
 
                 <div className="mb-8 space-y-8">
                   <div className="print-section">
-                    <CountTable
+                    <ReportCountTable
                       title="Accounts by Role"
                       data={stats.roleData}
                       total={rows.length}
+                      percent={percent}
                     />
                   </div>
 
                   <div className="print-section">
-                    <CountTable
+                    <ReportCountTable
                       title="Accounts by Status"
                       data={stats.statusData}
                       total={rows.length}
+                      percent={percent}
                     />
                   </div>
 
                   <div className="print-section">
-                    <CountTable
+                    <ReportCountTable
                       title="Accounts by Source Table"
                       data={stats.sourceData}
                       total={rows.length}
+                      percent={percent}
                     />
                   </div>
 
                   <div className="print-section">
-                    <CountTable
+                    <ReportCountTable
                       title="Staff by Department"
-                      data={stats.departmentData}
+                      data={
+                        stats.departmentData
+                      }
+                      percent={percent}
                     />
                   </div>
                 </div>
@@ -3847,7 +4507,8 @@ function UserSummaryReportModal({ onClose }) {
                   </p>
 
                   <p className="mt-1">
-                    © 2026 E-MDRRMO
+                    © {new Date().getFullYear()}{" "}
+                    E-MDRRMO
                   </p>
                 </div>
               </>
