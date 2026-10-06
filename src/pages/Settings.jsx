@@ -2230,49 +2230,7 @@ export default function Settings() {
                 description="Personalize how SafeResponse looks on this device."
                 tone="green"
               >
-                <div className="mb-5 grid gap-3 sm:grid-cols-2">
-                  <div
-                    className={[
-                      "rounded-2xl border p-4 transition",
-                      !prefs.dark_mode
-                        ? "border-blue-400 bg-blue-50 shadow-sm dark:border-blue-500 dark:bg-blue-950/40"
-                        : "border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-950/50",
-                    ].join(" ")}
-                  >
-                    <div className="flex items-center gap-2">
-                      <Sun className="h-4 w-4 text-amber-500" />
-
-                      <span className="text-sm font-black text-slate-800 dark:text-white">
-                        Light theme
-                      </span>
-                    </div>
-
-                    <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
-                      Bright interface for daytime use.
-                    </p>
-                  </div>
-
-                  <div
-                    className={[
-                      "rounded-2xl border p-4 transition",
-                      prefs.dark_mode
-                        ? "border-purple-400 bg-purple-950/50 shadow-sm"
-                        : "border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-950/50",
-                    ].join(" ")}
-                  >
-                    <div className="flex items-center gap-2">
-                      <Moon className="h-4 w-4 text-purple-400" />
-
-                      <span className="text-sm font-black text-slate-800 dark:text-white">
-                        Dark theme
-                      </span>
-                    </div>
-
-                    <p className="mt-2 text-xs leading-5 text-slate-500 dark:text-slate-400">
-                      Reduced brightness for low-light environments.
-                    </p>
-                  </div>
-                </div>
+             
 
                 <SettingRow
                   icon={

@@ -19,7 +19,7 @@ import {
 } from "lucide-react";
 
 import { supabase } from "../createClient";
-import logo from "../Images/icon.png";
+import logo from "../Images/logo.png";
 import Notification from "./notification";
 
 const SIDEBAR_STORAGE_KEY =
@@ -248,11 +248,7 @@ export default function PortalNavbar({
               }
               aria-expanded={!collapsed}
               aria-controls="portal-navigation-sidebar"
-              title={
-                collapsed
-                  ? "Show sidebar"
-                  : "Hide sidebar"
-              }
+             
               className="hidden h-10 shrink-0 items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-3 text-xs font-bold text-white transition hover:bg-white/20 lg:inline-flex"
             >
               {collapsed ? (
@@ -262,9 +258,7 @@ export default function PortalNavbar({
               )}
 
               <span className="hidden xl:inline">
-                {collapsed
-                  ? "Show Sidebar"
-                  : "Hide Sidebar"}
+               
               </span>
             </button>
 
@@ -273,11 +267,11 @@ export default function PortalNavbar({
               to={homePath}
               className="flex min-w-0 items-center gap-2.5"
             >
-              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-white/15 shadow-inner ring-1 ring-white/20">
+              <div className="flex h-15 w-15 shrink-0 items-center justify-center  ">
                 <img
                   src={logo}
                   alt="MDRRMO logo"
-                  className="h-8 w-8 object-contain"
+                  className="h-13 w-13 object-contain"
                 />
               </div>
 
@@ -286,9 +280,7 @@ export default function PortalNavbar({
                   {pageTitle}
                 </p>
 
-                <p className="hidden text-[10px] font-semibold uppercase tracking-[0.18em] text-blue-100 sm:block">
-                  {portalTitle}
-                </p>
+               
               </div>
             </Link>
           </div>
@@ -405,33 +397,7 @@ export default function PortalNavbar({
 
         {/* Profile and logout */}
         <div className="mt-5 space-y-1.5 border-t border-white/15 pt-4">
-          <NavLink
-            to={profilePath}
-            onClick={() =>
-              setMobileOpen(false)
-            }
-            className={getUtilityClass()}
-            title="Profile"
-            aria-label="Profile"
-          >
-            <UserRound className="h-5 w-5 shrink-0" />
 
-            {/* Mobile label */}
-            <span className="truncate lg:hidden">
-              Profile
-            </span>
-
-            {/* Expanded desktop label */}
-            <span
-              className={
-                collapsed
-                  ? "hidden"
-                  : "hidden lg:inline"
-              }
-            >
-              Profile
-            </span>
-          </NavLink>
 
         
         </div>

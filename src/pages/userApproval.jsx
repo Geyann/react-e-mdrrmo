@@ -104,50 +104,17 @@ const USERNAME_PATTERN = /^[a-z0-9._-]{3,50}$/;
 const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 const ID_TYPE_OPTIONS = [
-  {
-    value: "philippine-passport",
-    label: "Philippine Passport",
-  },
-  {
-    value: "drivers-license",
-    label: "Driver's License / LTO ID",
-  },
-  {
-    value: "philsys-id",
-    label: "PhilSys ID",
-  },
-  {
-    value: "umid",
-    label: "UMID",
-  },
-  {
-    value: "barangay-id",
-    label: "Barangay ID",
-  },
-  {
-    value: "voter-id",
-    label: "Voter ID",
-  },
-  {
-    value: "philhealth-id",
-    label: "PhilHealth ID",
-  },
-  {
-    value: "postal-id",
-    label: "Postal ID",
-  },
-  {
-    value: "tin",
-    label: "Tax Identification Number (TIN)",
-  },
-  {
-    value: "school-id",
-    label: "School ID",
-  },
-  {
-    value: "other-valid-id",
-    label: "Other Valid ID",
-  },
+  { value: "philippine-passport", label: "Philippine Passport" },
+  { value: "drivers-license", label: "Driver's License / LTO ID" },
+  { value: "philsys-id", label: "PhilSys ID" },
+  { value: "umid", label: "UMID" },
+  { value: "barangay-id", label: "Barangay ID" },
+  { value: "voter-id", label: "Voter ID" },
+  { value: "philhealth-id", label: "PhilHealth ID" },
+  { value: "postal-id", label: "Postal ID" },
+  { value: "tin", label: "Tax Identification Number (TIN)" },
+  { value: "school-id", label: "School ID" },
+  { value: "other-valid-id", label: "Other Valid ID" },
 ];
 
 const prettyStatus = (status) => {
@@ -158,11 +125,7 @@ const prettyStatus = (status) => {
 
   return value
     .split(" ")
-    .map(
-      (word) =>
-        word.charAt(0).toUpperCase() +
-        word.slice(1),
-    )
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
     .join(" ");
 };
 
@@ -170,74 +133,45 @@ const prettyStatus = (status) => {
  * HELPERS
  * ============================================================= */
 
-const rawText = (value) =>
-  String(value ?? "").trim();
+const rawText = (value) => String(value ?? "").trim();
 
-const normalizeUsername = (value) =>
-  rawText(value).toLowerCase();
+const normalizeUsername = (value) => rawText(value).toLowerCase();
 
-const normalizeEmail = (value) =>
-  rawText(value).toLowerCase();
+const normalizeEmail = (value) => rawText(value).toLowerCase();
 
 const validUsername = (value) =>
-  USERNAME_PATTERN.test(
-    normalizeUsername(value),
-  );
+  USERNAME_PATTERN.test(normalizeUsername(value));
 
 const getIdTypeLabel = (value) => {
   const idType = rawText(value);
-
-  if (!idType) {
-    return "Not provided";
-  }
-
+  if (!idType) return "Not provided";
   return (
-    ID_TYPE_OPTIONS.find(
-      (option) => option.value === idType,
-    )?.label || idType
+    ID_TYPE_OPTIONS.find((option) => option.value === idType)?.label || idType
   );
 };
 
 const readCurrentStaff = () => {
   try {
-    const raw =
-      localStorage.getItem("currentStaff");
-
-    if (!raw) {
-      return null;
-    }
-
+    const raw = localStorage.getItem("currentStaff");
+    if (!raw) return null;
     const parsed = JSON.parse(raw);
-
-    return parsed && typeof parsed === "object"
-      ? parsed
-      : null;
+    return parsed && typeof parsed === "object" ? parsed : null;
   } catch {
     return null;
   }
 };
 
 const resolveImageUrl = (value) => {
-  if (!value) {
-    return null;
-  }
-
+  if (!value) return null;
   const text = String(value);
 
-  if (
-    /^(https?:\/\/|data:image\/|blob:)/i.test(text)
-  ) {
-    return text;
-  }
+  if (/^(https?:\/\/|data:image\/|blob:)/i.test(text)) return text;
 
   const firstSegment = text.split("/")[0];
 
   if (PHOTO_BUCKETS.includes(firstSegment)) {
     try {
-      const { data } = supabase.storage
-        .from(firstSegment)
-        .getPublicUrl(text);
-
+      const { data } = supabase.storage.from(firstSegment).getPublicUrl(text);
       return data?.publicUrl || text;
     } catch {
       return text;
@@ -246,15 +180,10 @@ const resolveImageUrl = (value) => {
 
   for (const bucket of PHOTO_BUCKETS) {
     try {
-      const { data } = supabase.storage
-        .from(bucket)
-        .getPublicUrl(text);
-
-      if (data?.publicUrl) {
-        return data.publicUrl;
-      }
+      const { data } = supabase.storage.from(bucket).getPublicUrl(text);
+      if (data?.publicUrl) return data.publicUrl;
     } catch {
-      // Continue to the next possible bucket.
+      /* continue */
     }
   }
 
@@ -272,10 +201,6 @@ const normalizePhotos = (record) => {
     record.avatar ||
     null;
 
-  /*
-   * Front ID:
-   * id_image_url remains a fallback for older records.
-   */
   const idFrontPhoto =
     record.id_front_image_url ||
     record.front_id_image_url ||
@@ -311,11 +236,8 @@ const normalizePhotos = (record) => {
 
   return {
     avatar_url: avatar,
-
-    // Compatibility fields.
     id_image_url: idFrontPhoto,
     id_photo_url: idFrontPhoto,
-
     id_front_image_url: idFrontPhoto,
     id_back_image_url: idBackPhoto,
     id_holder_image_url: idHolderPhoto,
@@ -323,16 +245,9 @@ const normalizePhotos = (record) => {
 };
 
 const formatDate = (value) => {
-  if (!value) {
-    return "N/A";
-  }
-
+  if (!value) return "N/A";
   const date = new Date(value);
-
-  if (Number.isNaN(date.getTime())) {
-    return String(value);
-  }
-
+  if (Number.isNaN(date.getTime())) return String(value);
   return date.toLocaleString("en-PH", {
     year: "numeric",
     month: "short",
@@ -351,31 +266,17 @@ const hashPassword = async (password) => {
 
   const salt = "hackerai-salt-2024";
   const encoder = new TextEncoder();
-  const data = encoder.encode(
-    `${password}${salt}`,
-  );
-
-  const hashBuffer =
-    await globalThis.crypto.subtle.digest(
-      "SHA-256",
-      data,
-    );
-
-  const hashArray = Array.from(
-    new Uint8Array(hashBuffer),
-  );
+  const data = encoder.encode(`${password}${salt}`);
+  const hashBuffer = await globalThis.crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
 
   return hashArray
-    .map((byte) =>
-      byte.toString(16).padStart(2, "0"),
-    )
+    .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
 };
 
 const parseFunctionError = async (error) => {
-  if (!error) {
-    return "Unknown error.";
-  }
+  if (!error) return "Unknown error.";
 
   const possibleContexts = [
     error.context,
@@ -384,71 +285,37 @@ const parseFunctionError = async (error) => {
   ];
 
   for (const context of possibleContexts) {
-    if (!context) {
-      continue;
-    }
+    if (!context) continue;
 
     if (typeof context.json === "function") {
       try {
         const body = await context.json();
-
-        if (body?.error) {
-          return String(body.error);
-        }
+        if (body?.error) return String(body.error);
       } catch {
-        // Continue trying other contexts.
+        /* continue */
       }
     }
 
     if (typeof context === "object") {
-      if (context.error) {
-        return String(context.error);
-      }
-
-      if (context.message) {
-        return String(context.message);
-      }
+      if (context.error) return String(context.error);
+      if (context.message) return String(context.message);
     }
   }
 
-  return (
-    error.message ||
-    "The account could not be created."
-  );
+  return error.message || "The account could not be created.";
 };
 
 const getWorkId = (record, sourceTable) => {
   if (sourceTable === "admin_users") {
-    return (
-      record.custom_id ||
-      record.username ||
-      record.user_id ||
-      ""
-    );
+    return record.custom_id || record.username || record.user_id || "";
   }
-
   if (sourceTable === "staff_users") {
-    return (
-      record.user_id ||
-      record.username ||
-      record.id ||
-      ""
-    );
+    return record.user_id || record.username || record.id || "";
   }
-
-  return (
-    record.user_id ||
-    record.username ||
-    ""
-  );
+  return record.user_id || record.username || "";
 };
 
-const getAccountIdentity = ({
-  email,
-  username,
-  workId,
-  recordId,
-}) => {
+const getAccountIdentity = ({ email, username, workId, recordId }) => {
   return String(
     normalizeEmail(email) ||
       normalizeUsername(username) ||
@@ -458,17 +325,8 @@ const getAccountIdentity = ({
   );
 };
 
-/**
- * Copies missing photos and identity fields from a
- * lower-priority duplicate record.
- */
-const mergeMissingFields = (
-  primary,
-  fallback,
-) => {
-  const merged = {
-    ...primary,
-  };
+const mergeMissingFields = (primary, fallback) => {
+  const merged = { ...primary };
 
   const fieldsToMerge = [
     "avatar_url",
@@ -495,11 +353,8 @@ const mergeMissingFields = (
   for (const field of fieldsToMerge) {
     const primaryValue = primary[field];
     const fallbackValue = fallback[field];
-
     const primaryMissing =
-      primaryValue === null ||
-      primaryValue === undefined ||
-      primaryValue === "";
+      primaryValue === null || primaryValue === undefined || primaryValue === "";
 
     if (
       primaryMissing &&
@@ -519,46 +374,29 @@ const mergeMissingFields = (
  * ============================================================= */
 
 function StatusBadge({ user }) {
-  const status = String(
-    user.status || "",
-  ).toLowerCase();
+  const status = String(user.status || "").toLowerCase();
 
-  const isActive =
-    status === "approved" ||
-    user.is_active === true;
-
-  const isPending =
-    status === "pending" ||
-    status === "pending_approval";
-
+  const isActive = status === "approved" || user.is_active === true;
+  const isPending = status === "pending" || status === "pending_approval";
   const isInactive =
-    status === "rejected" ||
-    status === "inactive" ||
-    user.is_active === false;
+    status === "rejected" || status === "inactive" || user.is_active === false;
 
   let className =
     "border border-slate-200 bg-slate-100 text-slate-700";
-
   let label = "Unknown";
 
   if (isActive) {
     className =
       "border border-emerald-200 bg-emerald-100 text-emerald-700";
-
     label = "Active";
   } else if (isPending) {
     className =
       "border border-yellow-200 bg-yellow-100 text-yellow-700";
-
     label = "Pending";
   } else if (isInactive) {
     className =
       "border border-red-200 bg-red-100 text-red-700";
-
-    label =
-      status === "rejected"
-        ? "Rejected"
-        : "Inactive";
+    label = status === "rejected" ? "Rejected" : "Inactive";
   }
 
   return (
@@ -572,21 +410,16 @@ function StatusBadge({ user }) {
 
 function RoleBadge({ role }) {
   const colors = {
-    admin:
-      "border border-purple-200 bg-purple-100 text-purple-700",
-    staff:
-      "border border-blue-200 bg-blue-100 text-blue-700",
-    moderator:
-      "border border-indigo-200 bg-indigo-100 text-indigo-700",
-    user:
-      "border border-emerald-200 bg-emerald-100 text-emerald-700",
+    admin: "border border-purple-200 bg-purple-100 text-purple-700",
+    staff: "border border-blue-200 bg-blue-100 text-blue-700",
+    moderator: "border border-indigo-200 bg-indigo-100 text-indigo-700",
+    user: "border border-emerald-200 bg-emerald-100 text-emerald-700",
   };
 
   return (
     <span
       className={`inline-flex items-center rounded-full border px-2 py-1 text-xs font-bold capitalize ${
-        colors[role] ||
-        "border border-slate-200 bg-slate-100 text-slate-700"
+        colors[role] || "border border-slate-200 bg-slate-100 text-slate-700"
       }`}
     >
       {role || "user"}
@@ -594,25 +427,12 @@ function RoleBadge({ role }) {
   );
 }
 
-function SmartImage({
-  src,
-  alt,
-  className = "",
-  fallback = null,
-}) {
+function SmartImage({ src, alt, className = "", fallback = null }) {
   const [failed, setFailed] = useState(false);
-
-  if (!src || failed) {
-    return fallback;
-  }
+  if (!src || failed) return fallback;
 
   return (
-    <img
-      src={src}
-      alt={alt}
-      className={className}
-      onError={() => setFailed(true)}
-    />
+    <img src={src} alt={alt} className={className} onError={() => setFailed(true)} />
   );
 }
 
@@ -632,22 +452,14 @@ function Avatar({ user, size = "md" }) {
 
   const fullName =
     user.full_name ||
-    [
-      user.first_name,
-      user.middle_name,
-      user.last_name,
-    ]
+    [user.first_name, user.middle_name, user.last_name]
       .filter(Boolean)
       .join(" ") ||
     user.username ||
     user.email ||
     "";
 
-  const nameParts = String(fullName)
-    .trim()
-    .split(/\s+/)
-    .filter(Boolean);
-
+  const nameParts = String(fullName).trim().split(/\s+/).filter(Boolean);
   const initials =
     nameParts
       .slice(0, 2)
@@ -662,15 +474,13 @@ function Avatar({ user, size = "md" }) {
       className={`relative flex shrink-0 items-center justify-center overflow-hidden rounded-full font-bold text-white ${sizeClasses[size]} ${colorClasses}`}
     >
       <span>{initials}</span>
-
       {src && (
         <img
           src={src}
           alt={`${fullName || "User"} profile`}
           className="absolute inset-0 h-full w-full object-cover"
           onError={(event) => {
-            event.currentTarget.style.display =
-              "none";
+            event.currentTarget.style.display = "none";
           }}
         />
       )}
@@ -678,20 +488,14 @@ function Avatar({ user, size = "md" }) {
   );
 }
 
-function DetailField({
-  icon: Icon,
-  label,
-  value,
-}) {
+function DetailField({ icon: Icon, label, value }) {
   return (
     <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-3">
       <Icon className="mt-0.5 h-4 w-4 shrink-0 text-purple-600" />
-
       <div className="min-w-0">
         <p className="text-xs font-bold uppercase tracking-wide text-slate-400">
           {label}
         </p>
-
         <p className="mt-1 break-words text-sm font-semibold text-slate-800">
           {value || "N/A"}
         </p>
@@ -713,22 +517,17 @@ function PhotoCard({
     <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
       <p className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-400">
         <IconComponent className="h-3.5 w-3.5" />
-
         {label}
       </p>
-
       <SmartImage
         src={source}
         alt={alt}
         className={`h-48 w-full rounded-lg border border-slate-200 bg-slate-50 dark:border-slate-700 ${
-          contain
-            ? "object-contain"
-            : "object-cover"
+          contain ? "object-contain" : "object-cover"
         }`}
         fallback={
           <div className="flex h-48 w-full flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-700">
             <IconComponent className="mb-2 h-8 w-8" />
-
             <p className="px-3 text-center text-xs font-semibold">
               No {label.toLowerCase()}
             </p>
@@ -739,22 +538,14 @@ function PhotoCard({
   );
 }
 
-function ActiveToggle({
-  value,
-  onToggle,
-  disabled = false,
-}) {
+function ActiveToggle({ value, onToggle, disabled = false }) {
   return (
     <button
       type="button"
       onClick={onToggle}
       disabled={disabled}
       aria-pressed={value}
-      aria-label={
-        value
-          ? "Set account as inactive"
-          : "Set account as active"
-      }
+      aria-label={value ? "Set account as inactive" : "Set account as active"}
       className={`relative h-6 w-12 rounded-full transition disabled:cursor-not-allowed disabled:opacity-50 ${
         value ? "bg-green-500" : "bg-red-400"
       }`}
@@ -782,22 +573,14 @@ export default function AdminUserManagement() {
 
   const [users, setUsers] = useState([]);
 
-  const [selectedUser, setSelectedUser] =
-    useState(null);
-
-  const [detailsUser, setDetailsUser] =
-    useState(null);
-
-  const [showEditModal, setShowEditModal] =
-    useState(false);
-
-  const [showPassword, setShowPassword] =
-    useState(false);
-
-  const [showConfirm, setShowConfirm] =
-    useState(false);
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [detailsUser, setDetailsUser] = useState(null);
+  const [showEditModal, setShowEditModal] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
 
   const [saving, setSaving] = useState(false);
+  const [approvalSavingId, setApprovalSavingId] = useState(null);
   const [error, setError] = useState("");
 
   const [editForm, setEditForm] = useState({
@@ -812,32 +595,23 @@ export default function AdminUserManagement() {
     is_active: true,
   });
 
-  const [showReport, setShowReport] =
-    useState(false);
+  const [showReport, setShowReport] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createRole, setCreateRole] = useState("staff");
+  const [createForm, setCreateForm] = useState({ ...EMPTY_CREATE_FORM });
+  const [createSaving, setCreateSaving] = useState(false);
+  const [createError, setCreateError] = useState("");
+  const [createSuccess, setCreateSuccess] = useState("");
 
-  const [showCreateModal, setShowCreateModal] =
-    useState(false);
+  /* ── NEW: Approve modal state ─────────────────────────────────── */
+  const [showApproveModal, setShowApproveModal] = useState(false);
+  const [approveTarget, setApproveTarget] = useState(null);
+  const [approvePassword, setApprovePassword] = useState("");
+  const [approveSaving, setApproveSaving] = useState(false);
+  const [approveError, setApproveError] = useState("");
+  const [approveSuccess, setApproveSuccess] = useState("");
 
-  const [createRole, setCreateRole] =
-    useState("staff");
-
-  const [createForm, setCreateForm] = useState({
-    ...EMPTY_CREATE_FORM,
-  });
-
-  const [createSaving, setCreateSaving] =
-    useState(false);
-
-  const [createError, setCreateError] =
-    useState("");
-
-  const [createSuccess, setCreateSuccess] =
-    useState("");
-
-  const currentStaff = useMemo(
-    () => readCurrentStaff(),
-    [],
-  );
+  const currentStaff = useMemo(() => readCurrentStaff(), []);
 
   const isPortalAccount = (user) =>
     user?.sourceTable === "staff_users" ||
@@ -850,30 +624,14 @@ export default function AdminUserManagement() {
 
   const isCurrentAccount = useCallback(
     (user) => {
-      if (!currentStaff || !user) {
-        return false;
-      }
-
-      const currentId = String(
-        currentStaff.id || "",
-      );
-
-      const sourceId = String(
-        user.sourceId || "",
-      );
-
-      const currentEmail = normalizeEmail(
-        currentStaff.email,
-      );
-
-      const userEmail = normalizeEmail(
-        user.email,
-      );
-
+      if (!currentStaff || !user) return false;
+      const currentId = String(currentStaff.id || "");
+      const sourceId = String(user.sourceId || "");
+      const currentEmail = normalizeEmail(currentStaff.email);
+      const userEmail = normalizeEmail(user.email);
       return Boolean(
         (currentId && currentId === sourceId) ||
-          (currentEmail &&
-            currentEmail === userEmail),
+          (currentEmail && currentEmail === userEmail),
       );
     },
     [currentStaff],
@@ -883,241 +641,136 @@ export default function AdminUserManagement() {
      FETCH ALL USERS
   =========================================================== */
 
-  const fetchAllUsers = useCallback(
-    async (showLoading = true) => {
-      if (showLoading) {
-        setLoading(true);
-      } else {
-        setRefreshing(true);
-      }
+  const fetchAllUsers = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoading(true);
+    else setRefreshing(true);
 
-      setError("");
+    setError("");
 
-      try {
-        const results =
-          await Promise.allSettled([
-            supabase
-              .from("admin_users")
-              .select("*")
-              .order("created_at", {
-                ascending: false,
-              }),
+    try {
+      const results = await Promise.allSettled([
+        supabase.from("admin_users").select("*").order("created_at", { ascending: false }),
+        supabase.from("staff_users").select("*").order("created_at", { ascending: false }),
+        supabase.from("profiles").select("*").order("created_at", { ascending: false }),
+        supabase.from("pending_registrations").select("*").order("created_at", { ascending: false }),
+      ]);
 
-            supabase
-              .from("staff_users")
-              .select("*")
-              .order("created_at", {
-                ascending: false,
-              }),
+      const failed = [];
+      const accountMap = new Map();
 
-            supabase
-              .from("profiles")
-              .select("*")
-              .order("created_at", {
-                ascending: false,
-              }),
+      const addUser = (record, sourceTable) => {
+        if (!record) return;
 
-            supabase
-              .from("pending_registrations")
-              .select("*")
-              .order("created_at", {
-                ascending: false,
-              }),
-          ]);
+        const sourceId = record.id;
+        const workId = getWorkId(record, sourceTable);
+        const username = rawText(record.username);
 
-        const failed = [];
-        const accountMap = new Map();
+        const identity = getAccountIdentity({
+          email: record.email,
+          username,
+          workId,
+          recordId: sourceId,
+        });
 
-        const addUser = (
-          record,
+        if (!identity) return;
+
+        const isAdminRow = sourceTable === "admin_users";
+        const isStaffRow = sourceTable === "staff_users";
+
+        const fullName =
+          record.full_name ||
+          [record.first_name, record.middle_name, record.last_name]
+            .filter(Boolean)
+            .join(" ") ||
+          "";
+
+        const photos = normalizePhotos(record);
+        const priority = TABLE_PRIORITY[sourceTable] || 0;
+
+        const normalized = {
+          ...record,
+          ...photos,
+          source: sourceTable,
           sourceTable,
-        ) => {
-          if (!record) {
-            return;
-          }
-
-          const sourceId = record.id;
-          const workId = getWorkId(
-            record,
-            sourceTable,
-          );
-
-          const username = rawText(
-            record.username,
-          );
-
-          const identity = getAccountIdentity({
-            email: record.email,
-            username,
-            workId,
-            recordId: sourceId,
-          });
-
-          if (!identity) {
-            return;
-          }
-
-          const isAdminRow =
-            sourceTable === "admin_users";
-
-          const isStaffRow =
-            sourceTable === "staff_users";
-
-          const fullName =
-            record.full_name ||
-            [
-              record.first_name,
-              record.middle_name,
-              record.last_name,
-            ]
-              .filter(Boolean)
-              .join(" ") ||
-            "";
-
-          const photos =
-            normalizePhotos(record);
-
-          const priority =
-            TABLE_PRIORITY[sourceTable] || 0;
-
-          const normalized = {
-            ...record,
-            ...photos,
-
-            source: sourceTable,
-            sourceTable,
-            sourceId,
-            databaseId: record.id,
-            priority,
-
-            workId,
-            username:
-              username || rawText(workId),
-
-            full_name: fullName,
-
-            displayRole: isAdminRow
-              ? "admin"
-              : isStaffRow
-                ? "staff"
-                : record.role || "user",
-
-            status: isAdminRow
-              ? "approved"
-              : isStaffRow
-                ? record.is_active === false
-                  ? "inactive"
-                  : "approved"
-                : record.status ||
-                  (record.is_active === false
-                    ? "inactive"
-                    : "approved"),
-
-            is_active: isAdminRow
-              ? true
-              : record.is_active,
-
-            // Never expose password hashes in the UI.
-            password: null,
-          };
-
-          const key = `account:${identity}`;
-          const previous =
-            accountMap.get(key);
-
-          if (!previous) {
-            accountMap.set(key, normalized);
-            return;
-          }
-
-          if (
-            priority >
-            (previous.priority || 0)
-          ) {
-            accountMap.set(
-              key,
-              mergeMissingFields(
-                normalized,
-                previous,
-              ),
-            );
-            return;
-          }
-
-          accountMap.set(
-            key,
-            mergeMissingFields(
-              previous,
-              normalized,
-            ),
-          );
+          sourceId,
+          databaseId: record.id,
+          priority,
+          workId,
+          username: username || rawText(workId),
+          full_name: fullName,
+          displayRole: isAdminRow
+            ? "admin"
+            : isStaffRow
+              ? "staff"
+              : record.role || "user",
+          status: isAdminRow
+            ? "approved"
+            : isStaffRow
+              ? record.is_active === false
+                ? "inactive"
+                : "approved"
+              : record.status ||
+                (record.is_active === false ? "inactive" : "approved"),
+          is_active: isAdminRow ? true : record.is_active,
+          password: null,
         };
 
-        results.forEach((result, index) => {
-          const table = ACCOUNT_TABLES[index];
+        const key = `account:${identity}`;
+        const previous = accountMap.get(key);
 
-          if (result.status === "rejected") {
-            failed.push(
-              TABLE_LABELS[table],
-            );
-            return;
-          }
-
-          if (result.value.error) {
-            failed.push(
-              TABLE_LABELS[table],
-            );
-            return;
-          }
-
-          const rows =
-            result.value.data || [];
-
-          rows.forEach((record) => {
-            addUser(record, table);
-          });
-        });
-
-        const sortedUsers = [
-          ...accountMap.values(),
-        ].sort((a, b) => {
-          const aTime = a.created_at
-            ? new Date(a.created_at).getTime()
-            : 0;
-
-          const bTime = b.created_at
-            ? new Date(b.created_at).getTime()
-            : 0;
-
-          return bTime - aTime;
-        });
-
-        setUsers(sortedUsers);
-
-        if (failed.length > 0) {
-          setError(
-            `Some account tables could not be read: ${failed.join(
-              ", ",
-            )}. Check your Supabase RLS policies.`,
-          );
+        if (!previous) {
+          accountMap.set(key, normalized);
+          return;
         }
-      } catch (err) {
-        console.error(
-          "Error fetching users:",
-          err,
-        );
 
+        if (priority > (previous.priority || 0)) {
+          accountMap.set(key, mergeMissingFields(normalized, previous));
+          return;
+        }
+
+        accountMap.set(key, mergeMissingFields(previous, normalized));
+      };
+
+      results.forEach((result, index) => {
+        const table = ACCOUNT_TABLES[index];
+
+        if (result.status === "rejected") {
+          failed.push(TABLE_LABELS[table]);
+          return;
+        }
+
+        if (result.value.error) {
+          failed.push(TABLE_LABELS[table]);
+          return;
+        }
+
+        const rows = result.value.data || [];
+        rows.forEach((record) => addUser(record, table));
+      });
+
+      const sortedUsers = [...accountMap.values()].sort((a, b) => {
+        const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return bTime - aTime;
+      });
+
+      setUsers(sortedUsers);
+
+      if (failed.length > 0) {
         setError(
-          err?.message ||
-            "Failed to load user accounts.",
+          `Some account tables could not be read: ${failed.join(
+            ", ",
+          )}. Check your Supabase RLS policies.`,
         );
-      } finally {
-        setLoading(false);
-        setRefreshing(false);
       }
-    },
-    [],
-  );
+    } catch (err) {
+      console.error("Error fetching users:", err);
+      setError(err?.message || "Failed to load user accounts.");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
 
   useEffect(() => {
     fetchAllUsers(true);
@@ -1128,15 +781,10 @@ export default function AdminUserManagement() {
   =========================================================== */
 
   const filteredUsers = useMemo(() => {
-    const query = searchTerm
-      .trim()
-      .toLowerCase();
+    const query = searchTerm.trim().toLowerCase();
 
     return users.filter((user) => {
-      const idTypeLabel =
-        user.id_type
-          ? getIdTypeLabel(user.id_type)
-          : "";
+      const idTypeLabel = user.id_type ? getIdTypeLabel(user.id_type) : "";
 
       const matchesSearch =
         !query ||
@@ -1156,58 +804,33 @@ export default function AdminUserManagement() {
           user.id_number,
         ]
           .filter(Boolean)
-          .map((value) =>
-            String(value).toLowerCase(),
-          )
+          .map((value) => String(value).toLowerCase())
           .join(" ")
           .includes(query);
 
       const matchesRole =
-        roleFilter === "all" ||
-        user.displayRole === roleFilter;
-
+        roleFilter === "all" || user.displayRole === roleFilter;
       const matchesStatus =
-        statusFilter === "all" ||
-        user.status === statusFilter;
+        statusFilter === "all" || user.status === statusFilter;
 
-      return (
-        matchesSearch &&
-        matchesRole &&
-        matchesStatus
-      );
+      return matchesSearch && matchesRole && matchesStatus;
     });
   }, [roleFilter, searchTerm, statusFilter, users]);
 
   const stats = useMemo(() => {
     return {
       total: users.length,
-
       users: users.filter(
-        (user) =>
-          user.displayRole === "user" ||
-          !user.displayRole,
+        (user) => user.displayRole === "user" || !user.displayRole,
       ).length,
-
-      staff: users.filter(
-        (user) =>
-          user.displayRole === "staff",
-      ).length,
-
-      admins: users.filter(
-        (user) =>
-          user.displayRole === "admin",
-      ).length,
-
+      staff: users.filter((user) => user.displayRole === "staff").length,
+      admins: users.filter((user) => user.displayRole === "admin").length,
       pending: users.filter(
         (user) =>
-          user.status === "pending" ||
-          user.status === "pending_approval",
+          user.status === "pending" || user.status === "pending_approval",
       ).length,
-
       active: users.filter(
-        (user) =>
-          user.status === "approved" ||
-          user.is_active === true,
+        (user) => user.status === "approved" || user.is_active === true,
       ).length,
     };
   }, [users]);
@@ -1220,38 +843,19 @@ export default function AdminUserManagement() {
     setSelectedUser(user);
 
     setEditForm({
-      work_id: rawText(
-        user.workId ||
-          user.user_id ||
-          user.custom_id,
-      ),
-
-      username: normalizeUsername(
-        user.username || user.workId,
-      ),
-
+      work_id: rawText(user.workId || user.user_id || user.custom_id),
+      username: normalizeUsername(user.username || user.workId),
       email: normalizeEmail(user.email),
-
       password: "",
       confirmPassword: "",
-
       full_name:
         user.full_name ||
-        [
-          user.first_name,
-          user.middle_name,
-          user.last_name,
-        ]
+        [user.first_name, user.middle_name, user.last_name]
           .filter(Boolean)
           .join(" "),
-
       id_type: rawText(user.id_type),
-
       role: user.displayRole || "user",
-
-      is_active:
-        user.is_active !== false &&
-        user.status !== "rejected",
+      is_active: user.is_active !== false && user.status !== "rejected",
     });
 
     setShowPassword(false);
@@ -1263,31 +867,14 @@ export default function AdminUserManagement() {
   const handleSaveEdit = async (event) => {
     event.preventDefault();
 
-    if (saving) {
-      return;
-    }
-
+    if (saving) return;
     setError("");
 
-    const workId = rawText(
-      editForm.work_id,
-    );
-
-    const username = normalizeUsername(
-      editForm.username,
-    );
-
-    const fullName = rawText(
-      editForm.full_name,
-    );
-
-    const email = normalizeEmail(
-      editForm.email,
-    );
-
-    const idType = rawText(
-      editForm.id_type,
-    );
+    const workId = rawText(editForm.work_id);
+    const username = normalizeUsername(editForm.username);
+    const fullName = rawText(editForm.full_name);
+    const email = normalizeEmail(editForm.email);
+    const idType = rawText(editForm.id_type);
 
     if (!fullName) {
       setError("Full name is required.");
@@ -1299,25 +886,16 @@ export default function AdminUserManagement() {
       return;
     }
 
-    if (
-      idType &&
-      !ID_TYPE_OPTIONS.some(
-        (option) =>
-          option.value === idType,
-      )
-    ) {
+    if (idType && !ID_TYPE_OPTIONS.some((option) => option.value === idType)) {
       setError("Select a valid ID type.");
       return;
     }
 
     if (isPortalAccount(selectedUser)) {
       if (workId.length < 3) {
-        setError(
-          "Work ID must contain at least 3 characters.",
-        );
+        setError("Work ID must contain at least 3 characters.");
         return;
       }
-
       if (!validUsername(username)) {
         setError(
           "Username must be 3–50 characters and contain only letters, numbers, dots, underscores, or hyphens.",
@@ -1326,21 +904,12 @@ export default function AdminUserManagement() {
       }
     }
 
-    if (
-      editForm.password &&
-      editForm.password.length < 6
-    ) {
-      setError(
-        "Password must be at least 6 characters.",
-      );
+    if (editForm.password && editForm.password.length < 6) {
+      setError("Password must be at least 6 characters.");
       return;
     }
 
-    if (
-      editForm.password &&
-      editForm.password !==
-        editForm.confirmPassword
-    ) {
+    if (editForm.password && editForm.password !== editForm.confirmPassword) {
       setError("Passwords do not match.");
       return;
     }
@@ -1353,68 +922,33 @@ export default function AdminUserManagement() {
       const updateData = {};
 
       if (table === "profiles") {
-        const nameParts =
-          fullName.split(/\s+/);
-
-        updateData.first_name =
-          nameParts.shift() || "";
-
-        updateData.middle_name =
-          nameParts.length > 1
-            ? nameParts.shift()
-            : "";
-
-        updateData.last_name =
-          nameParts.join(" ") || "";
-
+        const nameParts = fullName.split(/\s+/);
+        updateData.first_name = nameParts.shift() || "";
+        updateData.middle_name = nameParts.length > 1 ? nameParts.shift() : "";
+        updateData.last_name = nameParts.join(" ") || "";
         updateData.full_name = fullName;
         updateData.email = email;
-        updateData.username =
-          username || null;
-
-        updateData.id_type =
-          idType || null;
-
-        updateData.is_active =
-          editForm.is_active;
-
-        updateData.role =
-          editForm.role || "user";
+        updateData.username = username || null;
+        updateData.id_type = idType || null;
+        updateData.is_active = editForm.is_active;
+        updateData.role = editForm.role || "user";
       }
 
-      if (
-        table === "pending_registrations"
-      ) {
-        const nameParts =
-          fullName.split(/\s+/);
+      if (table === "pending_registrations") {
+        const nameParts = fullName.split(/\s+/);
+        updateData.first_name = nameParts.shift() || "";
+        updateData.middle_name = nameParts.length > 1 ? nameParts.shift() : "";
+        updateData.last_name = nameParts.join(" ") || "";
 
-        updateData.first_name =
-          nameParts.shift() || "";
-
-        updateData.middle_name =
-          nameParts.length > 1
-            ? nameParts.shift()
-            : "";
-
-        updateData.last_name =
-          nameParts.join(" ") || "";
-
-        updateData.full_name = fullName;
+        /*
+         * IMPORTANT: Do NOT update status here.
+         * The Approve button calls the edge function to create
+         * the auth user + profiles record. Status is managed
+         * exclusively through the Approve/Decline buttons.
+         */
         updateData.email = email;
-
-        updateData.username =
-          username || null;
-
-        updateData.id_type =
-          idType || null;
-
-        updateData.status =
-          editForm.is_active
-            ? "approved"
-            : "rejected";
-
-        updateData.is_active =
-          editForm.is_active;
+        updateData.username = username || null;
+        updateData.id_type = idType || null;
       }
 
       if (table === "staff_users") {
@@ -1423,9 +957,7 @@ export default function AdminUserManagement() {
         updateData.user_id = workId;
         updateData.username = username;
         updateData.role = "staff";
-
-        updateData.is_active =
-          editForm.is_active;
+        updateData.is_active = editForm.is_active;
       }
 
       if (table === "admin_users") {
@@ -1434,56 +966,178 @@ export default function AdminUserManagement() {
         updateData.custom_id = workId;
         updateData.username = username;
         updateData.role = "admin";
-
-        updateData.updated_at =
-          new Date().toISOString();
+        updateData.updated_at = new Date().toISOString();
       }
 
       if (editForm.password) {
-        updateData.password =
-          await hashPassword(
-            editForm.password,
-          );
+        updateData.password = await hashPassword(editForm.password);
       }
 
-      const { error: updateError } =
-        await supabase
-          .from(table)
-          .update(updateData)
-          .eq("id", recordId);
+      const { error: updateError } = await supabase
+        .from(table)
+        .update(updateData)
+        .eq("id", recordId);
 
-      if (updateError) {
-        throw updateError;
-      }
+      if (updateError) throw updateError;
 
       await fetchAllUsers(false);
-
       setShowEditModal(false);
       setSelectedUser(null);
     } catch (err) {
-      console.error(
-        "Update user error:",
-        err,
-      );
-
-      setError(
-        err?.message ||
-          "Failed to update the user.",
-      );
+      console.error("Update user error:", err);
+      setError(err?.message || "Failed to update the user.");
     } finally {
       setSaving(false);
     }
   };
 
   /* ===========================================================
+     APPROVE / DECLINE REGULAR USER ACCOUNT
+  =========================================================== */
+
+  const handleApprovalAction = async (user, action) => {
+    const isRegularUser =
+      user?.displayRole === "user" || !user?.displayRole;
+
+    const isPendingRegistration =
+      user?.sourceTable === "pending_registrations";
+
+    const isPending =
+      user?.status === "pending" || user?.status === "pending_approval";
+
+    if (!isRegularUser || !isPendingRegistration || !isPending) {
+      setError(
+        "Approve/Decline is only available for pending regular user accounts.",
+      );
+      return;
+    }
+
+    const isApprove = action === "approved";
+
+    if (isApprove) {
+      /*
+       * FIXED: Approval now requires admin password verification
+       * and calls the edge function to create the Supabase Auth
+       * user + profiles record. This ensures the approved user
+       * can actually log in across all pages.
+       */
+      setApproveTarget(user);
+      setApprovePassword("");
+      setApproveError("");
+      setShowApproveModal(true);
+      return;
+    }
+
+    /* ── Decline: just update status directly ────────────────────── */
+
+    const userName = user.full_name || user.email || "this user account";
+
+    const confirmed = window.confirm(
+      `Decline ${userName}'s account?\n\nThe user will not be allowed to log in.`,
+    );
+
+    if (!confirmed) return;
+
+    setApprovalSavingId(user.sourceId);
+    setError("");
+
+    try {
+      const { error: updateError } = await supabase
+        .from("pending_registrations")
+        .update({
+          status: "rejected",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", user.sourceId)
+        .eq("role", "user")
+        .eq("status", "pending");
+
+      if (updateError) throw updateError;
+
+      await fetchAllUsers(false);
+    } catch (err) {
+      console.error("Decline user account error:", err);
+      setError(err?.message || "Failed to decline the user account.");
+    } finally {
+      setApprovalSavingId(null);
+    }
+  };
+
+  /* ── NEW: Approve via edge function ────────────────────────────── */
+
+ const handleApproveConfirm = async (event) => {
+  event.preventDefault();
+
+  if (!approveTarget || approveSaving) return;
+
+  setApproveSaving(true);
+  setApproveError("");
+
+  try {
+    const currentStaffData = readCurrentStaff();
+
+    // Use direct fetch instead of supabase.functions.invoke
+    // to avoid SDK-level CORS issues
+    const response = await fetch(
+      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/approve-registration`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
+        },
+        body: JSON.stringify({
+          registration_id: approveTarget.sourceId,
+          requester_work_id: currentStaffData?.user_id || null,
+          requester_username: currentStaffData?.username || null,
+          requester_email: currentStaffData?.email || null,
+          requester_password: approvePassword,
+        }),
+      }
+    );
+
+    let data = {};
+    try {
+      data = await response.json();
+    } catch {
+      data = {};
+    }
+
+    if (!response.ok) {
+      throw new Error(
+        data?.error ||
+          `Request failed with status ${response.status}`
+      );
+    }
+
+    if (data?.success !== true) {
+      throw new Error(data?.error || "Unable to approve the account.");
+    }
+
+    setApproveError("");
+    setShowApproveModal(false);
+    setApproveTarget(null);
+    setApprovePassword("");
+    await fetchAllUsers(false);
+
+    const userName = approveTarget.full_name || approveTarget.email || "the user";
+    setCreateSuccess(`${userName}'s account was approved.`);
+  } catch (err) {
+    console.error("Approve registration error:", err);
+    setApproveError(
+      err?.message || "Failed to approve. Check if the edge function is deployed."
+    );
+  } finally {
+    setApproveSaving(false);
+  }
+};
+
+  /* ===========================================================
      DELETE ACCOUNT
   =========================================================== */
 
   const handleDeleteUser = async (user) => {
-    const userName =
-      user.full_name ||
-      user.email ||
-      "this account";
+    const userName = user.full_name || user.email || "this account";
 
     if (isCurrentAccount(user)) {
       setError(
@@ -1492,49 +1146,32 @@ export default function AdminUserManagement() {
       return;
     }
 
-    const firstConfirmation =
-      window.confirm(
-        `Delete ${userName}?\n\nThis removes the record from the ${user.sourceTable} table.`,
-      );
+    const firstConfirmation = window.confirm(
+      `Delete ${userName}?\n\nThis removes the record from the ${user.sourceTable} table.`,
+    );
 
-    if (!firstConfirmation) {
-      return;
-    }
+    if (!firstConfirmation) return;
 
-    const secondConfirmation =
-      window.confirm(
-        "FINAL CONFIRMATION\n\nThis action cannot be undone. Continue?",
-      );
+    const secondConfirmation = window.confirm(
+      "FINAL CONFIRMATION\n\nThis action cannot be undone. Continue?",
+    );
 
-    if (!secondConfirmation) {
-      return;
-    }
+    if (!secondConfirmation) return;
 
     setSaving(true);
     setError("");
 
     try {
-      const { error: deleteError } =
-        await supabase
-          .from(user.sourceTable)
-          .delete()
-          .eq("id", user.sourceId);
+      const { error: deleteError } = await supabase
+        .from(user.sourceTable)
+        .delete()
+        .eq("id", user.sourceId);
 
-      if (deleteError) {
-        throw deleteError;
-      }
-
+      if (deleteError) throw deleteError;
       await fetchAllUsers(false);
     } catch (err) {
-      console.error(
-        "Delete user error:",
-        err,
-      );
-
-      setError(
-        err?.message ||
-          "Failed to delete the user.",
-      );
+      console.error("Delete user error:", err);
+      setError(err?.message || "Failed to delete the user.");
     } finally {
       setSaving(false);
     }
@@ -1544,195 +1181,104 @@ export default function AdminUserManagement() {
      CREATE STAFF OR ADMIN ACCOUNT
   =========================================================== */
 
-  const openCreateAccountModal = (
-    role = "staff",
-  ) => {
-    const normalizedRole =
-      role === "admin" ? "admin" : "staff";
-
+  const openCreateAccountModal = (role = "staff") => {
+    const normalizedRole = role === "admin" ? "admin" : "staff";
     setCreateRole(normalizedRole);
-
-    setCreateForm({
-      ...EMPTY_CREATE_FORM,
-      role: normalizedRole,
-    });
-
+    setCreateForm({ ...EMPTY_CREATE_FORM, role: normalizedRole });
     setCreateError("");
     setShowCreateModal(true);
   };
 
-  const handleCreateAccount = async (
-    event,
-  ) => {
+  const handleCreateAccount = async (event) => {
     event.preventDefault();
 
-    if (createSaving) {
-      return;
-    }
-
+    if (createSaving) return;
     setCreateSaving(true);
     setCreateError("");
     setCreateSuccess("");
 
     try {
-      const workId = rawText(
-        createForm.work_id,
-      );
-
-      const username =
-        normalizeUsername(
-          createForm.username,
-        );
-
-      const fullName = rawText(
-        createForm.full_name,
-      );
-
-      const email = normalizeEmail(
-        createForm.email,
-      );
-
+      const workId = rawText(createForm.work_id);
+      const username = normalizeUsername(createForm.username);
+      const fullName = rawText(createForm.full_name);
+      const email = normalizeEmail(createForm.email);
       const password = createForm.password;
-
-      const confirmPassword =
-        createForm.confirmPassword;
-
-      const requesterPassword =
-        createForm.requester_password;
+      const confirmPassword = createForm.confirmPassword;
+      const requesterPassword = createForm.requester_password;
 
       if (workId.length < 3) {
-        throw new Error(
-          "Work ID must contain at least 3 characters.",
-        );
+        throw new Error("Work ID must contain at least 3 characters.");
       }
-
       if (!validUsername(username)) {
         throw new Error(
           "Username must be 3–50 characters and contain only letters, numbers, dots, underscores, or hyphens.",
         );
       }
-
       if (fullName.length < 2) {
-        throw new Error(
-          "Full name is required.",
-        );
+        throw new Error("Full name is required.");
       }
-
       if (!EMAIL_PATTERN.test(email)) {
-        throw new Error(
-          "Enter a valid email address.",
-        );
+        throw new Error("Enter a valid email address.");
       }
-
       if (password.length < 6) {
-        throw new Error(
-          "Password must be at least 6 characters.",
-        );
+        throw new Error("Password must be at least 6 characters.");
       }
-
       if (password !== confirmPassword) {
-        throw new Error(
-          "Passwords do not match.",
-        );
+        throw new Error("Passwords do not match.");
       }
-
       if (!requesterPassword) {
-        throw new Error(
-          "Enter your current administrator password.",
-        );
+        throw new Error("Enter your current administrator password.");
       }
 
-      const currentStaff =
-        readCurrentStaff();
+      const currentStaffData = readCurrentStaff();
 
-      if (!currentStaff) {
+      if (!currentStaffData) {
         throw new Error(
           "Your administrator session could not be read. Please sign in again.",
         );
       }
 
-      const { data, error } =
-        await supabase.functions.invoke(
-          "create-account",
-          {
-            body: {
-              account_type: createRole,
-              work_id: workId,
-              username,
-              full_name: fullName,
-              email,
-              password,
-
-              department:
-                rawText(
-                  createForm.department,
-                ) || null,
-
-              mobile_number:
-                rawText(
-                  createForm.mobile_number,
-                ) || null,
-
-              requester_work_id:
-                currentStaff.user_id ||
-                currentStaff.id ||
-                null,
-
-              requester_username:
-                currentStaff.username ||
-                null,
-
-              requester_email:
-                currentStaff.email ||
-                null,
-
-              requester_password:
-                requesterPassword,
-            },
+      const { data, error } = await supabase.functions.invoke(
+        "create-account",
+        {
+          body: {
+            account_type: createRole,
+            work_id: workId,
+            username,
+            full_name: fullName,
+            email,
+            password,
+            department: rawText(createForm.department) || null,
+            mobile_number: rawText(createForm.mobile_number) || null,
+            requester_work_id:
+              currentStaffData.user_id || currentStaffData.id || null,
+            requester_username: currentStaffData.username || null,
+            requester_email: currentStaffData.email || null,
+            requester_password: requesterPassword,
           },
-        );
+        },
+      );
 
       if (error || !data?.success) {
-        const message =
-          await parseFunctionError(error);
-
-        throw new Error(
-          message ||
-            "Unable to create the account.",
-        );
+        const message = await parseFunctionError(error);
+        throw new Error(message || "Unable to create the account.");
       }
 
       await fetchAllUsers(false);
-
       setShowCreateModal(false);
-
-      setCreateForm({
-        ...EMPTY_CREATE_FORM,
-        role: createRole,
-      });
+      setCreateForm({ ...EMPTY_CREATE_FORM, role: createRole });
 
       setCreateSuccess(
         data?.message ||
           `${
-            createRole === "admin"
-              ? "Administrator"
-              : "Staff"
+            createRole === "admin" ? "Administrator" : "Staff"
           } account for ${fullName} was ${
-            data?.created
-              ? "created"
-              : "updated"
+            data?.created ? "created" : "updated"
           } successfully. No duplicate was created.`,
       );
     } catch (err) {
-      console.error(
-        "Create account error:",
-        err,
-      );
-
-      setCreateError(
-        err?.message ||
-          "Unable to create the account.",
-      );
+      console.error("Create account error:", err);
+      setCreateError(err?.message || "Unable to create the account.");
     } finally {
       setCreateSaving(false);
     }
@@ -1745,189 +1291,65 @@ export default function AdminUserManagement() {
   const getDetailFields = (user) => {
     const fields = [];
 
-    if (user.full_name) {
-      fields.push({
-        label: "Full Name",
-        value: user.full_name,
-        icon: User,
-      });
-    }
-
-    if (user.first_name) {
-      fields.push({
-        label: "First Name",
-        value: user.first_name,
-        icon: User,
-      });
-    }
-
-    if (user.middle_name) {
-      fields.push({
-        label: "Middle Name",
-        value: user.middle_name,
-        icon: User,
-      });
-    }
-
-    if (user.last_name) {
-      fields.push({
-        label: "Last Name",
-        value: user.last_name,
-        icon: User,
-      });
-    }
-
-    if (user.workId) {
-      fields.push({
-        label: "Work ID",
-        value: user.workId,
-        icon: Hash,
-      });
-    }
-
-    if (user.username) {
-      fields.push({
-        label: "Username",
-        value: user.username,
-        icon: User,
-      });
-    }
-
-    if (user.email) {
-      fields.push({
-        label: "Email",
-        value: user.email,
-        icon: Mail,
-      });
-    }
-
-    if (user.custom_id) {
-      fields.push({
-        label: "Custom ID",
-        value: user.custom_id,
-        icon: Hash,
-      });
-    }
-
-    if (user.id_type) {
+    if (user.full_name)
+      fields.push({ label: "Full Name", value: user.full_name, icon: User });
+    if (user.first_name)
+      fields.push({ label: "First Name", value: user.first_name, icon: User });
+    if (user.middle_name)
+      fields.push({ label: "Middle Name", value: user.middle_name, icon: User });
+    if (user.last_name)
+      fields.push({ label: "Last Name", value: user.last_name, icon: User });
+    if (user.workId)
+      fields.push({ label: "Work ID", value: user.workId, icon: Hash });
+    if (user.username)
+      fields.push({ label: "Username", value: user.username, icon: User });
+    if (user.email)
+      fields.push({ label: "Email", value: user.email, icon: Mail });
+    if (user.custom_id)
+      fields.push({ label: "Custom ID", value: user.custom_id, icon: Hash });
+    if (user.id_type)
       fields.push({
         label: "ID Type",
-        value: getIdTypeLabel(
-          user.id_type,
-        ),
+        value: getIdTypeLabel(user.id_type),
         icon: CreditCard,
       });
-    }
+    if (user.id_number)
+      fields.push({ label: "ID Number", value: user.id_number, icon: CreditCard });
+    if (user.department)
+      fields.push({ label: "Department", value: user.department, icon: Building2 });
+    if (user.age != null)
+      fields.push({ label: "Age", value: String(user.age), icon: User });
+    if (user.birthdate)
+      fields.push({ label: "Birthdate", value: formatDate(user.birthdate), icon: Calendar });
+    if (user.address)
+      fields.push({ label: "Address", value: user.address, icon: MapPin });
+    if (user.mobile_number)
+      fields.push({ label: "Mobile Number", value: user.mobile_number, icon: Phone });
 
-    if (user.id_number) {
-      fields.push({
-        label: "ID Number",
-        value: user.id_number,
-        icon: CreditCard,
-      });
-    }
+    fields.push({ label: "Role", value: user.displayRole, icon: Shield });
+    fields.push({ label: "Status", value: prettyStatus(user.status), icon: UserCheck });
 
-    if (user.department) {
-      fields.push({
-        label: "Department",
-        value: user.department,
-        icon: Building2,
-      });
-    }
-
-    if (user.age != null) {
-      fields.push({
-        label: "Age",
-        value: String(user.age),
-        icon: User,
-      });
-    }
-
-    if (user.birthdate) {
-      fields.push({
-        label: "Birthdate",
-        value: formatDate(
-          user.birthdate,
-        ),
-        icon: Calendar,
-      });
-    }
-
-    if (user.address) {
-      fields.push({
-        label: "Address",
-        value: user.address,
-        icon: MapPin,
-      });
-    }
-
-    if (user.mobile_number) {
-      fields.push({
-        label: "Mobile Number",
-        value: user.mobile_number,
-        icon: Phone,
-      });
-    }
-
-    fields.push({
-      label: "Role",
-      value: user.displayRole,
-      icon: Shield,
-    });
-
-    fields.push({
-      label: "Status",
-      value: prettyStatus(user.status),
-      icon: UserCheck,
-    });
-
-    if (
-      typeof user.is_active === "boolean"
-    ) {
+    if (typeof user.is_active === "boolean") {
       fields.push({
         label: "Active",
-        value: user.is_active
-          ? "Yes"
-          : "No",
+        value: user.is_active ? "Yes" : "No",
         icon: UserCheck,
       });
     }
 
-    if (user.databaseId) {
+    if (user.databaseId)
       fields.push({
         label: "Account Record ID",
         value: String(user.databaseId),
         icon: Hash,
       });
-    }
 
-    if (user.sourceTable) {
-      fields.push({
-        label: "Source Table",
-        value: user.sourceTable,
-        icon: Building2,
-      });
-    }
-
-    if (user.created_at) {
-      fields.push({
-        label: "Created",
-        value: formatDate(
-          user.created_at,
-        ),
-        icon: Clock,
-      });
-    }
-
-    if (user.updated_at) {
-      fields.push({
-        label: "Last Updated",
-        value: formatDate(
-          user.updated_at,
-        ),
-        icon: Clock,
-      });
-    }
+    if (user.sourceTable)
+      fields.push({ label: "Source Table", value: user.sourceTable, icon: Building2 });
+    if (user.created_at)
+      fields.push({ label: "Created", value: formatDate(user.created_at), icon: Clock });
+    if (user.updated_at)
+      fields.push({ label: "Last Updated", value: formatDate(user.updated_at), icon: Clock });
 
     return fields;
   };
@@ -1941,7 +1363,6 @@ export default function AdminUserManagement() {
       <div className="flex min-h-screen items-center justify-center bg-slate-50">
         <div className="text-center">
           <Loader2 className="mx-auto h-12 w-12 animate-spin text-purple-600" />
-
           <p className="mt-4 font-semibold text-gray-600">
             Loading all user accounts...
           </p>
@@ -1950,9 +1371,7 @@ export default function AdminUserManagement() {
     );
   }
 
-  const detailFields = detailsUser
-    ? getDetailFields(detailsUser)
-    : [];
+  const detailFields = detailsUser ? getDetailFields(detailsUser) : [];
 
   /* ===========================================================
      MAIN PAGE
@@ -1962,98 +1381,70 @@ export default function AdminUserManagement() {
     <div className="min-h-screen bg-slate-50 p-4 dark:bg-slate-950 sm:p-6 lg:p-10">
       <div className="mx-auto max-w-7xl">
         {/* Header */}
-
         <div className="mb-6 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div>
             <h1 className="flex items-center gap-3 text-2xl font-black text-slate-800 dark:text-slate-100 sm:text-3xl">
               <Users className="h-7 w-7 text-purple-600 sm:h-8 sm:w-8" />
-
               User Management
             </h1>
-
             <p className="mt-1 text-slate-500 dark:text-slate-400">
-              Manage resident, staff, and administrator
-              accounts
+              Manage resident, staff, and administrator accounts
             </p>
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
             <button
               type="button"
-              onClick={() =>
-                openCreateAccountModal("staff")
-              }
+              onClick={() => openCreateAccountModal("staff")}
               className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-blue-700"
             >
               <Users className="h-4 w-4" />
-
               Add Staff
             </button>
-
             <button
               type="button"
-              onClick={() =>
-                openCreateAccountModal("admin")
-              }
+              onClick={() => openCreateAccountModal("admin")}
               className="flex items-center gap-2 rounded-xl bg-purple-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-purple-700"
             >
               <Shield className="h-4 w-4" />
-
               Add Admin
             </button>
-
             <button
               type="button"
-              onClick={() =>
-                setShowReport(true)
-              }
+              onClick={() => setShowReport(true)}
               disabled={users.length === 0}
               className="flex items-center gap-2 rounded-xl border border-purple-300 px-4 py-2 text-sm font-bold text-purple-700 transition hover:bg-purple-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-purple-700 dark:text-purple-300 dark:hover:bg-purple-950/30"
             >
               <Download className="h-4 w-4" />
-
               Summary Report
             </button>
-
             <button
               type="button"
-              onClick={() =>
-                fetchAllUsers(false)
-              }
+              onClick={() => fetchAllUsers(false)}
               disabled={refreshing}
               className="flex items-center gap-2 rounded-xl bg-slate-700 px-4 py-2 text-sm font-bold text-white transition hover:bg-slate-800 disabled:opacity-50 dark:bg-slate-600"
             >
               <RefreshCw
-                className={`h-4 w-4 ${
-                  refreshing
-                    ? "animate-spin"
-                    : ""
-                }`}
+                className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`}
               />
-
               Refresh
             </button>
           </div>
         </div>
 
         {/* Create success */}
-
         {createSuccess && (
           <div
             role="status"
             className="mb-5 flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4"
           >
             <CheckCircle className="h-5 w-5 shrink-0 text-emerald-600" />
-
             <p className="text-sm font-medium text-emerald-700">
               {createSuccess}
             </p>
-
             <button
               type="button"
-              onClick={() =>
-                setCreateSuccess("")
-              }
+              onClick={() => setCreateSuccess("")}
               aria-label="Dismiss success message"
               className="ml-auto rounded-lg p-1 text-emerald-600 hover:bg-emerald-100"
             >
@@ -2063,66 +1454,25 @@ export default function AdminUserManagement() {
         )}
 
         {/* General error */}
-
         {error && (
           <div
             role="alert"
             className="mb-5 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4"
           >
             <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
-
-            <p className="text-sm font-medium text-red-700">
-              {error}
-            </p>
+            <p className="text-sm font-medium text-red-700">{error}</p>
           </div>
         )}
 
         {/* Statistics */}
-
         <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
           {[
-            {
-              label: "Total Users",
-              value: stats.total,
-              className:
-                "border-blue-200 bg-blue-50 text-blue-700",
-              icon: Users,
-            },
-            {
-              label: "Regular",
-              value: stats.users,
-              className:
-                "border-emerald-200 bg-emerald-50 text-emerald-700",
-              icon: User,
-            },
-            {
-              label: "Staff",
-              value: stats.staff,
-              className:
-                "border-blue-200 bg-blue-50 text-blue-700",
-              icon: ShieldCheck,
-            },
-            {
-              label: "Admins",
-              value: stats.admins,
-              className:
-                "border-purple-200 bg-purple-50 text-purple-700",
-              icon: Shield,
-            },
-            {
-              label: "Pending",
-              value: stats.pending,
-              className:
-                "border-yellow-200 bg-yellow-50 text-yellow-700",
-              icon: Clock,
-            },
-            {
-              label: "Active",
-              value: stats.active,
-              className:
-                "border-emerald-200 bg-emerald-50 text-emerald-700",
-              icon: UserCheck,
-            },
+            { label: "Total Users", value: stats.total, className: "border-blue-200 bg-blue-50 text-blue-700", icon: Users },
+            { label: "Regular", value: stats.users, className: "border-emerald-200 bg-emerald-50 text-emerald-700", icon: User },
+            { label: "Staff", value: stats.staff, className: "border-blue-200 bg-blue-50 text-blue-700", icon: ShieldCheck },
+            { label: "Admins", value: stats.admins, className: "border-purple-200 bg-purple-50 text-purple-700", icon: Shield },
+            { label: "Pending", value: stats.pending, className: "border-yellow-200 bg-yellow-50 text-yellow-700", icon: Clock },
+            { label: "Active", value: stats.active, className: "border-emerald-200 bg-emerald-50 text-emerald-700", icon: UserCheck },
           ].map((stat) => (
             <div
               key={stat.label}
@@ -2130,15 +1480,9 @@ export default function AdminUserManagement() {
             >
               <div className="flex items-center justify-between">
                 <div>
-                  <p className="text-xs font-bold opacity-70">
-                    {stat.label}
-                  </p>
-
-                  <p className="mt-1 text-2xl font-black">
-                    {stat.value}
-                  </p>
+                  <p className="text-xs font-bold opacity-70">{stat.label}</p>
+                  <p className="mt-1 text-2xl font-black">{stat.value}</p>
                 </div>
-
                 <stat.icon className="h-7 w-7 opacity-70" />
               </div>
             </div>
@@ -2146,22 +1490,16 @@ export default function AdminUserManagement() {
         </div>
 
         {/* Search and filters */}
-
         <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800">
           <div className="flex flex-col gap-3 xl:flex-row">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
-
               <input
                 type="search"
                 aria-label="Search accounts"
                 placeholder="Search by name, email, username, ID type, ID number, or Work ID..."
                 value={searchTerm}
-                onChange={(event) =>
-                  setSearchTerm(
-                    event.target.value,
-                  )
-                }
+                onChange={(event) => setSearchTerm(event.target.value)}
                 className="w-full rounded-xl border border-slate-300 bg-white py-2 pl-10 pr-4 text-sm outline-none transition focus:ring-2 focus:ring-purple-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
               />
             </div>
@@ -2169,65 +1507,31 @@ export default function AdminUserManagement() {
             <select
               aria-label="Filter by role"
               value={roleFilter}
-              onChange={(event) =>
-                setRoleFilter(
-                  event.target.value,
-                )
-              }
+              onChange={(event) => setRoleFilter(event.target.value)}
               className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-purple-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
             >
-              <option value="all">
-                All Roles
-              </option>
-
-              <option value="user">
-                Regular User
-              </option>
-
-              <option value="staff">
-                Staff
-              </option>
-
-              <option value="admin">
-                Admin
-              </option>
+              <option value="all">All Roles</option>
+              <option value="user">Regular User</option>
+              <option value="staff">Staff</option>
+              <option value="admin">Admin</option>
             </select>
 
             <select
               aria-label="Filter by status"
               value={statusFilter}
-              onChange={(event) =>
-                setStatusFilter(
-                  event.target.value,
-                )
-              }
+              onChange={(event) => setStatusFilter(event.target.value)}
               className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-purple-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
             >
-              <option value="all">
-                All Statuses
-              </option>
-
-              <option value="approved">
-                Active
-              </option>
-
-              <option value="pending">
-                Pending
-              </option>
-
-              <option value="rejected">
-                Rejected
-              </option>
-
-              <option value="inactive">
-                Inactive
-              </option>
+              <option value="all">All Statuses</option>
+              <option value="approved">Active</option>
+              <option value="pending">Pending</option>
+              <option value="rejected">Rejected</option>
+              <option value="inactive">Inactive</option>
             </select>
           </div>
         </div>
 
         {/* Users table */}
-
         <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
           <div className="overflow-x-auto">
             <table className="w-full min-w-[1200px]">
@@ -2236,13 +1540,14 @@ export default function AdminUserManagement() {
                   {[
                     "#",
                     "Name",
-                    "Work ID",
+                    "Work ID / User ID",
                     "Username",
                     "Email",
                     "ID Type",
                     "Role",
                     "Source",
                     "Status",
+                    "Details",
                     "Actions",
                   ].map((heading) => (
                     <th
@@ -2258,164 +1563,167 @@ export default function AdminUserManagement() {
               <tbody>
                 {filteredUsers.length === 0 ? (
                   <tr>
-                    <td
-                      colSpan={10}
-                      className="px-6 py-12 text-center"
-                    >
+                    <td colSpan={11} className="px-6 py-12 text-center">
                       <AlertCircle className="mx-auto mb-3 h-12 w-12 text-slate-400" />
-
                       <p className="font-semibold text-slate-600 dark:text-slate-300">
-                        No user accounts found
-                        matching your criteria.
+                        No user accounts found matching your criteria.
                       </p>
                     </td>
                   </tr>
                 ) : (
-                  filteredUsers.map(
-                    (user, index) => {
-                      const current =
-                        isCurrentAccount(user);
+                  filteredUsers.map((user, index) => {
+                    const current = isCurrentAccount(user);
 
-                      return (
-                        <tr
-                          key={`${user.sourceTable}-${user.sourceId}`}
-                          className="border-b border-slate-200 transition hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-700/30"
-                        >
-                          <td className="px-4 py-4 font-mono text-sm text-slate-500">
-                            {index + 1}
-                          </td>
+                    return (
+                      <tr
+                        key={`${user.sourceTable}-${user.sourceId}`}
+                        className="border-b border-slate-200 transition hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-700/30"
+                      >
+                        <td className="px-4 py-4 font-mono text-sm text-slate-500">
+                          {index + 1}
+                        </td>
 
-                          <td className="px-4 py-4">
-                            <div className="flex items-center gap-3">
-                              <Avatar
-                                user={user}
-                                size="sm"
-                              />
-
-                              <div className="min-w-0">
-                                <p className="max-w-[220px] truncate text-sm font-semibold text-slate-800 dark:text-slate-100">
-                                  {user.full_name ||
-                                    "Unknown"}
-                                </p>
-
-                                <p className="text-xs text-slate-400">
-                                  Record:{" "}
-                                  {String(
-                                    user.databaseId ||
-                                      user.sourceId ||
-                                      "",
-                                  ).slice(0, 18)}
-                                </p>
-                              </div>
+                        <td className="px-4 py-4">
+                          <div className="flex items-center gap-3">
+                            <Avatar user={user} size="sm" />
+                            <div className="min-w-0">
+                              <p className="max-w-[220px] truncate text-sm font-semibold text-slate-800 dark:text-slate-100">
+                                {user.full_name || "Unknown"}
+                              </p>
+                              <p className="text-xs text-slate-400">
+                                Record:{" "}
+                                {String(
+                                  user.databaseId || user.sourceId || "",
+                                ).slice(0, 18)}
+                              </p>
                             </div>
-                          </td>
+                          </div>
+                        </td>
 
-                          <td className="px-4 py-4 font-mono text-sm text-slate-700 dark:text-slate-300">
-                            {user.workId || "N/A"}
-                          </td>
+                        <td className="px-4 py-4 font-mono text-sm text-slate-700 dark:text-slate-300">
+                          {user.workId || "N/A"}
+                        </td>
 
-                          <td className="px-4 py-4 text-sm text-slate-700 dark:text-slate-300">
-                            <span className="rounded-lg bg-slate-100 px-2 py-1 font-mono text-xs dark:bg-slate-700 dark:text-slate-200">
-                              {user.username ||
-                                "N/A"}
+                        <td className="px-4 py-4 text-sm text-slate-700 dark:text-slate-300">
+                          <span className="rounded-lg bg-slate-100 px-2 py-1 font-mono text-xs dark:bg-slate-700 dark:text-slate-200">
+                            {user.username || "N/A"}
+                          </span>
+                        </td>
+
+                        <td className="px-4 py-4 text-sm text-slate-600 dark:text-slate-400">
+                          {user.email || "N/A"}
+                        </td>
+
+                        <td className="px-4 py-4 text-sm text-slate-600 dark:text-slate-400">
+                          {user.id_type ? (
+                            <span className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700">
+                              {getIdTypeLabel(user.id_type)}
                             </span>
-                          </td>
+                          ) : (
+                            "N/A"
+                          )}
+                        </td>
 
-                          <td className="px-4 py-4 text-sm text-slate-600 dark:text-slate-400">
-                            {user.email || "N/A"}
-                          </td>
+                        <td className="px-4 py-4">
+                          <RoleBadge role={user.displayRole} />
+                        </td>
 
-                          <td className="px-4 py-4 text-sm text-slate-600 dark:text-slate-400">
-                            {user.id_type ? (
-                              <span className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700">
-                                {getIdTypeLabel(
-                                  user.id_type,
-                                )}
-                              </span>
-                            ) : (
-                              "N/A"
-                            )}
-                          </td>
+                        <td className="px-4 py-4">
+                          <span className="rounded bg-slate-100 px-2 py-1 font-mono text-xs text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+                            {user.sourceTable}
+                          </span>
+                        </td>
 
-                          <td className="px-4 py-4">
-                            <RoleBadge
-                              role={
-                                user.displayRole
+                        <td className="px-4 py-4">
+                          <StatusBadge user={user} />
+                        </td>
+
+                        <td className="px-4 py-4">
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setDetailsUser(user)}
+                              className="flex items-center gap-1 rounded-lg bg-slate-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-slate-700"
+                            >
+                              <Info className="h-3 w-3" />
+                              Details
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => openEditModal(user)}
+                              disabled={current}
+                              title={
+                                current
+                                  ? "You cannot edit the currently signed-in account here"
+                                  : "Edit account"
                               }
-                            />
-                          </td>
+                              className="flex items-center gap-1 rounded-lg bg-blue-500 px-3 py-2 text-xs font-bold text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              <Edit3 className="h-3 w-3" />
+                              Edit
+                            </button>
+                          </div>
+                        </td>
 
-                          <td className="px-4 py-4">
-                            <span className="rounded bg-slate-100 px-2 py-1 font-mono text-xs text-slate-600 dark:bg-slate-700 dark:text-slate-300">
-                              {user.sourceTable}
-                            </span>
-                          </td>
+                        <td className="px-4 py-4">
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteUser(user)}
+                              disabled={current}
+                              title={
+                                current
+                                  ? "You cannot delete the currently signed-in account"
+                                  : "Delete account"
+                              }
+                              className="flex items-center gap-1 rounded-lg bg-red-500 px-3 py-2 text-xs font-bold text-white transition hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                              Delete
+                            </button>
 
-                          <td className="px-4 py-4">
-                            <StatusBadge
-                              user={user}
-                            />
-                          </td>
-
-                          <td className="px-4 py-4">
-                            <div className="flex flex-wrap gap-2">
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  setDetailsUser(
-                                    user,
-                                  )
-                                }
-                                className="flex items-center gap-1 rounded-lg bg-slate-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-slate-700"
-                              >
-                                <Info className="h-3 w-3" />
-
-                                Details
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  openEditModal(user)
-                                }
-                                disabled={current}
-                                title={
-                                  current
-                                    ? "You cannot edit the currently signed-in account here"
-                                    : "Edit account"
-                                }
-                                className="flex items-center gap-1 rounded-lg bg-blue-500 px-3 py-2 text-xs font-bold text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                <Edit3 className="h-3 w-3" />
-
-                                Edit
-                              </button>
-
-                              <button
-                                type="button"
-                                onClick={() =>
-                                  handleDeleteUser(
-                                    user,
-                                  )
-                                }
-                                disabled={current}
-                                title={
-                                  current
-                                    ? "You cannot delete the currently signed-in account"
-                                    : "Delete account"
-                                }
-                                className="flex items-center gap-1 rounded-lg bg-red-500 px-3 py-2 text-xs font-bold text-white transition hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50"
-                              >
-                                <Trash2 className="h-3 w-3" />
-
-                                Delete
-                              </button>
-                            </div>
-                          </td>
-                        </tr>
-                      );
-                    },
-                  )
+                            {(user.displayRole === "user" || !user.displayRole) &&
+                              user.sourceTable === "pending_registrations" &&
+                              (user.status === "pending" ||
+                                user.status === "pending_approval") && (
+                                <>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleApprovalAction(user, "approved")
+                                    }
+                                    disabled={approvalSavingId !== null}
+                                    className="flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                  >
+                                    {approvalSavingId === user.sourceId ? (
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : (
+                                      <CheckCircle className="h-3 w-3" />
+                                    )}
+                                    Approve
+                                  </button>
+                                  <button
+                                    type="button"
+                                    onClick={() =>
+                                      handleApprovalAction(user, "rejected")
+                                    }
+                                    disabled={approvalSavingId !== null}
+                                    className="flex items-center gap-1 rounded-lg bg-red-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                  >
+                                    {approvalSavingId === user.sourceId ? (
+                                      <Loader2 className="h-3 w-3 animate-spin" />
+                                    ) : (
+                                      <X className="h-3 w-3" />
+                                    )}
+                                    Decline
+                                  </button>
+                                </>
+                              )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
@@ -2423,13 +1731,153 @@ export default function AdminUserManagement() {
         </div>
 
         <div className="mt-4 text-center text-sm text-slate-500 dark:text-slate-400">
-          Showing {filteredUsers.length} of{" "}
-          {users.length} total accounts
+          Showing {filteredUsers.length} of {users.length} total accounts
         </div>
       </div>
 
-      {/* Create account modal */}
+      {/* ══════════════════════════════════════════════════════════
+          APPROVE MODAL — NEW
+          ══════════════════════════════════════════════════════════ */}
+      {showApproveModal && approveTarget && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black/50 p-4"
+          onClick={() => {
+            if (!approveSaving) {
+              setShowApproveModal(false);
+              setApproveTarget(null);
+            }
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="approve-account-title"
+            className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-slate-800"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 dark:border-slate-700">
+              <div className="flex items-center gap-3">
+                <div className="rounded-xl bg-emerald-100 p-2 text-emerald-600 dark:bg-emerald-900/40">
+                  <CheckCircle className="h-5 w-5" />
+                </div>
+                <div>
+                  <h2
+                    id="approve-account-title"
+                    className="text-xl font-bold text-slate-800 dark:text-slate-100"
+                  >
+                    Approve Account
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {approveTarget.full_name || approveTarget.email}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!approveSaving) {
+                    setShowApproveModal(false);
+                    setApproveTarget(null);
+                  }
+                }}
+                disabled={approveSaving}
+                aria-label="Close"
+                className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 disabled:opacity-50 dark:hover:bg-slate-700"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
 
+            <div className="space-y-5 p-6">
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm dark:border-emerald-800 dark:bg-emerald-900/20">
+                <p className="font-bold text-emerald-800 dark:text-emerald-200">
+                  You are about to approve this account
+                </p>
+                <p className="mt-1 text-xs leading-relaxed text-emerald-700 dark:text-emerald-300">
+                  This will:
+                  <br />
+                  • Create a Supabase Auth user so they can log in
+                  <br />
+                  • Create a profile record in the profiles table
+                  <br />
+                  • Mark the registration as approved
+                </p>
+              </div>
+
+              {approveError && (
+                <div
+                  role="alert"
+                  className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"
+                >
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <p>{approveError}</p>
+                </div>
+              )}
+
+              <form onSubmit={handleApproveConfirm}>
+                <div className="mb-4">
+                  <label
+                    htmlFor="approve-password"
+                    className="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-200"
+                  >
+                    Your Current Administrator Password *
+                  </label>
+                  <div className="relative">
+                    <input
+                      id="approve-password"
+                      type="password"
+                      required
+                      value={approvePassword}
+                      onChange={(event) =>
+                        setApprovePassword(event.target.value)
+                      }
+                      placeholder="Enter your admin password"
+                      autoComplete="current-password"
+                      className="w-full rounded-xl border border-slate-300 py-2.5 pl-3 pr-11 text-sm outline-none focus:ring-2 focus:ring-emerald-500 dark:border-slate-600 dark:bg-slate-900"
+                    />
+                    <Lock className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  </div>
+                  <p className="mt-1 text-xs text-slate-500">
+                    This verifies that you are authorized to approve this account.
+                  </p>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!approveSaving) {
+                        setShowApproveModal(false);
+                        setApproveTarget(null);
+                      }
+                    }}
+                    disabled={approveSaving}
+                    className="rounded-lg border border-slate-300 px-4 py-2.5 font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={approveSaving || !approvePassword}
+                    className="flex items-center gap-2 rounded-lg bg-emerald-600 px-5 py-2.5 font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {approveSaving ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <CheckCircle className="h-4 w-4" />
+                    )}
+                    {approveSaving
+                      ? "Approving..."
+                      : "Approve Account"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Create account modal */}
       {showCreateModal && (
         <CreateAccountModal
           key={createRole}
@@ -2449,7 +1897,6 @@ export default function AdminUserManagement() {
       )}
 
       {/* Details modal */}
-
       {detailsUser && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-4"
@@ -2460,9 +1907,7 @@ export default function AdminUserManagement() {
             aria-modal="true"
             aria-labelledby="account-details-title"
             className="max-h-[80vh] w-full max-w-5xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-800"
-            onClick={(event) =>
-              event.stopPropagation()
-            }
+            onClick={(event) => event.stopPropagation()}
           >
             <div className="mb-4 flex items-center justify-between gap-3">
               <h2
@@ -2470,15 +1915,11 @@ export default function AdminUserManagement() {
                 className="flex items-center gap-2 text-xl font-bold text-slate-800 dark:text-slate-100"
               >
                 <Info className="h-5 w-5 text-slate-600" />
-
                 Account Details
               </h2>
-
               <button
                 type="button"
-                onClick={() =>
-                  setDetailsUser(null)
-                }
+                onClick={() => setDetailsUser(null)}
                 aria-label="Close details"
                 className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100"
               >
@@ -2488,37 +1929,21 @@ export default function AdminUserManagement() {
 
             <div className="mb-5 flex items-center gap-4 rounded-2xl bg-slate-50 p-4 dark:bg-slate-900">
               <Avatar user={detailsUser} />
-
               <div className="min-w-0 flex-1">
                 <p className="truncate text-lg font-bold text-slate-800 dark:text-slate-100">
-                  {detailsUser.full_name ||
-                    detailsUser.email ||
-                    "Unknown"}
+                  {detailsUser.full_name || detailsUser.email || "Unknown"}
                 </p>
-
                 <p className="truncate text-sm text-slate-500">
                   {detailsUser.email || "No email"}
                 </p>
-
                 <div className="mt-2 flex flex-wrap gap-2">
-                  <RoleBadge
-                    role={
-                      detailsUser.displayRole
-                    }
-                  />
-
-                  <StatusBadge
-                    user={detailsUser}
-                  />
-
+                  <RoleBadge role={detailsUser.displayRole} />
+                  <StatusBadge user={detailsUser} />
                   {detailsUser.id_type && (
                     <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700">
-                      {getIdTypeLabel(
-                        detailsUser.id_type,
-                      )}
+                      {getIdTypeLabel(detailsUser.id_type)}
                     </span>
                   )}
-
                   <span className="rounded-full bg-slate-200 px-2 py-1 font-mono text-xs text-slate-600 dark:bg-slate-700 dark:text-slate-300">
                     {detailsUser.sourceTable}
                   </span>
@@ -2526,21 +1951,15 @@ export default function AdminUserManagement() {
               </div>
             </div>
 
-            {/* Identity and verification photos */}
-
             <div className="mb-5">
               <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <p className="flex items-center gap-2 text-sm font-bold text-slate-600 dark:text-slate-300">
                   <Camera className="h-4 w-4 text-purple-600" />
-
                   Identity and Verification Photos
                 </p>
-
                 {detailsUser.id_type && (
                   <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700 dark:bg-blue-950 dark:text-blue-300">
-                    {getIdTypeLabel(
-                      detailsUser.id_type,
-                    )}
+                    {getIdTypeLabel(detailsUser.id_type)}
                   </span>
                 )}
               </div>
@@ -2549,13 +1968,9 @@ export default function AdminUserManagement() {
                 <PhotoCard
                   label="Profile Picture"
                   value={detailsUser.avatar_url}
-                  alt={`${
-                    detailsUser.full_name ||
-                    "User"
-                  } profile picture`}
+                  alt={`${detailsUser.full_name || "User"} profile picture`}
                   icon={Camera}
                 />
-
                 <PhotoCard
                   label="Front Side of ID"
                   value={
@@ -2567,22 +1982,16 @@ export default function AdminUserManagement() {
                   icon={CreditCard}
                   contain
                 />
-
                 <PhotoCard
                   label="Back Side of ID"
-                  value={
-                    detailsUser.id_back_image_url
-                  }
+                  value={detailsUser.id_back_image_url}
                   alt="Back side of government ID"
                   icon={CreditCard}
                   contain
                 />
-
                 <PhotoCard
                   label="Person Holding ID"
-                  value={
-                    detailsUser.id_holder_image_url
-                  }
+                  value={detailsUser.id_holder_image_url}
                   alt="Person holding government ID"
                   icon={Camera}
                   contain
@@ -2590,19 +1999,15 @@ export default function AdminUserManagement() {
               </div>
             </div>
 
-            {/* Account fields */}
-
             <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-              {detailFields.map(
-                (field, index) => (
-                  <DetailField
-                    key={`${field.label}-${index}`}
-                    icon={field.icon}
-                    label={field.label}
-                    value={field.value}
-                  />
-                ),
-              )}
+              {detailFields.map((field, index) => (
+                <DetailField
+                  key={`${field.label}-${index}`}
+                  icon={field.icon}
+                  label={field.label}
+                  value={field.value}
+                />
+              ))}
             </div>
 
             {detailFields.length === 0 && (
@@ -2616,26 +2021,19 @@ export default function AdminUserManagement() {
                 type="button"
                 onClick={() => {
                   const user = detailsUser;
-
                   setDetailsUser(null);
                   openEditModal(user);
                 }}
-                disabled={
-                  isCurrentAccount(detailsUser)
-                }
+                disabled={isCurrentAccount(detailsUser)}
                 className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
               >
                 <Edit3 className="h-4 w-4" />
-
                 Edit Account
               </button>
-
               <button
                 type="button"
-                onClick={() =>
-                  setDetailsUser(null)
-                }
-                className="rounded-xl border border-slate-300 px-6 py-3 font-bold text-slate-700 transition hover:bg-slate-50"
+                onClick={() => setDetailsUser(null)}
+                className="rounded-xl border border-slate-300 px-6 py-3 font-bold text-slate-700 transition hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
               >
                 Close
               </button>
@@ -2645,24 +2043,19 @@ export default function AdminUserManagement() {
       )}
 
       {/* Edit modal */}
-
       {showEditModal && selectedUser && (
         <div
           className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-4"
           onClick={() => {
-            if (!saving) {
-              setShowEditModal(false);
-            }
+            if (!saving) setShowEditModal(false);
           }}
         >
           <div
             role="dialog"
             aria-modal="true"
             aria-labelledby="edit-account-title"
-            className="max-h-[90vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-800"
-            onClick={(event) =>
-              event.stopPropagation()
-            }
+            className="max-h-[80vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-800"
+            onClick={(event) => event.stopPropagation()}
           >
             <div className="mb-4 flex items-center justify-between">
               <h2
@@ -2670,15 +2063,11 @@ export default function AdminUserManagement() {
                 className="flex items-center gap-2 text-xl font-bold text-slate-800 dark:text-slate-100"
               >
                 <Edit3 className="h-5 w-5 text-blue-600" />
-
                 Edit User
               </h2>
-
               <button
                 type="button"
-                onClick={() =>
-                  setShowEditModal(false)
-                }
+                onClick={() => setShowEditModal(false)}
                 disabled={saving}
                 aria-label="Close edit dialog"
                 className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 disabled:opacity-50"
@@ -2689,15 +2078,10 @@ export default function AdminUserManagement() {
 
             <div className="mb-4 rounded-xl bg-slate-50 p-3 dark:bg-slate-900">
               <p className="text-sm font-bold text-slate-700 dark:text-slate-200">
-                Editing:{" "}
-                {selectedUser.full_name ||
-                  selectedUser.email}
+                Editing: {selectedUser.full_name || selectedUser.email}
               </p>
-
               <p className="text-xs text-slate-500">
-                Table:{" "}
-                {selectedUser.sourceTable} · Role:{" "}
-                {selectedUser.displayRole}
+                Table: {selectedUser.sourceTable} · Role: {selectedUser.displayRole}
               </p>
             </div>
 
@@ -2707,15 +2091,11 @@ export default function AdminUserManagement() {
                 className="mb-4 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700"
               >
                 <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-
                 <p>{error}</p>
               </div>
             )}
 
-            <form
-              onSubmit={handleSaveEdit}
-              className="space-y-4"
-            >
+            <form onSubmit={handleSaveEdit} className="space-y-4">
               <div>
                 <label
                   htmlFor="edit-full-name"
@@ -2723,18 +2103,13 @@ export default function AdminUserManagement() {
                 >
                   Full Name
                 </label>
-
                 <input
                   id="edit-full-name"
                   type="text"
                   required
                   value={editForm.full_name}
                   onChange={(event) =>
-                    setEditForm({
-                      ...editForm,
-                      full_name:
-                        event.target.value,
-                    })
+                    setEditForm({ ...editForm, full_name: event.target.value })
                   }
                   className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-purple-500 dark:border-slate-600 dark:bg-slate-900"
                 />
@@ -2748,7 +2123,6 @@ export default function AdminUserManagement() {
                   >
                     Work ID
                   </label>
-
                   <input
                     id="edit-work-id"
                     type="text"
@@ -2756,11 +2130,7 @@ export default function AdminUserManagement() {
                     minLength={3}
                     value={editForm.work_id}
                     onChange={(event) =>
-                      setEditForm({
-                        ...editForm,
-                        work_id:
-                          event.target.value,
-                      })
+                      setEditForm({ ...editForm, work_id: event.target.value })
                     }
                     autoCapitalize="none"
                     spellCheck={false}
@@ -2776,23 +2146,16 @@ export default function AdminUserManagement() {
                 >
                   Username
                 </label>
-
                 <input
                   id="edit-username"
                   type="text"
-                  required={isPortalAccount(
-                    selectedUser,
-                  )}
+                  required={isPortalAccount(selectedUser)}
                   minLength={3}
                   maxLength={50}
                   pattern="[A-Za-z0-9._-]+"
                   value={editForm.username}
                   onChange={(event) =>
-                    setEditForm({
-                      ...editForm,
-                      username:
-                        event.target.value,
-                    })
+                    setEditForm({ ...editForm, username: event.target.value })
                   }
                   autoComplete="username"
                   autoCapitalize="none"
@@ -2800,11 +2163,9 @@ export default function AdminUserManagement() {
                   placeholder="e.g. jdelacruz"
                   className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-purple-500 dark:border-slate-600 dark:bg-slate-900"
                 />
-
                 {isPortalAccount(selectedUser) && (
                   <p className="mt-1 text-xs text-slate-500">
-                    Use 3–50 letters, numbers,
-                    dots, underscores, or hyphens.
+                    Use 3–50 letters, numbers, dots, underscores, or hyphens.
                   </p>
                 )}
               </div>
@@ -2816,18 +2177,13 @@ export default function AdminUserManagement() {
                 >
                   Email Address
                 </label>
-
                 <input
                   id="edit-email"
                   type="email"
                   required
                   value={editForm.email}
                   onChange={(event) =>
-                    setEditForm({
-                      ...editForm,
-                      email:
-                        event.target.value,
-                    })
+                    setEditForm({ ...editForm, email: event.target.value })
                   }
                   className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-purple-500 dark:border-slate-600 dark:bg-slate-900"
                 />
@@ -2841,68 +2197,46 @@ export default function AdminUserManagement() {
                   >
                     Type of ID
                   </label>
-
                   <div className="relative">
                     <CreditCard className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-
                     <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-
                     <select
                       id="edit-id-type"
                       value={editForm.id_type}
                       onChange={(event) =>
-                        setEditForm({
-                          ...editForm,
-                          id_type:
-                            event.target.value,
-                        })
+                        setEditForm({ ...editForm, id_type: event.target.value })
                       }
                       className="w-full appearance-none rounded-xl border border-slate-300 bg-white py-2.5 pl-10 pr-10 text-sm outline-none focus:ring-2 focus:ring-purple-500 dark:border-slate-600 dark:bg-slate-900"
                     >
-                      <option value="">
-                        Not provided
-                      </option>
-
-                      {ID_TYPE_OPTIONS.map(
-                        (option) => (
-                          <option
-                            key={option.value}
-                            value={option.value}
-                          >
-                            {option.label}
-                          </option>
-                        ),
-                      )}
+                      <option value="">Not provided</option>
+                      {ID_TYPE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
                     </select>
                   </div>
                 </div>
               )}
 
-              {selectedUser?.sourceTable ===
-                "staff_users" && (
+              {selectedUser?.sourceTable === "staff_users" && (
                 <div className="flex items-center gap-3 rounded-xl bg-slate-50 p-3 dark:bg-slate-900">
                   <label className="flex items-center gap-2 text-sm font-bold text-slate-700 dark:text-slate-200">
                     <UserCheck className="h-4 w-4 text-green-600" />
-
                     Account Active:
                   </label>
-
                   <ActiveToggle
                     value={editForm.is_active}
                     disabled={saving}
                     onToggle={() =>
                       setEditForm({
                         ...editForm,
-                        is_active:
-                          !editForm.is_active,
+                        is_active: !editForm.is_active,
                       })
                     }
                   />
-
                   <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
-                    {editForm.is_active
-                      ? "Active"
-                      : "Inactive"}
+                    {editForm.is_active ? "Active" : "Inactive"}
                   </span>
                 </div>
               )}
@@ -2910,9 +2244,7 @@ export default function AdminUserManagement() {
               <div className="border-t border-slate-200 pt-4 dark:border-slate-700">
                 <p className="mb-3 flex items-center gap-2 text-sm font-bold text-slate-600 dark:text-slate-300">
                   <Lock className="h-4 w-4 text-yellow-600" />
-
                   Change Password
-
                   <span className="text-xs font-normal text-slate-400">
                     (leave blank to keep current)
                   </span>
@@ -2926,35 +2258,21 @@ export default function AdminUserManagement() {
                     >
                       New Password
                     </label>
-
                     <input
                       id="edit-password"
-                      type={
-                        showPassword
-                          ? "text"
-                          : "password"
-                      }
+                      type={showPassword ? "text" : "password"}
                       value={editForm.password}
                       onChange={(event) =>
-                        setEditForm({
-                          ...editForm,
-                          password:
-                            event.target.value,
-                        })
+                        setEditForm({ ...editForm, password: event.target.value })
                       }
                       placeholder="Min 6 characters"
                       minLength={6}
                       autoComplete="new-password"
                       className="w-full rounded-xl border border-slate-300 py-2.5 pl-3 pr-10 text-sm outline-none focus:ring-2 focus:ring-purple-500 dark:border-slate-600 dark:bg-slate-900"
                     />
-
                     <button
                       type="button"
-                      onClick={() =>
-                        setShowPassword(
-                          (value) => !value,
-                        )
-                      }
+                      onClick={() => setShowPassword((v) => !v)}
                       aria-label="Toggle password visibility"
                       className="absolute right-3 top-[34px] text-slate-400 hover:text-slate-600"
                     >
@@ -2973,22 +2291,14 @@ export default function AdminUserManagement() {
                     >
                       Confirm Password
                     </label>
-
                     <input
                       id="edit-confirm-password"
-                      type={
-                        showConfirm
-                          ? "text"
-                          : "password"
-                      }
-                      value={
-                        editForm.confirmPassword
-                      }
+                      type={showConfirm ? "text" : "password"}
+                      value={editForm.confirmPassword}
                       onChange={(event) =>
                         setEditForm({
                           ...editForm,
-                          confirmPassword:
-                            event.target.value,
+                          confirmPassword: event.target.value,
                         })
                       }
                       placeholder="Repeat password"
@@ -2996,14 +2306,9 @@ export default function AdminUserManagement() {
                       autoComplete="new-password"
                       className="w-full rounded-xl border border-slate-300 py-2.5 pl-3 pr-10 text-sm outline-none focus:ring-2 focus:ring-purple-500 dark:border-slate-600 dark:bg-slate-900"
                     />
-
                     <button
                       type="button"
-                      onClick={() =>
-                        setShowConfirm(
-                          (value) => !value,
-                        )
-                      }
+                      onClick={() => setShowConfirm((v) => !v)}
                       aria-label="Toggle confirmation password visibility"
                       className="absolute right-3 top-[34px] text-slate-400 hover:text-slate-600"
                     >
@@ -3020,15 +2325,12 @@ export default function AdminUserManagement() {
                   editForm.password.length > 0 &&
                   editForm.password.length < 6 && (
                     <p className="mt-1 text-xs text-red-600">
-                      Password must be at least 6
-                      characters.
+                      Password must be at least 6 characters.
                     </p>
                   )}
-
                 {editForm.password &&
                   editForm.confirmPassword &&
-                  editForm.password !==
-                    editForm.confirmPassword && (
+                  editForm.password !== editForm.confirmPassword && (
                     <p className="mt-1 text-xs text-red-600">
                       Passwords do not match.
                     </p>
@@ -3038,22 +2340,18 @@ export default function AdminUserManagement() {
               <div className="flex justify-end gap-3 pt-2">
                 <button
                   type="button"
-                  onClick={() =>
-                    setShowEditModal(false)
-                  }
+                  onClick={() => setShowEditModal(false)}
                   disabled={saving}
-                  className="rounded-lg border border-slate-300 px-4 py-2.5 font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+                  className="rounded-lg border border-slate-300 px-4 py-2.5 font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
                 >
                   Cancel
                 </button>
-
                 <button
                   type="submit"
                   disabled={
                     saving ||
                     (editForm.password &&
-                      editForm.password !==
-                        editForm.confirmPassword)
+                      editForm.password !== editForm.confirmPassword)
                   }
                   className="flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2.5 font-bold text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50"
                 >
@@ -3062,10 +2360,7 @@ export default function AdminUserManagement() {
                   ) : (
                     <Save className="h-4 w-4" />
                   )}
-
-                  {saving
-                    ? "Saving..."
-                    : "Save Changes"}
+                  {saving ? "Saving..." : "Save Changes"}
                 </button>
               </div>
             </form>
@@ -3074,11 +2369,8 @@ export default function AdminUserManagement() {
       )}
 
       {/* Summary report */}
-
       {showReport && (
-        <UserSummaryReportModal
-          onClose={() => setShowReport(false)}
-        />
+        <UserSummaryReportModal onClose={() => setShowReport(false)} />
       )}
     </div>
   );
@@ -3097,24 +2389,14 @@ function CreateAccountModal({
   onClose,
   onSubmit,
 }) {
-  const [showPassword, setShowPassword] =
-    useState(false);
-
-  const [
-    showConfirmPassword,
-    setShowConfirmPassword,
-  ] = useState(false);
-
-  const [
-    showRequesterPassword,
-    setShowRequesterPassword,
-  ] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [showRequesterPassword, setShowRequesterPassword] = useState(false);
 
   const isAdmin = role === "admin";
 
   const handleChange = (event) => {
     const { name, value } = event.target;
-
     setForm((previous) => ({
       ...previous,
       [name]:
@@ -3133,9 +2415,7 @@ function CreateAccountModal({
     <div
       className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black/50 p-4"
       onClick={() => {
-        if (!saving) {
-          onClose();
-        }
+        if (!saving) onClose();
       }}
     >
       <div
@@ -3143,9 +2423,7 @@ function CreateAccountModal({
         aria-modal="true"
         aria-labelledby="create-account-title"
         className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white shadow-2xl"
-        onClick={(event) =>
-          event.stopPropagation()
-        }
+        onClick={(event) => event.stopPropagation()}
       >
         <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
           <div className="flex items-center gap-3">
@@ -3162,26 +2440,18 @@ function CreateAccountModal({
                 <Users className="h-5 w-5" />
               )}
             </div>
-
             <div>
               <h2
                 id="create-account-title"
                 className="text-xl font-bold text-slate-800"
               >
-                Add{" "}
-                {isAdmin ? "Admin" : "Staff"}{" "}
-                Account
+                Add {isAdmin ? "Admin" : "Staff"} Account
               </h2>
-
               <p className="text-xs text-slate-500">
-                Stored in{" "}
-                {isAdmin
-                  ? "admin_users"
-                  : "staff_users"}
+                Stored in {isAdmin ? "admin_users" : "staff_users"}
               </p>
             </div>
           </div>
-
           <button
             type="button"
             onClick={onClose}
@@ -3193,10 +2463,7 @@ function CreateAccountModal({
           </button>
         </div>
 
-        <form
-          onSubmit={onSubmit}
-          className="space-y-5 p-6"
-        >
+        <form onSubmit={onSubmit} className="space-y-5 p-6">
           <div
             className={`rounded-xl border p-4 text-sm ${
               isAdmin
@@ -3205,21 +2472,14 @@ function CreateAccountModal({
             }`}
           >
             <p className="font-bold">
-              {isAdmin
-                ? "Administrator account"
-                : "Staff account"}
+              {isAdmin ? "Administrator account" : "Staff account"}
             </p>
-
             <p className="mt-1 text-xs leading-relaxed">
-              This account is stored only in{" "}
-              <strong>
-                {isAdmin
-                  ? "admin_users"
-                  : "staff_users"}
+              This account is stored only in <strong>
+                {isAdmin ? "admin_users" : "staff_users"}
               </strong>
-              . Work ID, username, and email are
-              checked before creating or updating an
-              account.
+              . Work ID, username, and email are checked before creating or
+              updating an account.
             </p>
           </div>
 
@@ -3229,7 +2489,6 @@ function CreateAccountModal({
               className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"
             >
               <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
-
               <p>{error}</p>
             </div>
           )}
@@ -3242,7 +2501,6 @@ function CreateAccountModal({
               >
                 Work ID *
               </label>
-
               <input
                 id="create-work-id"
                 name="work_id"
@@ -3265,7 +2523,6 @@ function CreateAccountModal({
               >
                 Username *
               </label>
-
               <input
                 id="create-username"
                 name="username"
@@ -3282,10 +2539,8 @@ function CreateAccountModal({
                 spellCheck={false}
                 className={inputClass}
               />
-
               <p className="mt-1 text-xs text-slate-500">
-                3–50 letters, numbers, dots,
-                underscores, or hyphens.
+                3–50 letters, numbers, dots, underscores, or hyphens.
               </p>
             </div>
 
@@ -3296,7 +2551,6 @@ function CreateAccountModal({
               >
                 Full Name *
               </label>
-
               <input
                 id="create-full-name"
                 name="full_name"
@@ -3318,7 +2572,6 @@ function CreateAccountModal({
               >
                 Email Address *
               </label>
-
               <input
                 id="create-email"
                 name="email"
@@ -3339,7 +2592,6 @@ function CreateAccountModal({
               >
                 Department
               </label>
-
               <input
                 id="create-department"
                 name="department"
@@ -3358,7 +2610,6 @@ function CreateAccountModal({
               >
                 Mobile Number
               </label>
-
               <input
                 id="create-mobile"
                 name="mobile_number"
@@ -3378,16 +2629,11 @@ function CreateAccountModal({
               >
                 New Password *
               </label>
-
               <div className="relative">
                 <input
                   id="create-password"
                   name="password"
-                  type={
-                    showPassword
-                      ? "text"
-                      : "password"
-                  }
+                  type={showPassword ? "text" : "password"}
                   required
                   minLength={6}
                   value={form.password}
@@ -3396,14 +2642,9 @@ function CreateAccountModal({
                   autoComplete="new-password"
                   className={`${inputClass} pr-11`}
                 />
-
                 <button
                   type="button"
-                  onClick={() =>
-                    setShowPassword(
-                      (value) => !value,
-                    )
-                  }
+                  onClick={() => setShowPassword((v) => !v)}
                   aria-label="Toggle new password visibility"
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700"
                 >
@@ -3423,16 +2664,11 @@ function CreateAccountModal({
               >
                 Confirm Password *
               </label>
-
               <div className="relative">
                 <input
                   id="create-confirm-password"
                   name="confirmPassword"
-                  type={
-                    showConfirmPassword
-                      ? "text"
-                      : "password"
-                  }
+                  type={showConfirmPassword ? "text" : "password"}
                   required
                   minLength={6}
                   value={form.confirmPassword}
@@ -3441,14 +2677,9 @@ function CreateAccountModal({
                   autoComplete="new-password"
                   className={`${inputClass} pr-11`}
                 />
-
                 <button
                   type="button"
-                  onClick={() =>
-                    setShowConfirmPassword(
-                      (value) => !value,
-                    )
-                  }
+                  onClick={() => setShowConfirmPassword((v) => !v)}
                   aria-label="Toggle confirmation password visibility"
                   className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700"
                 >
@@ -3464,8 +2695,7 @@ function CreateAccountModal({
 
           {form.password &&
             form.confirmPassword &&
-            form.password !==
-              form.confirmPassword && (
+            form.password !== form.confirmPassword && (
               <p className="text-xs font-semibold text-red-600">
                 Passwords do not match.
               </p>
@@ -3478,33 +2708,21 @@ function CreateAccountModal({
             >
               Current Administrator Password *
             </label>
-
             <div className="relative">
               <input
                 id="requester-password"
                 name="requester_password"
-                type={
-                  showRequesterPassword
-                    ? "text"
-                    : "password"
-                }
+                type={showRequesterPassword ? "text" : "password"}
                 required
-                value={
-                  form.requester_password
-                }
+                value={form.requester_password}
                 onChange={handleChange}
                 placeholder="Enter your current password"
                 autoComplete="current-password"
                 className={`${inputClass} pr-11`}
               />
-
               <button
                 type="button"
-                onClick={() =>
-                  setShowRequesterPassword(
-                    (value) => !value,
-                  )
-                }
+                onClick={() => setShowRequesterPassword((v) => !v)}
                 aria-label="Toggle current password visibility"
                 className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700"
               >
@@ -3515,11 +2733,9 @@ function CreateAccountModal({
                 )}
               </button>
             </div>
-
             <p className="mt-1 text-xs text-slate-500">
-              This verifies that the current administrator
-              is authorized to create or update another
-              account.
+              This verifies that the current administrator is authorized to
+              create or update another account.
             </p>
           </div>
 
@@ -3532,7 +2748,6 @@ function CreateAccountModal({
             >
               Cancel
             </button>
-
             <button
               type="submit"
               disabled={saving}
@@ -3543,12 +2758,9 @@ function CreateAccountModal({
               ) : (
                 <Plus className="h-4 w-4" />
               )}
-
               {saving
                 ? "Saving Account..."
-                : `Save ${
-                    isAdmin ? "Admin" : "Staff"
-                  } Account`}
+                : `Save ${isAdmin ? "Admin" : "Staff"} Account`}
             </button>
           </div>
         </form>
@@ -3561,45 +2773,20 @@ function CreateAccountModal({
  * USER ACCOUNTS SUMMARY REPORT
  * ============================================================= */
 
-function ReportCard({
-  label,
-  value,
-  sub,
-  color,
-}) {
+function ReportCard({ label, value, sub, color }) {
   return (
-    <div
-      className={`rounded-xl border p-4 ${color}`}
-    >
-      <p className="text-xs font-bold opacity-70">
-        {label}
-      </p>
-
-      <p className="mt-1 text-2xl font-bold">
-        {value}
-      </p>
-
-      {sub && (
-        <p className="mt-1 text-xs opacity-70">
-          {sub}
-        </p>
-      )}
+    <div className={`rounded-xl border p-4 ${color}`}>
+      <p className="text-xs font-bold opacity-70">{label}</p>
+      <p className="mt-1 text-2xl font-bold">{value}</p>
+      {sub && <p className="mt-1 text-xs opacity-70">{sub}</p>}
     </div>
   );
 }
 
-function ReportCountTable({
-  title,
-  data,
-  total,
-  percent,
-  max = 12,
-}) {
+function ReportCountTable({ title, data, total, percent, max = 12 }) {
   return (
     <div className="print-break-avoid">
-      <h2 className="mb-3 font-bold text-slate-800">
-        {title}
-      </h2>
+      <h2 className="mb-3 font-bold text-slate-800">{title}</h2>
 
       {data.length === 0 ? (
         <p className="text-sm text-slate-500">
@@ -3612,43 +2799,28 @@ function ReportCountTable({
               <th className="border border-slate-200 p-2 text-left font-bold text-slate-700">
                 Name
               </th>
-
               <th className="border border-slate-200 p-2 text-center font-bold text-slate-700">
                 Count
               </th>
-
               <th className="border border-slate-200 p-2 text-center font-bold text-slate-700">
                 Share
               </th>
             </tr>
           </thead>
-
           <tbody>
-            {data
-              .slice(0, max)
-              .map((entry) => (
-                <tr
-                  key={entry.name}
-                  className="border-b border-slate-100"
-                >
-                  <td className="border border-slate-200 p-2 font-semibold text-slate-700">
-                    {prettyStatus(
-                      entry.name,
-                    )}
-                  </td>
-
-                  <td className="border border-slate-200 p-2 text-center text-slate-600">
-                    {entry.count}
-                  </td>
-
-                  <td className="border border-slate-200 p-2 text-center text-slate-600">
-                    {percent(
-                      entry.count,
-                    )}
-                    %
-                  </td>
-                </tr>
-              ))}
+            {data.slice(0, max).map((entry) => (
+              <tr key={entry.name} className="border-b border-slate-100">
+                <td className="border border-slate-200 p-2 font-semibold text-slate-700">
+                  {prettyStatus(entry.name)}
+                </td>
+                <td className="border border-slate-200 p-2 text-center text-slate-600">
+                  {entry.count}
+                </td>
+                <td className="border border-slate-200 p-2 text-center text-slate-600">
+                  {percent(entry.count)}%
+                </td>
+              </tr>
+            ))}
           </tbody>
         </table>
       )}
@@ -3668,32 +2840,19 @@ function ReportCountTable({
   );
 }
 
-function UserSummaryReportModal({
-  onClose,
-}) {
+function UserSummaryReportModal({ onClose }) {
   const [fromDate, setFromDate] = useState("");
   const [toDate, setToDate] = useState("");
-
   const [rows, setRows] = useState([]);
-  const [fetching, setFetching] =
-    useState(true);
-
-  const [fetchError, setFetchError] =
-    useState("");
+  const [fetching, setFetching] = useState(true);
+  const [fetchError, setFetchError] = useState("");
 
   const todayKey = useMemo(() => {
     const date = new Date();
-
     return [
       date.getFullYear(),
-      String(date.getMonth() + 1).padStart(
-        2,
-        "0",
-      ),
-      String(date.getDate()).padStart(
-        2,
-        "0",
-      ),
+      String(date.getMonth() + 1).padStart(2, "0"),
+      String(date.getDate()).padStart(2, "0"),
     ].join("-");
   }, []);
 
@@ -3712,75 +2871,47 @@ function UserSummaryReportModal({
       try {
         const applyRange = (query) => {
           let next = query;
-
           if (fromDate) {
-            next = next.gte(
-              "created_at",
-              `${fromDate}T00:00:00.000Z`,
-            );
+            next = next.gte("created_at", `${fromDate}T00:00:00.000Z`);
           }
-
           if (toDate) {
-            next = next.lte(
-              "created_at",
-              `${toDate}T23:59:59.999999`,
-            );
+            next = next.lte("created_at", `${toDate}T23:59:59.999999`);
           }
-
           return next;
         };
 
-        const [
-          profilesRes,
-          staffRes,
-          adminRes,
-          pendingRes,
-        ] = await Promise.all([
-          applyRange(
-            supabase
-              .from("profiles")
-              .select(
-                "id, role, is_active, created_at",
-              ),
-          ),
-
-          applyRange(
-            supabase
-              .from("staff_users")
-              .select(
-                "id, role, department, is_active, created_at",
-              ),
-          ),
-
-          applyRange(
-            supabase
-              .from("admin_users")
-              .select(
-                "id, role, created_at",
-              ),
-          ),
-
-          applyRange(
-            supabase
-              .from("pending_registrations")
-              .select(
-                "id, status, role, created_at",
-              ),
-          ),
-        ]);
+        const [profilesRes, staffRes, adminRes, pendingRes] =
+          await Promise.all([
+            applyRange(
+              supabase
+                .from("profiles")
+                .select("id, role, is_active, created_at"),
+            ),
+            applyRange(
+              supabase
+                .from("staff_users")
+                .select("id, role, department, is_active, created_at"),
+            ),
+            applyRange(
+              supabase
+                .from("admin_users")
+                .select("id, role, created_at"),
+            ),
+            applyRange(
+              supabase
+                .from("pending_registrations")
+                .select("id, status, role, created_at"),
+            ),
+          ]);
 
         const firstError = [
           profilesRes,
           staffRes,
           adminRes,
           pendingRes,
-        ].find(
-          (result) => result.error,
-        );
+        ].find((result) => result.error);
 
-        if (firstError?.error) {
-          throw firstError.error;
-        }
+        if (firstError?.error) throw firstError.error;
 
         const normalize = (data, table) =>
           (data || []).map((row) => ({
@@ -3788,130 +2919,62 @@ function UserSummaryReportModal({
             role: row.role,
             status:
               row.status ??
-              (row.is_active === false
-                ? "inactive"
-                : "approved"),
+              (row.is_active === false ? "inactive" : "approved"),
             department: row.department,
             created_at: row.created_at,
           }));
 
         const combined = [
-          ...normalize(
-            profilesRes.data,
-            "profiles",
-          ),
-
-          ...normalize(
-            staffRes.data,
-            "staff_users",
-          ),
-
-          ...normalize(
-            adminRes.data,
-            "admin_users",
-          ),
-
-          ...normalize(
-            pendingRes.data,
-            "pending_registrations",
-          ),
+          ...normalize(profilesRes.data, "profiles"),
+          ...normalize(staffRes.data, "staff_users"),
+          ...normalize(adminRes.data, "admin_users"),
+          ...normalize(pendingRes.data, "pending_registrations"),
         ];
 
-        if (!cancelled) {
-          setRows(combined);
-        }
+        if (!cancelled) setRows(combined);
       } catch (err) {
-        console.error(
-          "Error fetching report data:",
-          err,
-        );
-
+        console.error("Error fetching report data:", err);
         if (!cancelled) {
-          setFetchError(
-            err?.message ||
-              "Unable to load report data.",
-          );
+          setFetchError(err?.message || "Unable to load report data.");
         }
       } finally {
-        if (!cancelled) {
-          setFetching(false);
-        }
+        if (!cancelled) setFetching(false);
       }
     };
 
     fetchRows();
-
     return () => {
       cancelled = true;
     };
   }, [fromDate, toDate]);
 
   const stats = useMemo(() => {
-    const countBy = (
-      field,
-      fallback = "unknown",
-    ) => {
+    const countBy = (field, fallback = "unknown") => {
       const counts = {};
-
       rows.forEach((row) => {
         const key = row[field] || fallback;
-
-        counts[key] =
-          (counts[key] || 0) + 1;
+        counts[key] = (counts[key] || 0) + 1;
       });
-
       return Object.entries(counts)
-        .map(([name, count]) => ({
-          name,
-          count,
-        }))
-        .sort(
-          (a, b) => b.count - a.count,
-        );
+        .map(([name, count]) => ({ name, count }))
+        .sort((a, b) => b.count - a.count);
     };
 
-    const roleData = countBy(
-      "role",
-      "user",
-    );
-
+    const roleData = countBy("role", "user");
     const statusData = countBy("status");
-
-    const sourceData = countBy(
-      "table",
-      "other",
-    );
-
-    const departmentData = countBy(
-      "department",
-      "Not Specified",
-    );
+    const sourceData = countBy("table", "other");
+    const departmentData = countBy("department", "Not Specified");
 
     const monthlyCounts = {};
-
     rows.forEach((row) => {
-      if (!row.created_at) {
-        return;
-      }
-
-      const date = new Date(
-        row.created_at,
-      );
-
-      if (Number.isNaN(date.getTime())) {
-        return;
-      }
-
+      if (!row.created_at) return;
+      const date = new Date(row.created_at);
+      if (Number.isNaN(date.getTime())) return;
       const key = [
         date.getFullYear(),
-        String(date.getMonth() + 1).padStart(
-          2,
-          "0",
-        ),
+        String(date.getMonth() + 1).padStart(2, "0"),
       ].join("-");
-
-      monthlyCounts[key] =
-        (monthlyCounts[key] || 0) + 1;
+      monthlyCounts[key] = (monthlyCounts[key] || 0) + 1;
     });
 
     const months = [
@@ -3929,19 +2992,11 @@ function UserSummaryReportModal({
       "Dec",
     ];
 
-    const monthlyData = Object.entries(
-      monthlyCounts,
-    )
-      .sort((a, b) =>
-        a[0].localeCompare(b[0]),
-      )
+    const monthlyData = Object.entries(monthlyCounts)
+      .sort((a, b) => a[0].localeCompare(b[0]))
       .map(([key, count]) => {
         const year = key.slice(0, 4);
-
-        const monthNumber = Number(
-          key.slice(5, 7),
-        );
-
+        const monthNumber = Number(key.slice(5, 7));
         return {
           name: `${months[monthNumber - 1]} ${year.slice(2)}`,
           count,
@@ -3949,25 +3004,18 @@ function UserSummaryReportModal({
       });
 
     const activeCount = rows.filter(
-      (row) =>
-        row.status === "approved" ||
-        row.status === true,
+      (row) => row.status === "approved" || row.status === true,
     ).length;
-
     const pendingCount = rows.filter(
       (row) =>
-        row.status === "pending" ||
-        row.status === "pending_approval",
+        row.status === "pending" || row.status === "pending_approval",
     ).length;
 
     const busiestMonth =
       monthlyData.length > 0
         ? monthlyData.reduce(
             (largest, current) =>
-              current.count >
-              largest.count
-                ? current
-                : largest,
+              current.count > largest.count ? current : largest,
           )
         : null;
 
@@ -3984,11 +3032,7 @@ function UserSummaryReportModal({
   }, [rows]);
 
   const percent = (count) =>
-    rows.length > 0
-      ? Math.round(
-          (count / rows.length) * 100,
-        )
-      : 0;
+    rows.length > 0 ? Math.round((count / rows.length) * 100) : 0;
 
   const pieColors = [
     "#8b5cf6",
@@ -3999,87 +3043,47 @@ function UserSummaryReportModal({
     "#6366f1",
   ];
 
-  const generatedAt =
-    new Date().toLocaleString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+  const generatedAt = new Date().toLocaleString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
 
   const rangeLabel =
     fromDate || toDate
-      ? `${fromDate || "Start"} → ${
-          toDate || "End"
-        }`
+      ? `${fromDate || "Start"} → ${toDate || "End"}`
       : "All dates";
 
   return (
     <>
       <style>{`
         @media print {
-          @page {
-            size: A4 portrait;
-            margin: 12mm;
+          @page { size: A4 portrait; margin: 12mm; }
+          html, body, #root, .app-shell, .content {
+            height: auto !important; max-height: none !important; overflow: visible !important;
           }
-
-          html,
-          body,
-          #root,
-          .app-shell,
-          .content {
-            height: auto !important;
-            max-height: none !important;
-            overflow: visible !important;
-          }
-
-          body {
-            background: #ffffff !important;
-          }
-
-          body * {
-            visibility: hidden;
-          }
-
+          body { background: #ffffff !important; }
+          body * { visibility: hidden; }
           .report-overlay {
-            position: static !important;
-            overflow: visible !important;
-            padding: 0 !important;
-            background: none !important;
+            position: static !important; overflow: visible !important;
+            padding: 0 !important; background: none !important;
           }
-
-          .report-print,
-          .report-print * {
-            visibility: visible;
-          }
-
+          .report-print, .report-print * { visibility: visible; }
           .report-print {
-            position: static !important;
-            width: 100% !important;
-            max-width: none !important;
-            max-height: none !important;
-            margin: 0 !important;
-            border: none !important;
-            border-radius: 0 !important;
-            box-shadow: none !important;
+            position: static !important; width: 100% !important;
+            max-width: none !important; max-height: none !important;
+            margin: 0 !important; border: none !important;
+            border-radius: 0 !important; box-shadow: none !important;
           }
-
-          .report-print .print-hidden {
-            display: none !important;
+          .report-print .print-hidden { display: none !important; }
+          .report-print .print-break-avoid, .report-print .print-section {
+            break-inside: avoid; page-break-inside: avoid;
           }
-
-          .report-print .print-break-avoid,
-          .report-print .print-section {
-            break-inside: avoid;
-            page-break-inside: avoid;
-          }
-
           * {
-            -webkit-print-color-adjust: exact
-              !important;
-            print-color-adjust: exact
-              !important;
+            -webkit-print-color-adjust: exact !important;
+            print-color-adjust: exact !important;
           }
         }
       `}</style>
@@ -4090,9 +3094,7 @@ function UserSummaryReportModal({
       >
         <div
           className="report-print my-8 w-full max-w-4xl rounded-2xl border border-slate-200 bg-white shadow-2xl"
-          onClick={(event) =>
-            event.stopPropagation()
-          }
+          onClick={(event) => event.stopPropagation()}
         >
           <div className="print-hidden sticky top-0 z-10 rounded-t-2xl border-b border-slate-200 bg-white/95 backdrop-blur">
             <div className="flex items-center justify-between gap-3 px-6 pb-3 pt-4">
@@ -4100,34 +3102,25 @@ function UserSummaryReportModal({
                 <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-purple-100">
                   <Users className="h-5 w-5 text-purple-600" />
                 </div>
-
                 <div className="min-w-0">
                   <h3 className="truncate font-bold leading-tight text-slate-800">
                     User Accounts Summary Report
                   </h3>
-
                   <p className="text-xs leading-tight text-slate-400">
                     Adjust coverage, then print
                   </p>
                 </div>
               </div>
-
               <div className="flex shrink-0 items-center gap-2">
                 <button
                   type="button"
-                  onClick={() =>
-                    window.print()
-                  }
+                  onClick={() => window.print()}
                   disabled={fetching}
                   className="flex items-center gap-2 rounded-xl bg-purple-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-purple-700 disabled:opacity-50"
                 >
                   <Download className="h-4 w-4" />
-
-                  {fetching
-                    ? "Loading..."
-                    : "Print / Save PDF"}
+                  {fetching ? "Loading..." : "Print / Save PDF"}
                 </button>
-
                 <button
                   type="button"
                   onClick={onClose}
@@ -4143,71 +3136,38 @@ function UserSummaryReportModal({
               <span className="text-xs font-bold uppercase tracking-wide text-slate-400">
                 Coverage
               </span>
-
               <input
                 type="date"
                 max={todayKey}
                 value={fromDate}
-                onChange={(event) =>
-                  setFromDate(
-                    event.target.value,
-                  )
-                }
+                onChange={(event) => setFromDate(event.target.value)}
                 className="rounded-xl border border-slate-300 px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-500"
               />
-
-              <span className="text-sm text-slate-400">
-                →
-              </span>
-
+              <span className="text-sm text-slate-400">→</span>
               <input
                 type="date"
                 max={todayKey}
                 value={toDate}
-                onChange={(event) =>
-                  setToDate(
-                    event.target.value,
-                  )
-                }
+                onChange={(event) => setToDate(event.target.value)}
                 className="rounded-xl border border-slate-300 px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-500"
               />
-
               <div className="ml-1 flex items-center gap-1 rounded-xl bg-slate-100 p-1">
                 {[
-                  {
-                    label: "All Time",
-                    from: "",
-                    to: "",
-                  },
+                  { label: "All Time", from: "", to: "" },
                   {
                     label: "This Month",
-                    from: `${todayKey.slice(
-                      0,
-                      8,
-                    )}01`,
+                    from: `${todayKey.slice(0, 8)}01`,
                     to: todayKey,
                   },
-                  {
-                    label: "Today",
-                    from: todayKey,
-                    to: todayKey,
-                  },
+                  { label: "Today", from: todayKey, to: todayKey },
                 ].map((preset) => {
                   const active =
-                    fromDate ===
-                      preset.from &&
-                    toDate === preset.to;
-
+                    fromDate === preset.from && toDate === preset.to;
                   return (
                     <button
                       key={preset.label}
                       type="button"
-                      onClick={() =>
-                        applyPreset(
-                          preset.from,
-                          preset.to,
-                        )
-                      }
+                      onClick={() => applyPreset(preset.from, preset.to)}
                       className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
                         active
                           ? "bg-purple-600 text-white shadow-sm"
@@ -4219,11 +3179,8 @@ function UserSummaryReportModal({
                   );
                 })}
               </div>
-
               <span className="ml-auto rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-500">
-                {rows.length} account
-                {rows.length === 1 ? "" : "s"}{" "}
-                loaded
+                {rows.length} account{rows.length === 1 ? "" : "s"} loaded
               </span>
             </div>
           </div>
@@ -4233,22 +3190,17 @@ function UserSummaryReportModal({
               <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">
                 E-MDRRMO
               </p>
-
               <h1 className="mt-1 text-2xl font-black text-slate-900">
                 USER ACCOUNTS SUMMARY REPORT
               </h1>
-
               <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
                 <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
                   Coverage: {rangeLabel}
                 </span>
-
                 <span className="rounded-full bg-purple-50 px-3 py-1 text-xs font-semibold text-purple-700">
-                  {rows.length} account
-                  {rows.length === 1 ? "" : "s"}
+                  {rows.length} account{rows.length === 1 ? "" : "s"}
                 </span>
               </div>
-
               <p className="mt-2 text-xs text-slate-400">
                 Generated: {generatedAt}
               </p>
@@ -4256,8 +3208,7 @@ function UserSummaryReportModal({
 
             {fetchError ? (
               <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-                Failed to load report data:{" "}
-                {fetchError}
+                Failed to load report data: {fetchError}
               </div>
             ) : fetching ? (
               <div className="py-16 text-center font-semibold text-slate-500">
@@ -4272,16 +3223,12 @@ function UserSummaryReportModal({
                     sub="In coverage"
                     color="border-blue-200 bg-blue-50 text-blue-700"
                   />
-
                   <ReportCard
                     label="Active"
                     value={stats.activeCount}
-                    sub={`${percent(
-                      stats.activeCount,
-                    )}% of total`}
+                    sub={`${percent(stats.activeCount)}% of total`}
                     color="border-emerald-200 bg-emerald-50 text-emerald-700"
                   />
-
                   <ReportCard
                     label="Pending"
                     value={stats.pendingCount}
@@ -4292,14 +3239,9 @@ function UserSummaryReportModal({
                     }
                     color="border-yellow-200 bg-yellow-50 text-yellow-700"
                   />
-
                   <ReportCard
                     label="Busiest Month"
-                    value={
-                      stats.busiestMonth
-                        ? stats.busiestMonth.name
-                        : "—"
-                    }
+                    value={stats.busiestMonth ? stats.busiestMonth.name : "—"}
                     sub={
                       stats.busiestMonth
                         ? `${stats.busiestMonth.count} registrations`
@@ -4313,34 +3255,27 @@ function UserSummaryReportModal({
                   <h2 className="mb-3 font-bold text-slate-800">
                     Role Overview
                   </h2>
-
                   {stats.roleData.length === 0 ? (
                     <p className="text-sm text-slate-500">
                       No accounts in the covered range.
                     </p>
                   ) : (
                     <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                      {stats.roleData.map(
-                        (entry) => (
-                          <ReportCard
-                            key={entry.name}
-                            label={prettyStatus(
-                              entry.name,
-                            )}
-                            value={entry.count}
-                            sub={`${percent(
-                              entry.count,
-                            )}% of total`}
-                            color={
-                              entry.name === "admin"
-                                ? "border-purple-200 bg-purple-50 text-purple-700"
-                                : entry.name === "staff"
-                                  ? "border-indigo-200 bg-indigo-50 text-indigo-700"
-                                  : "border-emerald-200 bg-emerald-50 text-emerald-700"
-                            }
-                          />
-                        ),
-                      )}
+                      {stats.roleData.map((entry) => (
+                        <ReportCard
+                          key={entry.name}
+                          label={prettyStatus(entry.name)}
+                          value={entry.count}
+                          sub={`${percent(entry.count)}% of total`}
+                          color={
+                            entry.name === "admin"
+                              ? "border-purple-200 bg-purple-50 text-purple-700"
+                              : entry.name === "staff"
+                                ? "border-indigo-200 bg-indigo-50 text-indigo-700"
+                                : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                          }
+                        />
+                      ))}
                     </div>
                   )}
                 </div>
@@ -4350,47 +3285,30 @@ function UserSummaryReportModal({
                     <h2 className="mb-3 font-bold text-slate-800">
                       Role Distribution
                     </h2>
-
                     <div className="h-[260px] w-full">
-                      <ResponsiveContainer
-                        width="100%"
-                        height="100%"
-                      >
+                      <ResponsiveContainer width="100%" height="100%">
                         <PieChart>
                           <Pie
-                            data={stats.roleData.map(
-                              (entry) => ({
-                                ...entry,
-                                value: entry.count,
-                              }),
-                            )}
+                            data={stats.roleData.map((entry) => ({
+                              ...entry,
+                              value: entry.count,
+                            }))}
                             innerRadius={60}
                             outerRadius={95}
                             paddingAngle={5}
                             dataKey="value"
                             nameKey="name"
                           >
-                            {stats.roleData.map(
-                              (_, index) => (
-                                <Cell
-                                  key={index}
-                                  fill={
-                                    pieColors[
-                                      index %
-                                        pieColors.length
-                                    ]
-                                  }
-                                />
-                              ),
-                            )}
+                            {stats.roleData.map((_, index) => (
+                              <Cell
+                                key={index}
+                                fill={pieColors[index % pieColors.length]}
+                              />
+                            ))}
                           </Pie>
-
                           <Tooltip />
-
                           <Legend
-                            wrapperStyle={{
-                              paddingTop: "10px",
-                            }}
+                            wrapperStyle={{ paddingTop: "10px" }}
                           />
                         </PieChart>
                       </ResponsiveContainer>
@@ -4403,54 +3321,33 @@ function UserSummaryReportModal({
                     <h2 className="mb-3 font-bold text-slate-800">
                       Registrations per Month
                     </h2>
-
                     <div className="h-[240px] w-full">
-                      <ResponsiveContainer
-                        width="100%"
-                        height="100%"
-                      >
-                        <BarChart
-                          data={
-                            stats.monthlyData
-                          }
-                        >
+                      <ResponsiveContainer width="100%" height="100%">
+                        <BarChart data={stats.monthlyData}>
                           <CartesianGrid
                             strokeDasharray="3 3"
                             vertical={false}
                             stroke="#e0e0e0"
                           />
-
                           <XAxis
                             dataKey="name"
                             fontSize={10}
                             tickLine={false}
                             axisLine={false}
                           />
-
                           <YAxis
-                            allowDecimals={
-                              false
-                            }
+                            allowDecimals={false}
                             fontSize={10}
                             tickLine={false}
                             axisLine={false}
                           />
-
                           <Tooltip
-                            cursor={{
-                              fill: "rgba(0,0,0,0.05)",
-                            }}
+                            cursor={{ fill: "rgba(0,0,0,0.05)" }}
                           />
-
                           <Bar
                             dataKey="count"
                             fill="#6366f1"
-                            radius={[
-                              10,
-                              10,
-                              0,
-                              0,
-                            ]}
+                            radius={[10, 10, 0, 0]}
                             barSize={40}
                           />
                         </BarChart>
@@ -4468,7 +3365,6 @@ function UserSummaryReportModal({
                       percent={percent}
                     />
                   </div>
-
                   <div className="print-section">
                     <ReportCountTable
                       title="Accounts by Status"
@@ -4477,7 +3373,6 @@ function UserSummaryReportModal({
                       percent={percent}
                     />
                   </div>
-
                   <div className="print-section">
                     <ReportCountTable
                       title="Accounts by Source Table"
@@ -4486,13 +3381,10 @@ function UserSummaryReportModal({
                       percent={percent}
                     />
                   </div>
-
                   <div className="print-section">
                     <ReportCountTable
                       title="Staff by Department"
-                      data={
-                        stats.departmentData
-                      }
+                      data={stats.departmentData}
                       percent={percent}
                     />
                   </div>
@@ -4500,15 +3392,12 @@ function UserSummaryReportModal({
 
                 <div className="print-break-avoid border-t border-slate-200 pt-4 text-center text-xs text-slate-500">
                   <p>
-                    This report is system-generated and
-                    reflects data at the time of generation.
-                    Account names and contact details are
+                    This report is system-generated and reflects data at the
+                    time of generation. Account names and contact details are
                     omitted by design.
                   </p>
-
                   <p className="mt-1">
-                    © {new Date().getFullYear()}{" "}
-                    E-MDRRMO
+                    © {new Date().getFullYear()} E-MDRRMO
                   </p>
                 </div>
               </>
