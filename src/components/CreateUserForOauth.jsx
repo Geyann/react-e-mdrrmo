@@ -1883,28 +1883,7 @@ export default function CreateUserForOauth() {
                 </p>
               </div>
 
-              <div className="mt-10 space-y-3 lg:mt-auto">
-                {[
-                  "No password needed — managed by your provider",
-                  "Submit emergency and hazard reports",
-                  "Request community safety services",
-                ].map((item) => (
-                  <div
-                    key={item}
-                    className="flex items-start gap-3 text-sm text-blue-50/90"
-                  >
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-                    <span>{item}</span>
-                  </div>
-                ))}
-              </div>
-
-              <div className="mt-8 flex items-start gap-2 border-t border-white/15 pt-5 text-xs leading-5 text-blue-100/75">
-                <ShieldCheck className="mt-0.5 h-4 w-4 shrink-0" />
-                Your account and identity documents will be
-                reviewed by an administrator before access is
-                activated.
-              </div>
+             
             </div>
           </section>
 
@@ -1914,21 +1893,7 @@ export default function CreateUserForOauth() {
 
           <section className="max-h-[calc(100vh-7rem)] overflow-y-auto p-6 sm:p-10 lg:p-12">
             <div className="mx-auto max-w-2xl">
-              {/* Heading */}
-              <div className="mb-8">
-                <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-purple-600 text-white shadow-lg shadow-blue-600/20">
-                  <UserPlus className="h-6 w-6" />
-                </div>
-
-                <h2 className="text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">
-                  Complete Your Profile
-                </h2>
-
-                <p className="mt-2 text-sm leading-6 text-slate-500">
-                  Fill in the remaining details. Fields marked
-                  with an asterisk are required.
-                </p>
-              </div>
+             
 
               {/* Error */}
               {error && (
@@ -2365,13 +2330,7 @@ export default function CreateUserForOauth() {
                 </div>
               </form>
 
-              {/* Footer */}
-              <div className="mt-8 border-t border-slate-200 pt-6 text-center">
-                <p className="text-sm text-slate-500">
-                  Your OAuth account ({profile?.email}) will be
-                  linked to this profile upon admin approval.
-                </p>
-              </div>
+           
             </div>
           </section>
         </div>

@@ -779,16 +779,7 @@ export default function LoginPage() {
           {/* Form panel */}
           <section className="p-6 sm:p-10 lg:p-12">
             <div className="mx-auto max-w-md">
-              <div className="mb-8">
-                <h2 className="text-3xl font-black tracking-tight text-slate-900 sm:text-4xl">
-                  Resident login
-                </h2>
-
-                <p className="mt-2 text-sm leading-6 text-slate-500">
-                  Enter your username, email address, and
-                  password to continue.
-                </p>
-              </div>
+            
 
               {/* Error */}
               {error && (

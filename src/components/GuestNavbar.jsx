@@ -29,12 +29,12 @@ export default function GuestNavbar() {
             to="/"
             className="flex min-w-0 items-center gap-2.5"
           >
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl bg-white/15 shadow-inner ring-1 ring-white/20">
+            <div className="flex h-15 w-15 shrink-0 items-center justify-center ">
               <img
-                src={imgLogo}
-                alt="MDRRMO logo"
-                className="h-10 w-10 object-contain"
-              />
+                               src={imgLogo}
+                               alt="MDRRMO logo"
+                               className="h-13 w-13 object-contain"
+                             />
             </div>
 
             <div className="min-w-0">

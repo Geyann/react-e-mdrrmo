@@ -438,13 +438,25 @@ export default function AdminLogin() {
             />
 
             <div className="relative flex h-full flex-col">
-              <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/20 bg-white/15 shadow-lg backdrop-blur-md">
-                 <img
-                                    src={Icon}
-                                    alt="SafeResponse Logo"
-                                    className="h-8 w-8"
-                                  />
-              </div>
+               <div className="flex items-center gap-3">
+                              <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/20 bg-white/15 shadow-lg backdrop-blur-md">
+                                <img
+                                  src={Icon}
+                                  alt="SafeResponse Logo"
+                                  className="h-12 w-12 object-contain"
+                                />
+                              </div>
+              
+                              <div>
+                                <p className="text-xl font-black">
+                                  SafeResponse
+                                </p>
+              
+                                <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-100">
+                                OMDRRMO - NAIC, CAVITE
+                                </p>
+                              </div>
+                            </div>
 
               <div className="mt-8">
                 <span className="inline-flex items-center gap-2 rounded-full border border-white/20 bg-white/10 px-3 py-1.5 text-xs font-bold text-blue-50">
@@ -464,42 +476,14 @@ export default function AdminLogin() {
                 </p>
               </div>
 
-              <div className="mt-10 space-y-3 lg:mt-auto">
-                {[
-                  "Role-based dashboards and queues",
-                  "Shared emergency inventory",
-                  "Administrative account management",
-                ].map((item) => (
-                  <div
-                    key={item}
-                    className="flex items-start gap-3 text-sm text-blue-50/90"
-                  >
-                    <CheckCircle2 className="mt-0.5 h-4 w-4 shrink-0" />
-                    <span>{item}</span>
-                  </div>
-                ))}
-              </div>
+            
             </div>
           </section>
 
           {/* Login form */}
           <section className="p-6 sm:p-10 lg:p-12">
             <div className="mx-auto max-w-md">
-              <div className="mb-8">
-                <div className="mb-5 flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-600 to-purple-600 text-white shadow-lg shadow-blue-600/20">
-                  <LogIn className="h-6 w-6" />
-                </div>
-
-                <h2 className="text-2xl font-black tracking-tight text-slate-900 sm:text-3xl">
-                  Personnel login
-                </h2>
-
-                <p className="mt-2 text-sm leading-6 text-slate-500">
-                  Sign in with the Work ID or email
-                  address assigned to your staff or
-                  administrator account.
-                </p>
-              </div>
+              
 
               {error && (
                 <div
@@ -652,11 +636,7 @@ export default function AdminLogin() {
                   </Link>
                 </p>
 
-                <p className="mt-3 text-xs leading-5 text-slate-400">
-                  Contact an administrator if your
-                  Work ID, password, or account status
-                  is incorrect.
-                </p>
+              
               </div>
             </div>
           </section>
