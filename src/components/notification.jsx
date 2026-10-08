@@ -639,9 +639,12 @@ export default function Notification() {
     writeJSON(cacheKey(w.storageKey), cacheRef.current);
   }, []);
 
-  /* ── push ────────────────────────────────────────────────────── */
+  /* ── push ──────────────────────────────────────────────────────
+     IMPORTANT: only show toast AFTER the initial seed is finished.
+     Backfill / historical items never produce toasts.
+  ─────────────────────────────────────────────────────────────── */
 
-  const push = useCallback((p) => {
+  const push = useCallback((p, { silent = false } = {}) => {
     if (dismissRef.current[p.id] !== undefined) return;
     if (notifRef.current.some((x) => x.id === p.id)) return;
 
@@ -652,12 +655,15 @@ export default function Notification() {
     setNotifications(next);
     persistAll();
 
-    setToasts((t) => [
-      ...t.filter((x) => x.id !== n.id),
-      { id: n.id, tone: n.tone, title: n.title, message: n.message, link: n.link },
-    ].slice(-MAX_TOASTS));
+    // Only show toast for real-time events after the component has finished seeding
+    if (!silent && seededRef.current) {
+      setToasts((t) => [
+        ...t.filter((x) => x.id !== n.id),
+        { id: n.id, tone: n.tone, title: n.title, message: n.message, link: n.link },
+      ].slice(-MAX_TOASTS));
+    }
 
-    dbg("push:", n.tone, n.title, n.id);
+    dbg("push:", n.tone, n.title, n.id, silent ? "(silent)" : "");
   }, [persistAll]);
 
   const linkFor = useCallback(
@@ -798,6 +804,7 @@ export default function Notification() {
       },
     }));
 
+    // Backfill is ALWAYS silent (no toast)
     if (w.isHandler && queueBackfill.length) {
       queueBackfill.slice(0, QUEUE_BACKFILL).forEach((row) => {
         const { title, message } = src.describe(row);
@@ -815,7 +822,7 @@ export default function Notification() {
           message: message || "Waiting for review.",
           link: linkFor(src, w),
           createdAt: row.created_at || new Date().toISOString(),
-        });
+        }, { silent: true });
       });
     }
 
@@ -839,7 +846,7 @@ export default function Notification() {
           message: message || "Your request.",
           link: linkFor(src, w),
           createdAt: row.created_at || new Date().toISOString(),
-        });
+        }, { silent: true });
       });
     }
   }, [onCreated, onStatus, push, linkFor]);
@@ -880,7 +887,7 @@ export default function Notification() {
         writeJSON(dismissKey(w.storageKey), dmap);
 
         await scanAll();
-        seededRef.current = true;
+        seededRef.current = true;          // ← after this, real-time events may toast
         return w;
       })();
     }
@@ -1102,6 +1109,7 @@ export default function Notification() {
     readRef.current = next;
     setReadMap(next);
     persistAll();
+    dbg("marked ALL as read");
   }, [persistAll]);
 
   const markUnread = useCallback((id) => {
@@ -1158,6 +1166,18 @@ export default function Notification() {
     setSelected(n);
   }, [markRead]);
 
+  /* ── Opening the panel marks everything as read (clears badge) ── */
+  const handleToggleOpen = useCallback(() => {
+    setOpen((prev) => {
+      const next = !prev;
+      if (next) {
+        // User opened the panel → treat all current notifications as seen
+        markAllRead();
+      }
+      return next;
+    });
+  }, [markAllRead]);
+
   const hardReset = useCallback(() => {
     const w = whoRef.current;
     if (!w) return;
@@ -1193,17 +1213,36 @@ export default function Notification() {
     });
   }, []);
 
-  const list = useMemo(() => {
+  /* ── Separate New vs Older ───────────────────────────────────── */
+
+  const { newList, olderList } = useMemo(() => {
+    const unreadItems = [];
+    const readItems = [];
+
+    notifications.forEach((n) => {
+      if (readMap[n.id] === undefined) unreadItems.push(n);
+      else readItems.push(n);
+    });
+
     if (filter === "unread") {
-      return notifications.filter((n) => readMap[n.id] === undefined);
+      return { newList: unreadItems, olderList: [] };
     }
     if (filter === "queue") {
-      return notifications.filter((n) => n.scope === "queue");
+      const q = notifications.filter((n) => n.scope === "queue");
+      return {
+        newList: q.filter((n) => readMap[n.id] === undefined),
+        olderList: q.filter((n) => readMap[n.id] !== undefined),
+      };
     }
     if (filter === "self") {
-      return notifications.filter((n) => n.scope === "self");
+      const s = notifications.filter((n) => n.scope === "self");
+      return {
+        newList: s.filter((n) => readMap[n.id] === undefined),
+        olderList: s.filter((n) => readMap[n.id] !== undefined),
+      };
     }
-    return notifications;
+    // "all"
+    return { newList: unreadItems, olderList: readItems };
   }, [notifications, filter, readMap]);
 
   if (booting) {
@@ -1218,13 +1257,78 @@ export default function Notification() {
 
   const filters = [
     { id: "all", label: "All", count: notifications.length },
-    { id: "unread", label: "Unread", count: unread },
     ...(who.isHandler
-      ? [{ id: "queue", label: "Queue", count: queueUnread }]
+      ? [{ id: "unread", label: "New", count: unread}]
       : []),
   ];
 
   const diagRows = Object.entries(diag);
+
+  const renderItem = (n) => {
+    const Icon = SOURCE_MAP[n.iconKey]?.icon || Bell;
+    const wasRead = isRead(n);
+
+    return (
+      <div
+        key={n.id}
+        className={`flex items-start gap-2 border-b border-slate-50 dark:border-slate-700/60 px-3 py-2 transition hover:bg-slate-50 dark:hover:bg-slate-700/40 ${
+          wasRead
+            ? "bg-white dark:bg-slate-800 opacity-70"
+            : "bg-blue-50/60 dark:bg-blue-950/20"
+        }`}
+      >
+        <button
+          type="button"
+          onClick={() => openItem(n)}
+          className="flex items-start gap-3 flex-1 min-w-0 text-left"
+        >
+          <span
+            className={`mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full ${TONE_BG[n.tone]}`}
+          >
+            <Icon className="h-4 w-4" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="flex items-start justify-between gap-2">
+              <span className="text-sm font-bold text-slate-800 dark:text-slate-100 leading-tight">
+                {n.title}
+                {wasRead && (
+                  <CheckCheck
+                    className="inline w-3 h-3 ml-1 text-slate-400 align-middle"
+                    aria-label="read"
+                  />
+                )}
+              </span>
+              <span className="shrink-0 text-[10px] text-slate-400 dark:text-slate-500 pt-0.5">
+                {timeAgo(n.createdAt)}
+              </span>
+            </span>
+            <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400 line-clamp-2">
+              {n.message}
+            </span>
+            <span className="mt-1 flex items-center gap-1.5">
+              <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
+                {n.label}
+              </span>
+             
+            </span>
+          </span>
+          {!wasRead && (
+            <span className="mt-1.5 h-2 w-2 flex-shrink-0 rounded-full bg-blue-500" />
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => dismissOne(n.id)}
+          aria-label={`Delete notification: ${n.title}`}
+          title="Delete"
+          className="mt-0.5 p-1.5 rounded-lg text-slate-400 hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-900/50 dark:hover:text-red-400 transition shrink-0"
+        >
+          <Ban className="h-4 w-4" />
+        </button>
+      </div>
+    );
+  };
 
   return (
     <div className="relative inline-block">
@@ -1232,7 +1336,7 @@ export default function Notification() {
       <button
         ref={btnRef}
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={handleToggleOpen}
         title="Notifications"
         aria-label={unread ? `Notifications, ${unread} unread` : "Notifications"}
         aria-expanded={open}
@@ -1272,7 +1376,7 @@ export default function Notification() {
                   </p>
                   {unread > 0 && (
                     <p className="text-[11px] text-red-600 dark:text-red-400 font-semibold mt-0.5">
-                      {unread} unread
+                      {unread} new
                     </p>
                   )}
                   {!who.isHandler && who.email && (
@@ -1337,7 +1441,7 @@ export default function Notification() {
               )}
 
               <div className="overflow-y-auto" style={{ maxHeight: pos.listMax || 360 }}>
-                {list.length === 0 ? (
+                {newList.length === 0 && olderList.length === 0 ? (
                   <div className="flex flex-col items-center gap-2 px-4 py-12 text-center">
                     <Bell className="h-10 w-10 text-slate-300 dark:text-slate-600" />
                     <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">
@@ -1350,76 +1454,31 @@ export default function Notification() {
                     </p>
                   </div>
                 ) : (
-                  list.map((n) => {
-                    const Icon = SOURCE_MAP[n.iconKey]?.icon || Bell;
-                    const wasRead = isRead(n);
+                  <>
+                    {/* ── NEW section ── */}
+                    {newList.length > 0 && (
+                      <>
+                        <div className="px-3 py-1.5 bg-blue-50/80 dark:bg-blue-950/30 border-b border-blue-100 dark:border-blue-900 sticky top-0 z-10">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">
+                            New · {newList.length}
+                          </p>
+                        </div>
+                        {newList.map(renderItem)}
+                      </>
+                    )}
 
-                    return (
-                      <div
-                        key={n.id}
-                        className={`flex items-start gap-2 border-b border-slate-50 dark:border-slate-700/60 px-3 py-2 transition hover:bg-slate-50 dark:hover:bg-slate-700/40 ${
-                          wasRead
-                            ? "bg-white dark:bg-slate-800 opacity-70"
-                            : "bg-blue-50/60 dark:bg-blue-950/20"
-                        }`}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => openItem(n)}
-                          className="flex items-start gap-3 flex-1 min-w-0 text-left"
-                        >
-                          <span
-                            className={`mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full ${TONE_BG[n.tone]}`}
-                          >
-                            <Icon className="h-4 w-4" />
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="flex items-start justify-between gap-2">
-                              <span className="text-sm font-bold text-slate-800 dark:text-slate-100 leading-tight">
-                                {n.title}
-                                {wasRead && (
-                                  <CheckCheck
-                                    className="inline w-3 h-3 ml-1 text-slate-400 align-middle"
-                                    aria-label="read"
-                                  />
-                                )}
-                              </span>
-                              <span className="shrink-0 text-[10px] text-slate-400 dark:text-slate-500 pt-0.5">
-                                {timeAgo(n.createdAt)}
-                              </span>
-                            </span>
-                            <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400 line-clamp-2">
-                              {n.message}
-                            </span>
-                            <span className="mt-1 flex items-center gap-1.5">
-                              <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
-                                {n.label}
-                              </span>
-                              {n.scope === "queue" && (
-                                <span className="text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300">
-                                  Queue
-                                </span>
-                              )}
-                            </span>
-                          </span>
-                          {!wasRead && (
-                            <span className="mt-1.5 h-2 w-2 flex-shrink-0 rounded-full bg-blue-500" />
-                          )}
-                        </button>
-
-                        {/* Per-item delete */}
-                        <button
-                          type="button"
-                          onClick={() => dismissOne(n.id)}
-                          aria-label={`Delete notification: ${n.title}`}
-                          title="Delete"
-                          className="mt-0.5 p-1.5 rounded-lg text-slate-400 hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-900/50 dark:hover:text-red-400 transition shrink-0"
-                        >
-                          <Ban className="h-4 w-4" />
-                        </button>
-                      </div>
-                    );
-                  })
+                    {/* ── OLDER section ── */}
+                    {olderList.length > 0 && (
+                      <>
+                        <div className="px-3 py-1.5 bg-slate-50 dark:bg-slate-900/60 border-b border-slate-100 dark:border-slate-700 sticky top-0 z-10">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                            Earlier · {olderList.length}
+                          </p>
+                        </div>
+                        {olderList.map(renderItem)}
+                      </>
+                    )}
+                  </>
                 )}
               </div>
 
@@ -1471,19 +1530,9 @@ export default function Notification() {
                 )}
 
                 <div className="px-4 py-2 flex items-center justify-center gap-2">
-                  {notifications.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={clearAll}
-                      className="text-[10px] text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 underline transition"
-                    >
-                      Wipe history
-                    </button>
-                  )}
+            
                   <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center">
-                    {who.isHandler ? "Admin/Staff" : "Resident"} ·{" "}
-                    {sourcesFor(who).length} tables ·{" "}
-                    {(who.isHandler ? POLL_MS_HANDLER : POLL_MS_USER) / 1000}s
+                    {who.isHandler ? "Admin / Staff" : "Resident"} 
                   </p>
                 </div>
               </div>

@@ -70,6 +70,7 @@ const USER_LINKS = [
     label: "Settings",
     icon: SettingsIcon,
   },
+ 
 ];
 
 export default function Navbar() {

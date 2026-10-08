@@ -11,12 +11,10 @@ import { Link, useNavigate } from "react-router-dom";
 
 import {
   AlertCircle,
-  Bell,
   Check,
   CheckCircle2,
   ChevronRight,
   Cloud,
-  CloudRain,
   Database,
   Download,
   Eye,
@@ -26,13 +24,10 @@ import {
   LogOut,
   Mail,
   MapPin,
-  Megaphone,
-  Moon,
   RotateCcw,
   Settings as SettingsIcon,
   Shield,
   ShieldCheck,
-  Siren,
   Smartphone,
   Sun,
   Trash2,
@@ -2137,91 +2132,7 @@ export default function Settings() {
               </SettingsSection>
 
               {/* Notifications */}
-              <SettingsSection
-                icon={Bell}
-                title="Notification Preferences"
-                description="Choose which community advisories you want to receive."
-                tone="purple"
-              >
-                <SettingRow
-                  icon={CloudRain}
-                  title="Critical Weather Alerts"
-                  description="Typhoon, flood, and severe weather warnings."
-                >
-                  <Toggle
-                    checked={prefs.weather_alerts}
-                    onChange={(value) =>
-                      commit(
-                        (current) => ({
-                          ...current,
-                          weather_alerts: value,
-                        }),
-                        {
-                          title: "Weather alerts updated",
-                        },
-                      )
-                    }
-                    label="Critical weather alerts"
-                  />
-                </SettingRow>
-
-                <SettingRow
-                  icon={Megaphone}
-                  title="Local Advisory Bulletins"
-                  description="Municipal announcements and community advisories."
-                >
-                  <Toggle
-                    checked={prefs.local_advisories}
-                    onChange={(value) =>
-                      commit(
-                        (current) => ({
-                          ...current,
-                          local_advisories: value,
-                        }),
-                        {
-                          title: "Advisory preferences updated",
-                        },
-                      )
-                    }
-                    label="Local advisory bulletins"
-                  />
-                </SettingRow>
-
-                <SettingRow
-                  icon={Siren}
-                  title="Scheduled Drill Reminders"
-                  description="Community preparedness and evacuation drill reminders."
-                >
-                  <Toggle
-                    checked={prefs.drill_reminders}
-                    onChange={(value) =>
-                      commit(
-                        (current) => ({
-                          ...current,
-                          drill_reminders: value,
-                        }),
-                        {
-                          title: "Drill reminders updated",
-                        },
-                      )
-                    }
-                    label="Scheduled drill reminders"
-                  />
-                </SettingRow>
-
-                <SettingRow
-                  icon={Shield}
-                  title="Emergency Alerts"
-                  description="Critical life-safety alerts cannot be disabled."
-                >
-                  <Toggle
-                    checked
-                    disabled
-                    onChange={() => {}}
-                    label="Emergency alerts always enabled"
-                  />
-                </SettingRow>
-              </SettingsSection>
+         
 
               {/* Appearance */}
               <SettingsSection
@@ -2346,66 +2257,7 @@ export default function Settings() {
                 </SettingRow>
               </SettingsSection>
 
-              {/* Account sync */}
-              <SettingsSection
-                icon={Cloud}
-                title="Device & Cloud Sync"
-                description="Check how your preferences are currently stored."
-                tone="blue"
-              >
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-4 dark:border-emerald-900/70 dark:bg-emerald-950/40">
-                    <div className="flex items-center gap-3">
-                      <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-emerald-600 text-white">
-                        <Smartphone className="h-5 w-5" />
-                      </div>
-
-                      <div>
-                        <p className="text-sm font-black text-emerald-900 dark:text-emerald-100">
-                          This device
-                        </p>
-
-                        <p className="mt-0.5 text-xs text-emerald-700 dark:text-emerald-300">
-                          Always saves locally
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div
-                    className={[
-                      "rounded-2xl border p-4",
-                      authUid
-                        ? "border-blue-200 bg-blue-50 dark:border-blue-900/70 dark:bg-blue-950/40"
-                        : "border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-950/50",
-                    ].join(" ")}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div
-                        className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-white ${
-                          authUid
-                            ? GRADIENT_CLASS
-                            : "bg-slate-400"
-                        }`}
-                      >
-                        <Cloud className="h-5 w-5" />
-                      </div>
-
-                      <div>
-                        <p className="text-sm font-black text-slate-900 dark:text-white">
-                          Cloud sync
-                        </p>
-
-                        <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-                          {authUid
-                            ? "Connected to Supabase"
-                            : "Not connected"}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </SettingsSection>
+            
 
               {/* Danger zone */}
               <SettingsSection
