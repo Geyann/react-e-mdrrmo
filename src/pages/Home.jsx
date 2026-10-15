@@ -383,7 +383,7 @@ export default function Home() {
             {/* Earthquake */}
             <article className="group relative min-h-[390px] overflow-hidden rounded-[1.75rem] bg-slate-900 shadow-xl">
               <img
-                src="https://scontent-mnl3-3.xx.fbcdn.net/v/t39.30808-6/799142888_1411213911154369_4908433955169539951_n.jpg?stp=dst-jpg_tt6&cstp=mx2048x1536&ctp=s2048x1536&_nc_cat=109&ccb=1-7&_nc_sid=127cfc&_nc_eui2=AeE9hslBG0LEkSuPdtPMCA5OPvAX6rkI5Mg-8BfquQjkyE0TMFTImAiLWQOm2EuK2HyBak4ubGXSXAGT5AAMWXOX&_nc_ohc=4kjKJ_IQTtIQ7kNvwEzOuD7&_nc_oc=AdpSiMONHpiZouG8pbHFUyRjafNthURIxhqyrm9h2SPw6C4Z_YwGWFHOR79BLYaJ4a8&_nc_zt=23&_nc_ht=scontent-mnl3-3.xx&_nc_gid=gpz5UelXY16X8-fo_JDhzA&_nc_ss=7b2a8&oh=00_AQO_bW9dzcgIV13JHQf4ZzWSCvToAyvpTRSbhlbGTitsrg&oe=6AC77844"
+                src={earthquakeImg}
                 alt="Earthquake preparedness"
                 className="absolute inset-0 h-full w-full object-cover transition duration-700 group-hover:scale-105"
               />
