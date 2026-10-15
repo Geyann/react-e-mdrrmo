@@ -18,6 +18,7 @@ import {
 } from "lucide-react";
 import Icon from "../Images/logo.png";
 import Icon1 from "../Images/icon3.png";
+import Mdrrmo from "../Images/mdrrmo.jpg";
 
 import earthquakeImg from "../Images/earthquake.png";
 import backgroundImg from "../Images/background.png";
@@ -257,7 +258,7 @@ export default function Guest() {
               {/* Main image */}
               <div className="absolute right-0 top-0 h-[370px] w-[84%] overflow-hidden rounded-[2rem] border-4 border-white/10 bg-slate-800 shadow-2xl sm:h-[440px]">
                 <img
-                  src="https://scontent.fmnl32-1.fna.fbcdn.net/v/t39.30808-6/487484417_986179746991123_6882168323920284120_n.jpg?stp=dst-jpg_tt6&cstp=mx2968x1412&ctp=s2968x1412&_nc_cat=107&_nc_map=urlgen_bucketless&ccb=1-7&_nc_sid=86c6b0&_nc_eui2=AeGoL0HVLW0CHe62Bzsw5lGRGXGJNzyVCPMZcYk3PJUI8z2J8wzFaZSguNZkgvz1Xd5mJftlVm27LF4Zn5aXxsBN&_nc_ohc=93WsnA_OA-QQ7kNvwHLARac&_nc_oc=AdpHJSfivekx9WAzLZDtwwn9Fmjbe-6t5rT982SxuEZVu1uv4qeFYLzj0rg5JaNdpeQ&_nc_zt=23&_nc_ht=scontent.fmnl32-1.fna&_nc_gid=OqIO8BLz8-dkB2T2boq2bQ&_nc_ss=7b2a8&oh=00_AQO1DUpd3danpaILbfPOzjLDYaAtZ_pIrH29ZN6iiZtydw&oe=6AC76FF7"
+                  src={Mdrrmo}
                   alt="Flooding affecting a community"
                   className="h-full w-full object-cover"
                 />
