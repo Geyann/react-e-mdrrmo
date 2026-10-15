@@ -28,41 +28,17 @@ import hotImg from "../Images/hotline-h1.png";
 import UserMonthlyIncidentGraph from "../components/UserMonthlyIncidentGraph";
 import UserHazardMonthlyGraph from "../components/UserMonthlyHazardGraph";
 
-const PUBLIC_TOOLS = [
-  {
-    title: "Public Hazard Map",
-    description:
-      "Explore approved hazard Markers across Naic using the public Hazard map.",
-    icon: Map,
-    href: "/hazardmap",
-    iconClass:
-      "bg-blue-100 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300",
-    buttonClass:
-      "text-blue-700 dark:text-blue-300",
-    image: hazardImg,
-  },
-  {
-    title: "Incident Trends",
-    description:
-      "Review monthly incident and hazard analytics to understand community trends.",
-    icon: TrendingUp,
-    href: "/yearly-incident-trends",
-    iconClass:
-      "bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300",
-    buttonClass:
-      "text-purple-700 dark:text-purple-300",
-  },
-];
+
 
 const SAFETY_FEATURES = [
+ {
+  title: "Incident & Natural Disaster Reporting",
+  description:
+    "Submit reports for emergencies, hazards, and unsafe conditions with precise location details and supporting evidence.",
+  icon: Siren,
+},
   {
-    title: "Incident & Hazard Reporting",
-    description:
-      "Report emergencies, unsafe conditions, exact locations, and supporting evidence.",
-    icon: Siren,
-  },
-  {
-    title: "Emergency Transport Requests",
+    title: "Transport Requests",
     description:
       "Request an ambulance, rescue truck, or utility vehicle for urgent response.",
     icon: Ambulance,
@@ -80,11 +56,11 @@ const SAFETY_FEATURES = [
     icon: ClipboardList,
   },
   {
-    title: "Public Hazard Map",
-    description:
-      "Explore administrator-approved hazard areas within Naic’s official boundary.",
-    icon: Map,
-  },
+  title: "Public Natural Disaster Map",
+  description:
+    "View officially approved natural disaster zones within the municipal boundary of Naic.",
+  icon: Map,
+},
   {
     title: "Community Safety Analytics",
     description:
@@ -181,7 +157,7 @@ function ContactCard({ contact }) {
   );
 }
 
-export default function Guest() {
+export default function Home() {
   return (
     <main className="min-h-screen overflow-hidden bg-slate-50 text-slate-800 dark:bg-slate-950 dark:text-slate-100">
       {/* ══════════════════════════════════════════════════════════
@@ -234,7 +210,7 @@ export default function Guest() {
             <p className="mx-auto mt-6 max-w-2xl text-base leading-7 text-slate-300 sm:text-lg lg:mx-0">
              Community safety portal for reporting hazards and incidents, 
              requesting emergency transport, appointments, and check-ups, 
-             while providing public hazard maps, trends, and coordinated 
+             while providing natural disaster areas, trends, and coordinated 
              management for residents.
             </p>
 
@@ -247,7 +223,7 @@ export default function Guest() {
                   <Map className="h-5 w-5" aria-hidden="true" />
                 </span>
 
-                <span>Open Hazard Map</span>
+                <span>Natural Disaster Map</span>
 
                 <ArrowRight
                   className="h-4 w-4 transition-transform group-hover:translate-x-1"
@@ -321,51 +297,6 @@ export default function Guest() {
         </div>
       </section>
 
-      {/* ══════════════════════════════════════════════════════════
-          PUBLIC TOOLS
-      ══════════════════════════════════════════════════════════ */}
-
-      <section className="relative z-30 -mt-8 pb-16 sm:-mt-10 sm:pb-20">
-        <div className="mx-auto grid max-w-7xl gap-4 px-4 sm:grid-cols-2 sm:px-6 lg:px-8">
-          {PUBLIC_TOOLS.map((tool, index) => {
-            const Icon = tool.icon;
-
-            return (
-              <Link
-                key={tool.title}
-                to={tool.href}
-                className={`group flex items-center gap-4 rounded-2xl border bg-white p-5 shadow-xl transition duration-300 hover:-translate-y-1 hover:shadow-2xl focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-500 focus-visible:ring-offset-2 dark:bg-slate-900 dark:focus-visible:ring-offset-slate-950 ${
-                      index === 0
-                        ? "border-blue-100 dark:border-blue-900"
-                        : "border-purple-100 dark:border-purple-900"
-                    }`}
-              >
-                <div
-                  className={`flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl ${tool.iconClass}`}
-                >
-                  <Icon className="h-6 w-6" aria-hidden="true" />
-                </div>
-
-                <div className="min-w-0 flex-1">
-                  <h2 className="text-base font-black text-slate-900 dark:text-white sm:text-lg">
-                    {tool.title}
-                  </h2>
-
-                  <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400 sm:text-sm">
-                    {tool.description}
-                  </p>
-                </div>
-
-                <span
-                  className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-slate-100 transition group-hover:translate-x-1 dark:bg-slate-800 ${tool.buttonClass}`}
-                >
-                  <ArrowRight className="h-4 w-4" aria-hidden="true" />
-                </span>
-              </Link>
-            );
-          })}
-        </div>
-      </section>
 
       {/* ══════════════════════════════════════════════════════════
           SAFETY FEATURES
@@ -535,12 +466,12 @@ export default function Guest() {
             </div>
 
             <h2 className="mt-5 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl dark:text-white">
-              Incident and hazard trends
+              Incident and natural disaster trends
             </h2>
 
             <p className="mt-4 text-base leading-7 text-slate-600 dark:text-slate-300">
               Explore monthly reports to understand community
-              activity, incident categories, hazard types,
+              activity, incident categories, natural disaster hazard types,
               and recorded risk levels.
             </p>
           </div>
@@ -584,7 +515,7 @@ export default function Guest() {
                   </h3>
 
                   <p className="mt-1 text-xs leading-5 text-slate-500 dark:text-slate-400">
-                    Monthly hazard volume by type and risk.
+                    Monthly natural disaster volume by type and risk.
                   </p>
                 </div>
               </div>

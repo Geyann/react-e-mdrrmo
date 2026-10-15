@@ -1,3 +1,5 @@
+"use client";
+
 import {
   useCallback,
   useEffect,
@@ -22,95 +24,60 @@ import {
   TriangleAlert,
 } from "lucide-react";
 import { supabase } from "../createClient";
+import {
+  HAZARD_CATEGORIES,
+  parseHazardTypeFromDescription,
+} from "../utils/HazardTaxonomy";
 
 /* ══════════════════════════════════════════════════════════════════
    CONFIG
+
+   Hazard categories are derived from HazardTaxonomy.js so this chart
+   always uses the same taxonomy as HazardReport.jsx. If the form ever
+   adds a category, the chart picks it up automatically.
    ══════════════════════════════════════════════════════════════════ */
 
 const MONTHS = [
-  "Jan",
-  "Feb",
-  "Mar",
-  "Apr",
-  "May",
-  "Jun",
-  "Jul",
-  "Aug",
-  "Sep",
-  "Oct",
-  "Nov",
-  "Dec",
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+  "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
 ];
 
 const RISK_LEVELS = [
-  {
-    key: "low",
-    label: "Low Risk",
-    color: "#22c55e",
-  },
-  {
-    key: "medium",
-    label: "Medium Risk",
-    color: "#eab308",
-  },
-  {
-    key: "high",
-    label: "High Risk",
-    color: "#ea580c",
-  },
-  {
-    key: "critical",
-    label: "Critical Risk",
-    color: "#dc2626",
-  },
+  { key: "low",      label: "Low Risk",      color: "#22c55e" },
+  { key: "medium",   label: "Moderate Risk", color: "#eab308" }, // matches form label
+  { key: "high",     label: "High Risk",     color: "#ea580c" },
+  { key: "critical", label: "Critical Risk", color: "#dc2626" },
 ];
 
 const RISK_MAP = Object.fromEntries(
-  RISK_LEVELS.map((risk) => [
-    risk.key,
-    risk,
-  ]),
+  RISK_LEVELS.map((risk) => [risk.key, risk]),
 );
 
-const HAZARD_TYPES = [
-  {
-    key: "physical",
-    label: "Physical",
-    color: "#0ea5e9",
-  },
-  {
-    key: "chemical",
-    label: "Chemical / Biological",
-    color: "#22c55e",
-  },
-  {
-    key: "electrical",
-    label: "Electrical",
-    color: "#dc2626",
-  },
-  {
-    key: "procedural",
-    label: "Procedural / Safety",
-    color: "#8b5cf6",
-  },
-  {
-    key: "natural",
-    label: "Natural Disaster",
-    color: "#ea580c",
-  },
-  {
-    key: "other",
-    label: "Other / Unspecified",
-    color: "#64748b",
-  },
+/* Colors are assigned deterministically by category order so the same
+   hazard type always gets the same color in the chart, legend, and
+   tooltip. Colors are chosen from a palette that is distinguishable
+   at typical chart sizes. */
+const CATEGORY_PALETTE = [
+  "#0ea5e9", // Flood          — water blue
+  "#6366f1", // Weather        — indigo
+  "#b45309", // Geological     — earth
+  "#475569", // Other Natural  — slate
 ];
 
+const HAZARD_TYPES = HAZARD_CATEGORIES.map((category, index) => ({
+  key: category.id,                              // "Flood" | "Weather" | "Geological" | "Other Natural"
+  label: category.label,                         // human label from taxonomy
+  color: CATEGORY_PALETTE[index % CATEGORY_PALETTE.length],
+}));
+
 const HAZARD_TYPE_MAP = Object.fromEntries(
-  HAZARD_TYPES.map((type) => [
-    type.key,
-    type,
-  ]),
+  HAZARD_TYPES.map((type) => [type.key, type]),
 );
+
+/* A stable list of every category key, used to seed the monthly
+   aggregation. Seeding prevents the silent NaN drop bug that
+   occurred when a bucket was referenced before it was initialized. */
+const ALL_CATEGORY_KEYS = HAZARD_TYPES.map((type) => type.key);
 
 /* ══════════════════════════════════════════════════════════════════
    DATE HELPERS
@@ -125,9 +92,7 @@ const parseDateParts = (value) => {
 
   const match = String(value)
     .trim()
-    .match(
-      /^(\d{4})-(\d{1,2})-(\d{1,2})/,
-    );
+    .match(/^(\d{4})-(\d{1,2})-(\d{1,2})/);
 
   if (!match) return null;
 
@@ -143,15 +108,15 @@ const parseDateParts = (value) => {
     return null;
   }
 
-  return {
-    year,
-    month,
-    monthIndex: month - 1,
-  };
+  return { year, month, monthIndex: month - 1 };
 };
 
 /* ══════════════════════════════════════════════════════════════════
    NORMALIZERS
+
+   Categories are normalized against the taxonomy's id list only.
+   Anything that doesn't match falls into "Other Natural" — which is
+   the same bucket the form uses for "Other Natural".
    ══════════════════════════════════════════════════════════════════ */
 
 const normalizeRisk = (value) => {
@@ -171,44 +136,44 @@ const normalizeRisk = (value) => {
   return "medium";
 };
 
+const CATEGORY_LOOKUP = Object.fromEntries(
+  HAZARD_CATEGORIES.map((category) => [
+    category.id.toLowerCase(),
+    category.id,
+  ]),
+);
+
 const normalizeHazardType = (value) => {
   const type = String(value || "")
     .trim()
-    .toLowerCase()
-    .replace(/[_-]+/g, " ")
-    .replace(/\s+/g, " ");
+    .toLowerCase();
 
-  if (type === "physical") {
-    return "physical";
+  if (!type) return "Other Natural";
+
+  // Direct match against taxonomy ids, e.g. "flood" -> "Flood"
+  if (CATEGORY_LOOKUP[type]) {
+    return CATEGORY_LOOKUP[type];
   }
 
-  if (
-    type.includes("chemical") ||
-    type.includes("biological")
-  ) {
-    return "chemical";
-  }
+  // Broad keyword fallback so older rows that used free-text categories
+  // still land in a sensible bucket.
+  if (type.includes("flood")) return "Flood";
+  if (type.includes("weather") || type.includes("typhoon") || type.includes("rain")) return "Weather";
+  if (type.includes("geolog") || type.includes("earthquake") || type.includes("landslide")) return "Geological";
 
-  if (type === "electrical") {
-    return "electrical";
-  }
+  return "Other Natural";
+};
 
-  if (
-    type.includes("procedural") ||
-    type.includes("safety") ||
-    type.includes("practice")
-  ) {
-    return "procedural";
+/* Reads the optional specific hazard type that HazardReport.jsx embeds
+   as "Type: <specific>\n\n<description>". Used for a secondary filter
+   so "Flash flood" and "Flooding" are distinguishable in the chart. */
+const extractSpecificType = (description) => {
+  try {
+    const parsed = parseHazardTypeFromDescription(description);
+    return parsed || null;
+  } catch {
+    return null;
   }
-
-  if (
-    type.includes("natural") ||
-    type.includes("disaster")
-  ) {
-    return "natural";
-  }
-
-  return "other";
 };
 
 /* ══════════════════════════════════════════════════════════════════
@@ -219,13 +184,9 @@ const fetchHazardRows = async () => {
   const { data, error } = await supabase
     .from("hazard_reports")
     .select(
-      "date_observed, risk_level, hazard_category",
+      "date_observed, risk_level, hazard_category, hazard_description",
     )
-    .not(
-      "date_observed",
-      "is",
-      null,
-    )
+    .not("date_observed", "is", null)
     .limit(5000);
 
   if (error) {
@@ -241,19 +202,15 @@ const fetchHazardRows = async () => {
 
 export default function UserMonthlyHazardGraph() {
   const [records, setRecords] = useState([]);
-  const [availableYears, setAvailableYears] =
-    useState([]);
+  const [availableYears, setAvailableYears] = useState([]);
 
-  const [selectedYear, setSelectedYear] =
-    useState("all");
-  const [selectedType, setSelectedType] =
-    useState("all");
+  const [selectedYear, setSelectedYear] = useState("all");
+  const [selectedType, setSelectedType] = useState("all");
   const [groupBy, setGroupBy] = useState("type");
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [reloadVersion, setReloadVersion] =
-    useState(0);
+  const [reloadVersion, setReloadVersion] = useState(0);
 
   /* ── Fetch hazard records ────────────────────────────────────── */
 
@@ -266,7 +223,6 @@ export default function UserMonthlyHazardGraph() {
 
       try {
         const rows = await fetchHazardRows();
-
         if (!active) return;
 
         setRecords(rows);
@@ -274,9 +230,7 @@ export default function UserMonthlyHazardGraph() {
         const years = [
           ...new Set(
             rows
-              .map((row) =>
-                parseDateParts(row.date_observed),
-              )
+              .map((row) => parseDateParts(row.date_observed))
               .filter(Boolean)
               .map((date) => date.year),
           ),
@@ -284,24 +238,17 @@ export default function UserMonthlyHazardGraph() {
 
         setAvailableYears(years);
       } catch (loadError) {
-        console.error(
-          "Error fetching hazard metrics:",
-          loadError,
-        );
+        console.error("Error fetching hazard metrics:", loadError);
 
         if (active) {
           setError(
-            loadError?.message ||
-              "Unable to load hazard analytics.",
+            loadError?.message || "Unable to load hazard analytics.",
           );
-
           setRecords([]);
           setAvailableYears([]);
         }
       } finally {
-        if (active) {
-          setLoading(false);
-        }
+        if (active) setLoading(false);
       }
     };
 
@@ -321,9 +268,7 @@ export default function UserMonthlyHazardGraph() {
       ),
     );
 
-    return HAZARD_TYPES.filter((type) =>
-      usedTypes.has(type.key),
-    );
+    return HAZARD_TYPES.filter((type) => usedTypes.has(type.key));
   }, [records]);
 
   /* ── Keep selected year valid ───────────────────────────────── */
@@ -331,41 +276,30 @@ export default function UserMonthlyHazardGraph() {
   useEffect(() => {
     if (
       selectedYear === "all" ||
-      availableYears.includes(
-        Number(selectedYear),
-      )
+      availableYears.includes(Number(selectedYear))
     ) {
       return;
     }
-
     setSelectedYear("all");
   }, [availableYears, selectedYear]);
 
   /* ── Keep selected hazard type valid ────────────────────────── */
 
   useEffect(() => {
-    if (selectedType === "all") {
-      return;
-    }
+    if (selectedType === "all") return;
 
-    const stillAvailable =
-      availableTypes.some(
-        (type) => type.key === selectedType,
-      );
+    const stillAvailable = availableTypes.some(
+      (type) => type.key === selectedType,
+    );
 
-    if (!stillAvailable) {
-      setSelectedType("all");
-    }
+    if (!stillAvailable) setSelectedType("all");
   }, [availableTypes, selectedType]);
 
   /* ── Filter records ─────────────────────────────────────────── */
 
   const filteredRecords = useMemo(() => {
     return records.filter((record) => {
-      const date = parseDateParts(
-        record.date_observed,
-      );
-
+      const date = parseDateParts(record.date_observed);
       if (!date) return false;
 
       if (
@@ -376,13 +310,8 @@ export default function UserMonthlyHazardGraph() {
       }
 
       if (selectedType !== "all") {
-        const type = normalizeHazardType(
-          record.hazard_category,
-        );
-
-        if (type !== selectedType) {
-          return false;
-        }
+        const type = normalizeHazardType(record.hazard_category);
+        if (type !== selectedType) return false;
       }
 
       return true;
@@ -392,67 +321,66 @@ export default function UserMonthlyHazardGraph() {
   /* ── Aggregate monthly analytics ────────────────────────────── */
 
   const analytics = useMemo(() => {
-    const riskData = MONTHS.map(
-      (month, monthIndex) => ({
-        name: month,
-        monthNumber: monthIndex + 1,
-        low: 0,
-        medium: 0,
-        high: 0,
-        critical: 0,
-        total: 0,
-      }),
-    );
+    /* Seed every bucket so that any category written by the form
+       has somewhere to accumulate. This eliminates the silent NaN
+       drop that occurred when a category was referenced before it
+       was defined on the monthly row. */
+    const riskData = MONTHS.map((month, monthIndex) => ({
+      name: month,
+      monthNumber: monthIndex + 1,
+      low: 0,
+      medium: 0,
+      high: 0,
+      critical: 0,
+      total: 0,
+    }));
 
-    const typeData = MONTHS.map(
-      (month, monthIndex) => ({
+    const typeData = MONTHS.map((month, monthIndex) => {
+      const row = {
         name: month,
         monthNumber: monthIndex + 1,
-        physical: 0,
-        chemical: 0,
-        electrical: 0,
-        procedural: 0,
-        natural: 0,
-        other: 0,
         total: 0,
-      }),
-    );
+      };
+      ALL_CATEGORY_KEYS.forEach((key) => {
+        row[key] = 0;
+      });
+      return row;
+    });
 
     const typeTotals = Object.fromEntries(
-      HAZARD_TYPES.map((type) => [
-        type.key,
-        0,
-      ]),
+      ALL_CATEGORY_KEYS.map((key) => [key, 0]),
     );
 
     let critical = 0;
 
     filteredRecords.forEach((record) => {
-      const date = parseDateParts(
-        record.date_observed,
-      );
-
+      const date = parseDateParts(record.date_observed);
       if (!date) return;
 
       const monthIndex = date.monthIndex;
-      const risk = normalizeRisk(
-        record.risk_level,
-      );
-      const type = normalizeHazardType(
-        record.hazard_category,
-      );
+      const risk = normalizeRisk(record.risk_level);
+      const type = normalizeHazardType(record.hazard_category);
 
       riskData[monthIndex][risk] += 1;
       riskData[monthIndex].total += 1;
 
-      typeData[monthIndex][type] += 1;
+      if (typeData[monthIndex][type] === undefined) {
+        // Defensive: should never happen now that the row is fully
+        // seeded from ALL_CATEGORY_KEYS. If it does (e.g. taxonomy
+        // changed mid-session), drop the record into "Other Natural"
+        // instead of producing NaN.
+        typeData[monthIndex]["Other Natural"] =
+          (typeData[monthIndex]["Other Natural"] || 0) + 1;
+        typeTotals["Other Natural"] =
+          (typeTotals["Other Natural"] || 0) + 1;
+      } else {
+        typeData[monthIndex][type] += 1;
+        typeTotals[type] += 1;
+      }
+
       typeData[monthIndex].total += 1;
 
-      typeTotals[type] += 1;
-
-      if (risk === "critical") {
-        critical += 1;
-      }
+      if (risk === "critical") critical += 1;
     });
 
     const total = riskData.reduce(
@@ -460,36 +388,17 @@ export default function UserMonthlyHazardGraph() {
       0,
     );
 
-    const activeMonths = riskData.filter(
-      (month) => month.total > 0,
-    );
-
     const peakMonth = riskData.reduce(
-      (largest, current) => {
-        if (current.total > largest.total) {
-          return current;
-        }
-
-        return largest;
-      },
-      {
-        name: "—",
-        total: 0,
-      },
+      (largest, current) =>
+        current.total > largest.total ? current : largest,
+      { name: "—", total: 0 },
     );
 
     const topType = HAZARD_TYPES.reduce(
       (largest, current) => {
-        const currentCount =
-          typeTotals[current.key] || 0;
-        const largestCount =
-          typeTotals[largest.key] || 0;
-
-        if (currentCount > largestCount) {
-          return current;
-        }
-
-        return largest;
+        const currentCount = typeTotals[current.key] || 0;
+        const largestCount = typeTotals[largest.key] || 0;
+        return currentCount > largestCount ? current : largest;
       },
       HAZARD_TYPES[0],
     );
@@ -500,7 +409,6 @@ export default function UserMonthlyHazardGraph() {
       typeTotals,
       total,
       critical,
-      activeMonths: activeMonths.length,
       peakMonth:
         total > 0
           ? `${peakMonth.name} (${peakMonth.total})`
@@ -515,19 +423,13 @@ export default function UserMonthlyHazardGraph() {
   /* ── Active chart configuration ────────────────────────────── */
 
   const chartData =
-    groupBy === "type"
-      ? analytics.typeData
-      : analytics.riskData;
+    groupBy === "type" ? analytics.typeData : analytics.riskData;
 
   const activeSeries =
-    groupBy === "type"
-      ? HAZARD_TYPES
-      : RISK_LEVELS;
+    groupBy === "type" ? HAZARD_TYPES : RISK_LEVELS;
 
   const activeSeriesMap =
-    groupBy === "type"
-      ? HAZARD_TYPE_MAP
-      : RISK_MAP;
+    groupBy === "type" ? HAZARD_TYPE_MAP : RISK_MAP;
 
   /* ── Refresh ────────────────────────────────────────────────── */
 
@@ -558,6 +460,15 @@ export default function UserMonthlyHazardGraph() {
         </div>
 
         <div className="p-5">
+          {/* Announce to assistive tech that data is loading. */}
+          <p
+            role="status"
+            aria-live="polite"
+            className="sr-only"
+          >
+            Loading hazard report analytics
+          </p>
+
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
             {[1, 2, 3, 4].map((item) => (
               <div
@@ -578,7 +489,10 @@ export default function UserMonthlyHazardGraph() {
   if (error) {
     return (
       <section className="overflow-hidden rounded-2xl border border-red-200 bg-white shadow-lg dark:border-red-900 dark:bg-slate-800">
-        <div className="flex min-h-[420px] flex-col items-center justify-center p-8 text-center">
+        <div
+          role="alert"
+          className="flex min-h-[420px] flex-col items-center justify-center p-8 text-center"
+        >
           <div className="flex h-14 w-14 items-center justify-center rounded-full bg-red-100 dark:bg-red-900/40">
             <AlertTriangle className="h-7 w-7 text-red-600 dark:text-red-400" />
           </div>
@@ -623,35 +537,28 @@ export default function UserMonthlyHazardGraph() {
               id="hazard-monthly-chart-title"
               className="text-lg font-black text-slate-800 dark:text-slate-100"
             >
-              Monthly Hazard Reports
+              Monthly Natural Disaster Reports
             </h2>
 
             <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
-              Monthly reports grouped by hazard type and
+              Monthly reports grouped by hazard category and
               risk level
             </p>
           </div>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-            {/* Hazard type filter */}
+          {/* Hazard category filter */}
           <select
-            aria-label="Filter hazard reports by type"
+            aria-label="Filter hazard reports by category"
             value={selectedType}
-            onChange={(event) =>
-              setSelectedType(event.target.value)
-            }
+            onChange={(event) => setSelectedType(event.target.value)}
             className="max-w-[220px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
           >
-            <option value="all">
-              All hazard types
-            </option>
+            <option value="all">All hazard categories</option>
 
             {availableTypes.map((type) => (
-              <option
-                key={type.key}
-                value={type.key}
-              >
+              <option key={type.key} value={type.key}>
                 {type.label}
               </option>
             ))}
@@ -667,7 +574,7 @@ export default function UserMonthlyHazardGraph() {
           >
             <RefreshCw className="h-4 w-4" />
           </button>
-          
+
           {/* Year filter */}
           <div className="relative">
             <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
@@ -675,20 +582,13 @@ export default function UserMonthlyHazardGraph() {
             <select
               aria-label="Filter hazard reports by year"
               value={selectedYear}
-              onChange={(event) =>
-                setSelectedYear(event.target.value)
-              }
+              onChange={(event) => setSelectedYear(event.target.value)}
               className="appearance-none rounded-xl border border-slate-300 bg-white py-2 pl-9 pr-8 text-sm font-semibold text-slate-700 outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
             >
-              <option value="all">
-                All years
-              </option>
+              <option value="all">All years</option>
 
               {availableYears.map((year) => (
-                <option
-                  key={year}
-                  value={year}
-                >
+                <option key={year} value={year}>
                   {year}
                 </option>
               ))}
@@ -699,8 +599,7 @@ export default function UserMonthlyHazardGraph() {
 
       <div className="p-5">
         {/* Summary cards */}
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-2">
-          {/* Total */}
+        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
           <div className="rounded-xl border border-orange-200 bg-orange-50 p-4 dark:border-orange-900 dark:bg-orange-950/30">
             <div className="flex items-center justify-between gap-3">
               <div>
@@ -717,7 +616,6 @@ export default function UserMonthlyHazardGraph() {
             </div>
           </div>
 
-          {/* Critical */}
           <div className="rounded-xl border border-red-200 bg-red-50 p-4 dark:border-red-900 dark:bg-red-950/30">
             <div className="flex items-center justify-between gap-3">
               <div>
@@ -734,12 +632,11 @@ export default function UserMonthlyHazardGraph() {
             </div>
           </div>
 
-          {/* Top type */}
           <div className="rounded-xl border border-sky-200 bg-sky-50 p-4 dark:border-sky-900 dark:bg-sky-950/30">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
                 <p className="text-[10px] font-bold uppercase tracking-wide text-sky-700 dark:text-sky-300">
-                  Top Hazard Type
+                  Top Category
                 </p>
 
                 <p className="mt-1 truncate text-base font-black text-sky-800 dark:text-sky-200">
@@ -751,7 +648,6 @@ export default function UserMonthlyHazardGraph() {
             </div>
           </div>
 
-          {/* Peak month */}
           <div className="rounded-xl border border-violet-200 bg-violet-50 p-4 dark:border-violet-900 dark:bg-violet-950/30">
             <div className="flex items-center justify-between gap-3">
               <div className="min-w-0">
@@ -796,7 +692,7 @@ export default function UserMonthlyHazardGraph() {
                   : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700"
               }`}
             >
-              Hazard Type
+              Hazard Category
             </button>
 
             <button
@@ -827,24 +723,15 @@ export default function UserMonthlyHazardGraph() {
               </p>
 
               <p className="mt-1 max-w-sm text-sm text-slate-500 dark:text-slate-400">
-                Try selecting another year or
-                hazard type, or refresh the
-                analytics.
+                Try selecting another year or hazard category, or
+                refresh the analytics.
               </p>
             </div>
           ) : (
-            <ResponsiveContainer
-              width="100%"
-              height={340}
-            >
+            <ResponsiveContainer width="100%" height={340}>
               <BarChart
                 data={chartData}
-                margin={{
-                  top: 15,
-                  right: 10,
-                  left: -20,
-                  bottom: 5,
-                }}
+                margin={{ top: 15, right: 10, left: -20, bottom: 5 }}
                 barCategoryGap="28%"
               >
                 <CartesianGrid
@@ -868,23 +755,17 @@ export default function UserMonthlyHazardGraph() {
                   allowDecimals={false}
                   axisLine={false}
                   tickLine={false}
-                  tick={{
-                    fill: "#64748b",
-                    fontSize: 11,
-                  }}
+                  tick={{ fill: "#64748b", fontSize: 11 }}
                 />
 
                 <Tooltip
-                  cursor={{
-                    fill: "rgba(148, 163, 184, 0.10)",
-                  }}
+                  cursor={{ fill: "rgba(148, 163, 184, 0.10)" }}
                   contentStyle={{
                     border: "none",
                     borderRadius: "12px",
                     background: "#0f172a",
                     color: "#ffffff",
-                    boxShadow:
-                      "0 10px 25px rgba(15, 23, 42, 0.25)",
+                    boxShadow: "0 10px 25px rgba(15, 23, 42, 0.25)",
                     fontSize: "12px",
                   }}
                   labelStyle={{
@@ -892,59 +773,40 @@ export default function UserMonthlyHazardGraph() {
                     fontWeight: 800,
                     marginBottom: "6px",
                   }}
-                  itemStyle={{
-                    padding: "2px 0",
-                  }}
+                  itemStyle={{ padding: "2px 0" }}
                   formatter={(value, name) => {
-                    const item =
-                      activeSeriesMap[
-                        String(name)
-                      ];
-
-                    return [
-                      value,
-                      item?.label || name,
-                    ];
+                    const item = activeSeriesMap[String(name)];
+                    return [value, item?.label || name];
                   }}
-                  labelFormatter={(label) =>
-                    `Month: ${label}`
-                  }
+                  labelFormatter={(label) => `Month: ${label}`}
                 />
 
                 <Legend
                   iconType="circle"
                   iconSize={9}
-                  wrapperStyle={{
-                    paddingTop: "16px",
-                    fontSize: "12px",
-                  }}
+                  wrapperStyle={{ paddingTop: "16px", fontSize: "12px" }}
                 />
 
-                {activeSeries.map(
-                  (item, index) => (
-                    <Bar
-                      key={item.key}
-                      dataKey={item.key}
-                      stackId="hazard-reports"
-                      name={item.label}
-                      fill={item.color}
-                      barSize={34}
-                      radius={
-                        index ===
-                        activeSeries.length - 1
-                          ? [7, 7, 0, 0]
-                          : [0, 0, 0, 0]
-                      }
-                      minPointSize={1}
-                    />
-                  ),
-                )}
+                {activeSeries.map((item, index) => (
+                  <Bar
+                    key={item.key}
+                    dataKey={item.key}
+                    stackId="hazard-reports"
+                    name={item.label}
+                    fill={item.color}
+                    barSize={34}
+                    radius={
+                      index === activeSeries.length - 1
+                        ? [7, 7, 0, 0]
+                        : [0, 0, 0, 0]
+                    }
+                    minPointSize={1}
+                  />
+                ))}
               </BarChart>
             </ResponsiveContainer>
           )}
         </div>
-
-     
       </div>
     </section>
   );

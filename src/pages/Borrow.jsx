@@ -1,14 +1,12 @@
 "use client";
 
-import {
-  useEffect,
-  useState,
-} from "react";
+import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
   Ambulance,
   CalendarDays,
   CarFront,
+  CheckCircle2,
   Clock3,
   Gauge,
   Loader2,
@@ -40,17 +38,9 @@ const EMPTY_BORROW = {
 function readLocalSession(key) {
   try {
     const raw = localStorage.getItem(key);
-
-    if (!raw) {
-      return null;
-    }
-
+    if (!raw) return null;
     const parsed = JSON.parse(raw);
-
-    return parsed &&
-      typeof parsed === "object"
-      ? parsed
-      : null;
+    return parsed && typeof parsed === "object" ? parsed : null;
   } catch {
     return null;
   }
@@ -58,80 +48,58 @@ function readLocalSession(key) {
 
 function localDateKey() {
   const date = new Date();
-
   return [
     date.getFullYear(),
-    String(date.getMonth() + 1).padStart(
-      2,
-      "0",
-    ),
+    String(date.getMonth() + 1).padStart(2, "0"),
     String(date.getDate()).padStart(2, "0"),
   ].join("-");
+}
+
+function dashboardPathFor(requester) {
+  if (!requester) return "/home";
+  if (requester.isStaff) {
+    return requester.role === "admin" ? "/admin/dashboard" : "/staff/dashboard";
+  }
+  return "/home";
 }
 
 export default function Borrow() {
   const navigate = useNavigate();
 
-  const [borrow, setBorrow] =
-    useState(EMPTY_BORROW);
-
-  const [requester, setRequester] =
-    useState(null);
-
-  const [loadingRequester, setLoadingRequester] =
-    useState(true);
-
-  const [submitting, setSubmitting] =
-    useState(false);
-
-  const [error, setError] =
-    useState("");
-
-  const [success, setSuccess] =
-    useState("");
+  const [borrow, setBorrow] = useState(EMPTY_BORROW);
+  const [requester, setRequester] = useState(null);
+  const [loadingRequester, setLoadingRequester] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+  const [submittedInfo, setSubmittedInfo] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
 
     const loadRequester = async () => {
       try {
-        /*
-         * 1. Staff or administrator session
-         */
-        const storedStaff =
-          readLocalSession("currentStaff");
+        const storedStaff = readLocalSession("currentStaff");
 
         if (storedStaff) {
-          const workId =
-            storedStaff.user_id ||
-            storedStaff.id;
+          const workId = storedStaff.user_id || storedStaff.id;
 
           if (!workId) {
-            throw new Error(
-              "Your staff session is missing its work ID.",
-            );
+            throw new Error("Your staff session is missing its work ID.");
           }
 
-          const { data: staff, error: staffError } =
-            await supabase
-              .from("staff_users")
-              .select(
-                "id, user_id, full_name, mobile_number, email, role, department, is_active",
-              )
-              .eq("user_id", workId)
-              .maybeSingle();
+          const { data: staff, error: staffError } = await supabase
+            .from("staff_users")
+            .select(
+              "id, user_id, full_name, mobile_number, email, role, department, is_active",
+            )
+            .eq("user_id", workId)
+            .maybeSingle();
 
-          if (staffError) {
-            throw staffError;
-          }
+          if (staffError) throw staffError;
 
-          if (
-            staff?.is_active === false ||
-            storedStaff.is_active === false
-          ) {
-            throw new Error(
-              "Your staff account has been deactivated.",
-            );
+          if (staff?.is_active === false || storedStaff.is_active === false) {
+            throw new Error("Your staff account has been deactivated.");
           }
 
           if (staff) {
@@ -155,30 +123,19 @@ export default function Borrow() {
                 contact,
                 isStaff: true,
                 role: staff.role,
-                department:
-                  staff.department || "",
+                department: staff.department || "",
               });
             }
-
             return;
           }
 
-          /*
-           * Compatibility fallback for staff accounts
-           * that also have a resident profile.
-           */
-          const { data: profile, error: profileError } =
-            await supabase
-              .from("profiles")
-              .select(
-                "id, full_name, mobile_number, email, role",
-              )
-              .eq("user_id", workId)
-              .maybeSingle();
+          const { data: profile, error: profileError } = await supabase
+            .from("profiles")
+            .select("id, full_name, mobile_number, email, role")
+            .eq("user_id", workId)
+            .maybeSingle();
 
-          if (profileError) {
-            throw profileError;
-          }
+          if (profileError) throw profileError;
 
           if (profile?.id) {
             const contact =
@@ -201,11 +158,9 @@ export default function Borrow() {
                 contact,
                 isStaff: true,
                 role: staff?.role || "staff",
-                department:
-                  staff?.department || "",
+                department: staff?.department || "",
               });
             }
-
             return;
           }
 
@@ -214,11 +169,7 @@ export default function Borrow() {
           );
         }
 
-        /*
-         * 2. Regular resident session
-         */
-        const storedUser =
-          readLocalSession("currentUser");
+        const storedUser = readLocalSession("currentUser");
 
         if (storedUser) {
           const [
@@ -230,7 +181,6 @@ export default function Borrow() {
               .select("*")
               .eq("email", storedUser.email)
               .maybeSingle(),
-
             supabase
               .from("pending_registrations")
               .select("*")
@@ -238,9 +188,7 @@ export default function Borrow() {
               .maybeSingle(),
           ]);
 
-          if (profileError) {
-            throw profileError;
-          }
+          if (profileError) throw profileError;
 
           if (!profileData?.id) {
             throw new Error(
@@ -249,15 +197,10 @@ export default function Borrow() {
           }
 
           const mobile =
-            profileData.mobile_number ||
-            pendingData?.mobile_number ||
-            "";
+            profileData.mobile_number || pendingData?.mobile_number || "";
 
           const contact =
-            mobile ||
-            profileData.email ||
-            storedUser.email ||
-            "";
+            mobile || profileData.email || storedUser.email || "";
 
           const fullName =
             profileData.full_name ||
@@ -282,32 +225,18 @@ export default function Borrow() {
               department: "",
             });
           }
-
           return;
         }
 
-        /*
-         * 3. No authenticated account
-         */
         if (!cancelled) {
-          setError(
-            "Please log in before requesting a vehicle.",
-          );
-
+          setError("Please log in before requesting a vehicle.");
           navigate("/login", {
             replace: true,
-            state: {
-              error:
-                "Please log in before requesting a vehicle.",
-            },
+            state: { error: "Please log in before requesting a vehicle." },
           });
         }
       } catch (loadError) {
-        console.error(
-          "Error loading requester:",
-          loadError,
-        );
-
+        console.error("Error loading requester:", loadError);
         if (!cancelled) {
           setError(
             loadError?.message ||
@@ -315,55 +244,36 @@ export default function Borrow() {
           );
         }
       } finally {
-        if (!cancelled) {
-          setLoadingRequester(false);
-        }
+        if (!cancelled) setLoadingRequester(false);
       }
     };
 
     loadRequester();
-
-    return () => {
-      cancelled = true;
-    };
+    return () => { cancelled = true; };
   }, [navigate]);
 
   const handleChange = (event) => {
     const { name, value } = event.target;
-
-    setBorrow((previous) => ({
-      ...previous,
-      [name]: value,
-    }));
-
-    setSuccess("");
+    setBorrow((previous) => ({ ...previous, [name]: value }));
     setError("");
   };
 
   const handleReset = () => {
     setBorrow(EMPTY_BORROW);
     setError("");
-    setSuccess("");
   };
 
-  const submitRequest = async (
-    event,
-  ) => {
+  const submitRequest = async (event) => {
     event.preventDefault();
 
-    if (submitting) {
-      return;
-    }
+    if (submitting) return;
 
     setSubmitting(true);
     setError("");
-    setSuccess("");
 
     try {
       if (!requester) {
-        throw new Error(
-          "No authenticated account was found. Please log in.",
-        );
+        throw new Error("No authenticated account was found. Please log in.");
       }
 
       if (
@@ -376,85 +286,54 @@ export default function Borrow() {
         );
       }
 
-      if (
-        !requester.isStaff &&
-        !requester.profileId
-      ) {
+      if (!requester.isStaff && !requester.profileId) {
         throw new Error(
           "Your resident profile could not be linked to this request.",
         );
       }
 
       const payload = {
-        dispatchNum:
-          borrow.dispatchNum.trim(),
-
-        departure:
-          borrow.departure.trim(),
-
-        arrival:
-          borrow.arrival.trim(),
-
-        contactNum:
-          requester.contact,
-
+        dispatchNum: borrow.dispatchNum.trim(),
+        departure: borrow.departure.trim(),
+        arrival: borrow.arrival.trim(),
+        contactNum: requester.contact,
         vehicle: borrow.vehicle,
-
-        requestedBy:
-          requester.fullName,
-
-        purpose:
-          borrow.purpose.trim(),
-
-        destination:
-          borrow.destination.trim(),
-
+        requestedBy: requester.fullName,
+        purpose: borrow.purpose.trim(),
+        destination: borrow.destination.trim(),
         date: borrow.date,
         time: borrow.time,
-
         staffId:
-          requester.isStaff &&
-          requester.staffId
+          requester.isStaff && requester.staffId
             ? requester.staffId
             : null,
-
-        userId:
-          requester.isStaff
-            ? requester.profileId || null
-            : requester.profileId,
+        userId: requester.isStaff
+          ? requester.profileId || null
+          : requester.profileId,
       };
 
-      const { error: insertError } =
-        await supabase
-          .from("borrow-vehicle")
-          .insert([payload]);
+      const { error: insertError } = await supabase
+        .from("borrow-vehicle")
+        .insert([payload]);
 
-      if (insertError) {
-        throw new Error(
-          insertError.message,
-        );
-      }
+      if (insertError) throw new Error(insertError.message);
 
-      setSuccess(
-        "Your emergency vehicle dispatch request was submitted successfully and is now awaiting review.",
-      );
+      window.dispatchEvent(new Event("mdrrmo:notif-refresh"));
 
+      setSubmittedInfo({
+        dispatchNum: borrow.dispatchNum.trim(),
+        destination: borrow.destination.trim(),
+        vehicle: borrow.vehicle,
+        date: borrow.date,
+        time: borrow.time,
+      });
+
+      setSubmitted(true);
       setBorrow(EMPTY_BORROW);
-
-      window.dispatchEvent(
-        new Event(
-          "mdrrmo:notif-refresh",
-        ),
-      );
     } catch (submitError) {
-      console.error(
-        "Dispatch request error:",
-        submitError,
-      );
-
+      console.error("Dispatch request error:", submitError);
       setError(
-        submitError?.message ||
-          "Failed to submit the vehicle request.",
+        submitError?.message || "Failed to submit the vehicle request.",
       );
     } finally {
       setSubmitting(false);
@@ -468,7 +347,6 @@ export default function Borrow() {
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-r from-blue-600 via-blue-600 to-purple-600 shadow-xl">
             <Loader2 className="h-8 w-8 animate-spin text-white" />
           </div>
-
           <p className="mt-5 text-sm font-black text-slate-700 dark:text-slate-200">
             Verifying your dispatch account...
           </p>
@@ -482,26 +360,19 @@ export default function Borrow() {
       <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 dark:bg-slate-950">
         <div className="w-full max-w-md overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
           <div className="h-2 bg-gradient-to-r from-blue-600 via-blue-600 to-purple-600" />
-
           <div className="p-8 text-center">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-rose-100 dark:bg-rose-950/50">
               <Ambulance className="h-8 w-8 text-rose-600" />
             </div>
-
             <h2 className="mt-5 text-xl font-black text-slate-900 dark:text-white">
               Account required
             </h2>
-
             <p className="mt-3 text-sm leading-6 text-slate-500 dark:text-slate-400">
-              {error ||
-                "You must be logged in before requesting a vehicle."}
+              {error || "You must be logged in before requesting a vehicle."}
             </p>
-
             <button
               type="button"
-              onClick={() =>
-                navigate("/login")
-              }
+              onClick={() => navigate("/login")}
               className="mt-6 inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 via-blue-600 to-purple-600 px-6 py-3 text-sm font-black text-white shadow-lg transition hover:brightness-105"
             >
               <LogIn className="h-4 w-4" />
@@ -513,6 +384,16 @@ export default function Borrow() {
     );
   }
 
+  if (submitted) {
+    return (
+      <BorrowSuccess
+        info={submittedInfo}
+        onGoToDashboard={() => navigate(dashboardPathFor(requester))}
+        onSubmitAnother={() => setSubmitted(false)}
+      />
+    );
+  }
+
   return (
     <RequestFormShell
       icon={Ambulance}
@@ -521,17 +402,12 @@ export default function Borrow() {
       description="Request an emergency response vehicle and provide the dispatch, odometer, and trip information."
       account={{
         name: requester.fullName,
-        detail:
-          requester.contact ||
-          "No contact number available",
-        badge: requester.isStaff
-          ? requester.role || "Staff"
-          : "Resident",
+        detail: requester.contact || "No contact number available",
+        badge: requester.isStaff ? requester.role || "Staff" : "Resident",
       }}
       onSubmit={submitRequest}
       onReset={handleReset}
       error={error}
-      success={success}
       submitting={submitting}
       submitLabel="Submit Vehicle Request"
       submitIcon={Ambulance}
@@ -548,14 +424,9 @@ export default function Borrow() {
         />
 
         <div className="grid gap-5 md:grid-cols-2">
-          <FormField
-            id="dispatchNum"
-            label="Dispatch Number"
-            required
-          >
+          <FormField id="dispatchNum" label="Dispatch Number" required>
             <div className="relative">
               <Route className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-
               <input
                 id="dispatchNum"
                 name="dispatchNum"
@@ -569,14 +440,9 @@ export default function Borrow() {
             </div>
           </FormField>
 
-          <FormField
-            id="date"
-            label="Dispatch Date"
-            required
-          >
+          <FormField id="date" label="Dispatch Date" required>
             <div className="relative">
               <CalendarDays className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-
               <input
                 id="date"
                 name="date"
@@ -590,14 +456,9 @@ export default function Borrow() {
             </div>
           </FormField>
 
-          <FormField
-            id="time"
-            label="Dispatch Time"
-            required
-          >
+          <FormField id="time" label="Dispatch Time" required>
             <div className="relative">
               <Clock3 className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-
               <input
                 id="time"
                 name="time"
@@ -610,14 +471,9 @@ export default function Borrow() {
             </div>
           </FormField>
 
-          <FormField
-            id="vehicle"
-            label="Vehicle to Be Used"
-            required
-          >
+          <FormField id="vehicle" label="Vehicle to Be Used" required>
             <div className="relative">
               <CarFront className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-
               <select
                 id="vehicle"
                 name="vehicle"
@@ -626,21 +482,10 @@ export default function Borrow() {
                 className={`${FORM_INPUT_CLASS} pl-11`}
                 required
               >
-                <option value="">
-                  Select a vehicle
-                </option>
-
-                <option value="ambulance">
-                  Ambulance
-                </option>
-
-                <option value="rescue-truck">
-                  Rescue Truck
-                </option>
-
-                <option value="utility-van">
-                  Utility Van
-                </option>
+                <option value="">Select a vehicle</option>
+                <option value="ambulance">Ambulance</option>
+                <option value="rescue-truck">Rescue Truck</option>
+                <option value="utility-van">Utility Van</option>
               </select>
             </div>
           </FormField>
@@ -665,7 +510,6 @@ export default function Borrow() {
           >
             <div className="relative">
               <Gauge className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-
               <input
                 id="departure"
                 name="departure"
@@ -687,7 +531,6 @@ export default function Borrow() {
           >
             <div className="relative">
               <Gauge className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-
               <input
                 id="arrival"
                 name="arrival"
@@ -715,11 +558,7 @@ export default function Borrow() {
         />
 
         <div className="grid gap-5">
-          <FormField
-            id="purpose"
-            label="Purpose"
-            required
-          >
+          <FormField id="purpose" label="Purpose" required>
             <input
               id="purpose"
               name="purpose"
@@ -732,14 +571,9 @@ export default function Borrow() {
             />
           </FormField>
 
-          <FormField
-            id="destination"
-            label="Destination"
-            required
-          >
+          <FormField id="destination" label="Destination" required>
             <div className="relative">
               <MapPin className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-
               <input
                 id="destination"
                 name="destination"
@@ -757,11 +591,81 @@ export default function Borrow() {
 
       <div className="mt-7 flex items-start gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-blue-800 dark:border-blue-800/70 dark:bg-blue-950/40 dark:text-blue-200">
         <UserRound className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" />
-
         <p className="text-xs leading-6">
           The request will be automatically linked to {requester.fullName}. Review the odometer readings and destination before submitting.
         </p>
       </div>
     </RequestFormShell>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   SUCCESS PAGE
+   ══════════════════════════════════════════════════════════════════ */
+
+function BorrowSuccess({ info, onGoToDashboard, onSubmitAnother }) {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-10 dark:bg-slate-950">
+      <div className="w-full max-w-lg overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+        <div className="bg-gradient-to-r from-blue-600 via-blue-600 to-purple-600 px-6 py-8 text-center text-white">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/20">
+            <CheckCircle2 className="h-9 w-9" />
+          </div>
+          <h1 className="mt-5 text-2xl font-black">Vehicle Request Submitted</h1>
+          <p className="mt-2 text-sm leading-6 text-blue-50/85">
+            Your dispatch request has been received and is awaiting administrator review.
+          </p>
+        </div>
+
+        <div className="space-y-4 p-6 sm:p-8">
+          {info && (
+            <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800 dark:border-blue-800/70 dark:bg-blue-950/40 dark:text-blue-200">
+              {info.dispatchNum && (
+                <p className="text-xs font-black uppercase tracking-wide opacity-70">
+                  Dispatch #{info.dispatchNum}
+                </p>
+              )}
+              {info.vehicle && (
+                <p className="mt-1 text-base font-black capitalize">
+                  {String(info.vehicle).replace(/-/g, " ")}
+                </p>
+              )}
+              {info.destination && (
+                <p className="mt-1 text-xs leading-6 opacity-80">
+                  Destination: {info.destination}
+                </p>
+              )}
+              {(info.date || info.time) && (
+                <p className="mt-1 text-xs leading-6 opacity-80">
+                  {info.date}
+                  {info.time ? ` at ${info.time}` : ""}
+                </p>
+              )}
+            </div>
+          )}
+
+          <p className="text-center text-xs leading-5 text-slate-500 dark:text-slate-400">
+            You can track this request from your dashboard under “My Requests”.
+          </p>
+
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <button
+              type="button"
+              onClick={onSubmitAnother}
+              className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-black text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+            >
+              Submit Another
+            </button>
+            <button
+              type="button"
+              onClick={onGoToDashboard}
+              className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 via-blue-600 to-purple-600 px-5 py-3 text-sm font-black text-white shadow-lg transition hover:brightness-105"
+            >
+              Back to Dashboard
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

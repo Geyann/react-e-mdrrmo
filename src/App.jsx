@@ -51,6 +51,8 @@ import StaffHome from "./pages/StaffHome";
 import StaffInventory from "./pages/StaffInventory";
 import TrackAppointment from "./pages/trackAppointment";
 import UserApproval from "./pages/userApproval";
+import { useAutoLogoutOnGuest } from "./hooks/useAutoLogoutOnGuest";
+
 
 /* Resident pages that use the collapsible sidebar. */
 const RESIDENT_RAIL_PATHS = new Set([
@@ -71,6 +73,7 @@ const RESIDENT_RAIL_PATHS = new Set([
 ]);
 
 export default function App() {
+  useAutoLogoutOnGuest();
   const location = useLocation();
   const navigate = useNavigate();
 

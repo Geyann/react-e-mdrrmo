@@ -30,6 +30,7 @@ import {
   ShieldCheck,
   Smartphone,
   Sun,
+  Moon,
   Trash2,
   User,
   UserCheck,

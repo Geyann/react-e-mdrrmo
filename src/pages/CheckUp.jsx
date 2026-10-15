@@ -5,12 +5,13 @@ import {
   useEffect,
   useState,
 } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   Accessibility,
   Ambulance,
   Building2,
   CalendarDays,
+  CheckCircle2,
   Clock3,
   HeartPlus,
   Info,
@@ -577,6 +578,18 @@ function prettyRole(role) {
   return "Resident";
 }
 
+function dashboardPathFor(actor) {
+  if (!actor) return "/home";
+
+  if (actor.kind === "staff") {
+    return actor.role === "admin"
+      ? "/admin/dashboard"
+      : "/staff/dashboard";
+  }
+
+  return "/home";
+}
+
 const ERROR_COPY = {
   "missing-id":
     "Your staff session is missing its work ID. Please sign out and log in again.",
@@ -601,6 +614,8 @@ const ERROR_COPY = {
 };
 
 export default function CheckUp() {
+  const navigate = useNavigate();
+
   const [form, setForm] =
     useState(INITIAL_FORM);
 
@@ -616,8 +631,11 @@ export default function CheckUp() {
   const [error, setError] =
     useState("");
 
-  const [success, setSuccess] =
-    useState("");
+  const [submitted, setSubmitted] =
+    useState(false);
+
+  const [submittedInfo, setSubmittedInfo] =
+    useState(null);
 
   const isStaff = actor?.kind === "staff";
   const isResident =
@@ -667,18 +685,6 @@ export default function CheckUp() {
     };
   }, []);
 
-  useEffect(() => {
-    if (!success) {
-      return undefined;
-    }
-
-    const timeout = setTimeout(() => {
-      setSuccess("");
-    }, 7000);
-
-    return () => clearTimeout(timeout);
-  }, [success]);
-
   const handleChange = useCallback(
     (event) => {
       const { name, value } = event.target;
@@ -698,8 +704,6 @@ export default function CheckUp() {
 
         return next;
       });
-
-      setSuccess("");
     },
     [],
   );
@@ -707,7 +711,6 @@ export default function CheckUp() {
   const handleReset = useCallback(() => {
     setForm(buildInitialForm(actor));
     setError("");
-    setSuccess("");
   }, [actor]);
 
   const handleSubmit = useCallback(
@@ -719,7 +722,6 @@ export default function CheckUp() {
       }
 
       setError("");
-      setSuccess("");
 
       if (
         !actor ||
@@ -853,18 +855,27 @@ export default function CheckUp() {
           );
         }
 
-        setSuccess(
-          `Check-up request #${data?.id ?? "—"} submitted successfully. It is now in the administrator queue for review.`,
-        );
-
-        setForm(
-          buildInitialForm(actor),
-        );
-
         window.dispatchEvent(
           new Event(
             "mdrrmo:notif-refresh",
           ),
+        );
+
+        setSubmittedInfo({
+          id: data?.id ?? null,
+          patientName,
+          hospitalName:
+            form.hospitalName.trim(),
+          preferredDate:
+            form.preferredDate,
+          preferredTime:
+            form.preferredTime,
+        });
+
+        setSubmitted(true);
+
+        setForm(
+          buildInitialForm(actor),
         );
       } catch (submitError) {
         console.error(
@@ -949,6 +960,21 @@ export default function CheckUp() {
     );
   }
 
+  if (submitted) {
+    return (
+      <CheckUpSuccess
+        info={submittedInfo}
+        isStaff={isStaff}
+        onGoToDashboard={() =>
+          navigate(dashboardPathFor(actor))
+        }
+        onSubmitAnother={() =>
+          setSubmitted(false)
+        }
+      />
+    );
+  }
+
   return (
     <RequestFormShell
       icon={HeartPlus}
@@ -967,7 +993,6 @@ export default function CheckUp() {
       onSubmit={handleSubmit}
       onReset={handleReset}
       error={error}
-      success={success}
       submitting={submitting}
       submitLabel="Submit Check-Up Request"
       footerNote={
@@ -1255,5 +1280,94 @@ export default function CheckUp() {
         )}
       </section>
     </RequestFormShell>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   SUCCESS PAGE
+   ══════════════════════════════════════════════════════════════════ */
+
+function CheckUpSuccess({
+  info,
+  isStaff,
+  onGoToDashboard,
+  onSubmitAnother,
+}) {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-10 dark:bg-slate-950">
+      <div className="w-full max-w-lg overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+        <div className="bg-gradient-to-r from-blue-600 via-blue-600 to-purple-600 px-6 py-8 text-center text-white">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/20">
+            <CheckCircle2 className="h-9 w-9" />
+          </div>
+
+          <h1 className="mt-5 text-2xl font-black">
+            Check-Up Request Submitted
+          </h1>
+
+          <p className="mt-2 text-sm leading-6 text-blue-50/85">
+            {isStaff
+              ? "Your request has been received and is now pending administrator review."
+              : "Your request has been received and is now in the administrator queue."}
+          </p>
+        </div>
+
+        <div className="space-y-4 p-6 sm:p-8">
+          {info && (
+            <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800 dark:border-blue-800/70 dark:bg-blue-950/40 dark:text-blue-200">
+              {info.id && (
+                <p className="text-xs font-black uppercase tracking-wide opacity-70">
+                  Request #{info.id}
+                </p>
+              )}
+
+              {info.patientName && (
+                <p className="mt-1 text-base font-black">
+                  Patient: {info.patientName}
+                </p>
+              )}
+
+              {info.hospitalName && (
+                <p className="mt-1 text-xs leading-6 opacity-80">
+                  Hospital: {info.hospitalName}
+                </p>
+              )}
+
+              {(info.preferredDate ||
+                info.preferredTime) && (
+                <p className="mt-1 text-xs leading-6 opacity-80">
+                  Preferred: {info.preferredDate}
+                  {info.preferredTime
+                    ? ` at ${info.preferredTime}`
+                    : ""}
+                </p>
+              )}
+            </div>
+          )}
+
+          <p className="text-center text-xs leading-5 text-slate-500 dark:text-slate-400">
+            You can track this request from your dashboard under “My Requests”.
+          </p>
+
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <button
+              type="button"
+              onClick={onSubmitAnother}
+              className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-black text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+            >
+              Submit Another
+            </button>
+
+            <button
+              type="button"
+              onClick={onGoToDashboard}
+              className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 via-blue-600 to-purple-600 px-5 py-3 text-sm font-black text-white shadow-lg transition hover:brightness-105"
+            >
+              Back to Dashboard
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

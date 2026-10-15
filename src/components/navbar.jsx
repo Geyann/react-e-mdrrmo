@@ -22,12 +22,12 @@ const USER_LINKS = [
   },
   {
     to: "/hazard-report",
-    label: "Hazard Report",
+    label: "Report Natural Disaster  ",
     icon: TriangleAlert,
   },
   {
     to: "/report",
-    label: "Report Incident",
+    label: "Report Emergency Incident",
     icon: Siren,
   },
   {

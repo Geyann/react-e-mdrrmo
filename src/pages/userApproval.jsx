@@ -139,8 +139,7 @@ const normalizeUsername = (value) => rawText(value).toLowerCase();
 
 const normalizeEmail = (value) => rawText(value).toLowerCase();
 
-const validUsername = (value) =>
-  USERNAME_PATTERN.test(normalizeUsername(value));
+const validUsername = (value) => USERNAME_PATTERN.test(normalizeUsername(value));
 
 const getIdTypeLabel = (value) => {
   const idType = rawText(value);
@@ -563,7 +562,7 @@ function ActiveToggle({ value, onToggle, disabled = false }) {
  * MAIN COMPONENT
  * ============================================================= */
 
-export default function AdminUserManagement() {
+function AdminUserManagement() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
@@ -603,7 +602,7 @@ export default function AdminUserManagement() {
   const [createError, setCreateError] = useState("");
   const [createSuccess, setCreateSuccess] = useState("");
 
-  /* ── NEW: Approve modal state ─────────────────────────────────── */
+  /* ── Approve modal state ─────────────────────────────────────── */
   const [showApproveModal, setShowApproveModal] = useState(false);
   const [approveTarget, setApproveTarget] = useState(null);
   const [approvePassword, setApprovePassword] = useState("");
@@ -941,10 +940,9 @@ export default function AdminUserManagement() {
         updateData.last_name = nameParts.join(" ") || "";
 
         /*
-         * IMPORTANT: Do NOT update status here.
-         * The Approve button calls the edge function to create
-         * the auth user + profiles record. Status is managed
-         * exclusively through the Approve/Decline buttons.
+         * Do NOT update status here. Status changes go through the
+         * Approve button, which calls the approve-registration edge
+         * function to create the auth user + profiles row.
          */
         updateData.email = email;
         updateData.username = username || null;
@@ -1015,12 +1013,6 @@ export default function AdminUserManagement() {
     const isApprove = action === "approved";
 
     if (isApprove) {
-      /*
-       * FIXED: Approval now requires admin password verification
-       * and calls the edge function to create the Supabase Auth
-       * user + profiles record. This ensures the approved user
-       * can actually log in across all pages.
-       */
       setApproveTarget(user);
       setApprovePassword("");
       setApproveError("");
@@ -1063,74 +1055,82 @@ export default function AdminUserManagement() {
     }
   };
 
-  /* ── NEW: Approve via edge function ────────────────────────────── */
+  /* ── Approve via edge function ─────────────────────────────── */
 
- const handleApproveConfirm = async (event) => {
-  event.preventDefault();
+  const handleApproveConfirm = async (event) => {
+    event.preventDefault();
 
-  if (!approveTarget || approveSaving) return;
+    if (!approveTarget || approveSaving) return;
 
-  setApproveSaving(true);
-  setApproveError("");
-
-  try {
-    const currentStaffData = readCurrentStaff();
-
-    // Use direct fetch instead of supabase.functions.invoke
-    // to avoid SDK-level CORS issues
-    const response = await fetch(
-      `${import.meta.env.VITE_SUPABASE_URL}/functions/v1/approve-registration`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${import.meta.env.VITE_SUPABASE_ANON_KEY}`,
-        },
-        body: JSON.stringify({
-          registration_id: approveTarget.sourceId,
-          requester_work_id: currentStaffData?.user_id || null,
-          requester_username: currentStaffData?.username || null,
-          requester_email: currentStaffData?.email || null,
-          requester_password: approvePassword,
-        }),
-      }
-    );
-
-    let data = {};
-    try {
-      data = await response.json();
-    } catch {
-      data = {};
-    }
-
-    if (!response.ok) {
-      throw new Error(
-        data?.error ||
-          `Request failed with status ${response.status}`
-      );
-    }
-
-    if (data?.success !== true) {
-      throw new Error(data?.error || "Unable to approve the account.");
-    }
-
+    setApproveSaving(true);
     setApproveError("");
-    setShowApproveModal(false);
-    setApproveTarget(null);
-    setApprovePassword("");
-    await fetchAllUsers(false);
 
-    const userName = approveTarget.full_name || approveTarget.email || "the user";
-    setCreateSuccess(`${userName}'s account was approved.`);
-  } catch (err) {
-    console.error("Approve registration error:", err);
-    setApproveError(
-      err?.message || "Failed to approve. Check if the edge function is deployed."
-    );
-  } finally {
-    setApproveSaving(false);
-  }
-};
+    try {
+      const currentStaffData = readCurrentStaff();
+
+      if (!currentStaffData) {
+        throw new Error(
+          "Your administrator session could not be read. Please sign in again.",
+        );
+      }
+
+      const { data, error } = await supabase.functions.invoke(
+        "approve-registration",
+        {
+          body: {
+            registration_id: approveTarget.sourceId,
+            requester_work_id:
+              currentStaffData.user_id ||
+              currentStaffData.custom_id ||
+              null,
+            requester_username: currentStaffData.username || null,
+            requester_email: currentStaffData.email || null,
+            requester_password: approvePassword,
+          },
+        },
+      );
+
+      if (error) {
+        let serverMessage = error.message || "Approval failed.";
+        try {
+          const ctx = error.context;
+          if (ctx && typeof ctx.json === "function") {
+            const body = await ctx.json();
+            if (body?.error) serverMessage = body.error;
+          }
+        } catch {
+          /* keep fallback */
+        }
+        throw new Error(serverMessage);
+      }
+
+      if (!data?.success) {
+        throw new Error(
+          data?.error || "Approval failed. No auth user was created.",
+        );
+      }
+
+      setShowApproveModal(false);
+      setApproveTarget(null);
+      setApprovePassword("");
+
+      const userName =
+        approveTarget.full_name || approveTarget.email || "the user";
+      setCreateSuccess(
+        `${userName}'s account was approved. They can now sign in.`,
+      );
+
+      await fetchAllUsers(false);
+    } catch (err) {
+      console.error("Approve registration error:", err);
+      setApproveError(
+        err?.message ||
+          "Failed to approve. Check the approve-registration function logs.",
+      );
+    } finally {
+      setApproveSaving(false);
+    }
+  };
 
   /* ===========================================================
      DELETE ACCOUNT
@@ -1735,9 +1735,7 @@ export default function AdminUserManagement() {
         </div>
       </div>
 
-      {/* ══════════════════════════════════════════════════════════
-          APPROVE MODAL — NEW
-          ══════════════════════════════════════════════════════════ */}
+      {/* Approve modal */}
       {showApproveModal && approveTarget && (
         <div
           className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black/50 p-4"
@@ -2475,9 +2473,8 @@ function CreateAccountModal({
               {isAdmin ? "Administrator account" : "Staff account"}
             </p>
             <p className="mt-1 text-xs leading-relaxed">
-              This account is stored only in <strong>
-                {isAdmin ? "admin_users" : "staff_users"}
-              </strong>
+              This account is stored only in{" "}
+              <strong>{isAdmin ? "admin_users" : "staff_users"}</strong>
               . Work ID, username, and email are checked before creating or
               updating an account.
             </p>
@@ -3408,3 +3405,5 @@ function UserSummaryReportModal({ onClose }) {
     </>
   );
 }
+
+export default AdminUserManagement;

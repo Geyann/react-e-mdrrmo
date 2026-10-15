@@ -3,6 +3,10 @@ import { MapContainer, TileLayer, Polygon, Marker } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
 import { supabase } from "../createClient";
+import {
+  HAZARD_FILTER_OPTIONS,
+  CATEGORY_ICONS as TAXONOMY_ICONS,
+} from "../utils/HazardTaxonomy";
 
 // ─── Fix Leaflet Default Icon ───────────────────────────────────────────────
 delete L.Icon.Default.prototype._getIconUrl;
@@ -46,21 +50,13 @@ const HAZARD_COLORS = {
 };
 
 const CATEGORY_ICONS = {
-  physical: '🏗️',
-  'chemical/biological': '☣️',
-  electrical: '⚡',
-  'procedural/safety practices': '📋',
-  'natural disaster': '🌊',
+  ...TAXONOMY_ICONS,
 };
 
-const CATEGORIES = [
-  { id: 'all', label: 'All Hazards' },
-  { id: 'physical', label: 'Physical' },
-  { id: 'chemical/biological', label: 'Chemical / Biological' },
-  { id: 'electrical', label: 'Electrical' },
-  { id: 'procedural/safety practices', label: 'Procedural / Safety' },
-  { id: 'natural disaster', label: 'Natural Disaster' },
-];
+const CATEGORIES = HAZARD_FILTER_OPTIONS.map((o) => ({
+  id: o.id,
+  label: o.label,
+}));
 
 const RISK_LEVELS = [
   { id: 'all', label: 'All Levels' },

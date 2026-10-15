@@ -17,11 +17,9 @@ import {
    CONFIG
    ══════════════════════════════════════════════════════════════════ */
 
-const POLL_MS_USER = 5000;
-const POLL_MS_HANDLER = 8000;
-const TOAST_DURATION_MS = 6000;
+const POLL_MS_USER = 8000;
+const POLL_MS_HANDLER = 12000;
 const MAX_NOTIFICATIONS = 80;
-const MAX_TOASTS = 4;
 const SCAN_LIMIT = 300;
 const QUEUE_BACKFILL = 10;
 const USER_BACKFILL = 12;
@@ -58,12 +56,10 @@ const safeQuery = async (builder, fallback, label, ms = QUERY_TIMEOUT_MS) => {
   try {
     const res = await withTimeout(builder, ms, label);
     if (res?.error) {
-      dbg(`${label} error:`, res.error.message);
       return fallback;
     }
     return res?.data ?? fallback;
   } catch (e) {
-    dbg(`${label} failed:`, e?.message);
     return fallback;
   }
 };
@@ -175,7 +171,7 @@ const SOURCES = [
     label: "Vehicle Dispatch",
     scopes: ["self", "queue"],
     queueRoles: ["admin", "staff"],
-    actionable: ["Pending"],
+    actionable: ["pending"],
     selfKeys: ["contactNum"],
     selfTones: {
       approved: "success", declined: "error",
@@ -200,7 +196,7 @@ const SOURCES = [
     label: "Check-Up Request",
     scopes: ["self", "queue"],
     queueRoles: ["admin", "staff"],
-    actionable: ["Pending"],
+    actionable: ["pending"],
     selfKeys: ["contactDetails"],
     selfTones: {
       approved: "success", confirmed: "success", completed: "success",
@@ -387,23 +383,11 @@ const TONE_BG = {
   info: "bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400",
 };
 
-const TONE_BORDER = {
-  success: "border-emerald-200 dark:border-emerald-800",
-  error: "border-red-200 dark:border-red-800",
-  warning: "border-amber-200 dark:border-amber-800",
-  info: "border-blue-200 dark:border-blue-800",
-};
-
 const TONE_HEADER = {
   success: "border-emerald-100 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/40",
   error: "border-red-100 dark:border-red-900 bg-red-50 dark:bg-red-950/40",
   warning: "border-amber-100 dark:border-amber-900 bg-amber-50 dark:bg-amber-950/40",
   info: "border-blue-100 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/40",
-};
-
-const TONE_TEXT = {
-  success: "text-emerald-500", error: "text-red-500",
-  warning: "text-amber-500", info: "text-blue-500",
 };
 
 /* ══════════════════════════════════════════════════════════════════
@@ -549,7 +533,6 @@ const resolveIdentity = async () => {
   const firstId = [...ids][0] || "anon";
   const storageKey = `${role}-${authId || profileId || staffRowId || firstId}`;
 
-  dbg("identity:", { role, isHandler, name, email, ids: [...ids], storageKey });
 
   return {
     idSet: ids, authId, profileId, staffRowId,
@@ -560,16 +543,24 @@ const resolveIdentity = async () => {
 };
 
 /* ══════════════════════════════════════════════════════════════════
-   MATCHING
+   MATCHING — scoped to known ownership columns only
    ══════════════════════════════════════════════════════════════════ */
+
+const OWNERSHIP_ID_COLUMNS = [
+  "userId",
+  "user_id",
+  "user_id_from_auth",
+  "staffId",
+  "staff_id",
+];
 
 const matchRow = (src, row, w) => {
   if (!w || !w.idSet || w.idSet.size === 0) return { ok: false, via: null };
 
-  for (const v of Object.values(row)) {
-    if (v === null || v === undefined) continue;
-    if (typeof v === "object") continue;
-    if (w.idSet.has(String(v))) return { ok: true, via: "id" };
+  for (const col of OWNERSHIP_ID_COLUMNS) {
+    const v = row[col];
+    if (v === null || v === undefined || v === "") continue;
+    if (w.idSet.has(String(v))) return { ok: true, via: col };
   }
 
   const myEmail = (w.email || "").trim().toLowerCase();
@@ -606,7 +597,6 @@ export default function Notification() {
   const [notifications, setNotifications] = useState([]);
   const [readMap, setReadMap] = useState({});
   const [dismissMap, setDismissMap] = useState({});
-  const [toasts, setToasts] = useState([]);
   const [selected, setSelected] = useState(null);
   const [blocked, setBlocked] = useState([]);
   const [diag, setDiag] = useState({});
@@ -619,8 +609,7 @@ export default function Notification() {
   const readRef = useRef({});
   const dismissRef = useRef({});
   const seededRef = useRef(false);
-  const scanningRef = useRef(false);
-  const timersRef = useRef({});
+  const scanPromiseRef = useRef(null);
   const bootRef = useRef(null);
 
   /* ── persistence ─────────────────────────────────────────────── */
@@ -639,10 +628,7 @@ export default function Notification() {
     writeJSON(cacheKey(w.storageKey), cacheRef.current);
   }, []);
 
-  /* ── push ──────────────────────────────────────────────────────
-     IMPORTANT: only show toast AFTER the initial seed is finished.
-     Backfill / historical items never produce toasts.
-  ─────────────────────────────────────────────────────────────── */
+  /* ── push: list-only, no toasts ──────────────────────────────── */
 
   const push = useCallback((p, { silent = false } = {}) => {
     if (dismissRef.current[p.id] !== undefined) return;
@@ -655,15 +641,7 @@ export default function Notification() {
     setNotifications(next);
     persistAll();
 
-    // Only show toast for real-time events after the component has finished seeding
-    if (!silent && seededRef.current) {
-      setToasts((t) => [
-        ...t.filter((x) => x.id !== n.id),
-        { id: n.id, tone: n.tone, title: n.title, message: n.message, link: n.link },
-      ].slice(-MAX_TOASTS));
-    }
-
-    dbg("push:", n.tone, n.title, n.id, silent ? "(silent)" : "");
+    if (!silent) dbg("push:", n.tone, n.title, n.id);
   }, [persistAll]);
 
   const linkFor = useCallback(
@@ -804,7 +782,7 @@ export default function Notification() {
       },
     }));
 
-    // Backfill is ALWAYS silent (no toast)
+    // Backfill is always silent.
     if (w.isHandler && queueBackfill.length) {
       queueBackfill.slice(0, QUEUE_BACKFILL).forEach((row) => {
         const { title, message } = src.describe(row);
@@ -851,18 +829,26 @@ export default function Notification() {
     }
   }, [onCreated, onStatus, push, linkFor]);
 
+  /* scanAll — single in-flight promise, no overlapping scans */
   const scanAll = useCallback(async () => {
     const w = whoRef.current;
     if (!w) return;
-    if (scanningRef.current) return;
 
-    scanningRef.current = true;
-    try {
-      await Promise.allSettled(sourcesFor(w).map((s) => scanSource(s, w)));
-      persistCache();
-    } finally {
-      scanningRef.current = false;
+    if (scanPromiseRef.current) {
+      return scanPromiseRef.current;
     }
+
+    const run = (async () => {
+      try {
+        await Promise.allSettled(sourcesFor(w).map((s) => scanSource(s, w)));
+        persistCache();
+      } finally {
+        scanPromiseRef.current = null;
+      }
+    })();
+
+    scanPromiseRef.current = run;
+    return run;
   }, [scanSource, persistCache]);
 
   /* ── boot (StrictMode-safe) ───────────────────────────────────── */
@@ -887,7 +873,7 @@ export default function Notification() {
         writeJSON(dismissKey(w.storageKey), dmap);
 
         await scanAll();
-        seededRef.current = true;          // ← after this, real-time events may toast
+        seededRef.current = true;
         return w;
       })();
     }
@@ -902,10 +888,10 @@ export default function Notification() {
         setDismissMap(dismissRef.current);
         if (w) setWho(w);
         setBooting(false);
-        dbg("booted", w ? w.role : "guest");
+       
       })
       .catch((e) => {
-        dbg("boot failed:", e?.message);
+      
         if (alive) setBooting(false);
       });
 
@@ -986,34 +972,6 @@ export default function Notification() {
     return () => { supabase.removeChannel(ch); };
   }, [who, booting, onCreated, onStatus, persistCache]);
 
-  /* ── toast timers ────────────────────────────────────────────── */
-
-  useEffect(() => {
-    const live = new Set(toasts.map((t) => t.id));
-    Object.keys(timersRef.current).forEach((id) => {
-      if (!live.has(id)) {
-        clearTimeout(timersRef.current[id]);
-        delete timersRef.current[id];
-      }
-    });
-    toasts.forEach((t) => {
-      if (!timersRef.current[t.id]) {
-        timersRef.current[t.id] = setTimeout(() => {
-          setToasts((p) => p.filter((x) => x.id !== t.id));
-          delete timersRef.current[t.id];
-        }, TOAST_DURATION_MS);
-      }
-    });
-  }, [toasts]);
-
-  useEffect(() => {
-    const r = timersRef;
-    return () => {
-      Object.values(r.current).forEach(clearTimeout);
-      r.current = {};
-    };
-  }, []);
-
   /* ── dropdown placement ──────────────────────────────────────── */
 
   const place = useCallback(() => {
@@ -1079,27 +1037,12 @@ export default function Notification() {
     [notifications, readMap]
   );
 
-  const queueUnread = useMemo(
-    () => notifications.filter(
-      (n) => n.scope === "queue" && readMap[n.id] === undefined
-    ).length,
-    [notifications, readMap]
-  );
-
-  const selfUnread = useMemo(
-    () => notifications.filter(
-      (n) => n.scope === "self" && readMap[n.id] === undefined
-    ).length,
-    [notifications, readMap]
-  );
-
   const markRead = useCallback((id) => {
     if (readRef.current[id] !== undefined) return;
     const next = { ...readRef.current, [id]: Date.now() };
     readRef.current = next;
     setReadMap(next);
     persistAll();
-    dbg("marked read:", id);
   }, [persistAll]);
 
   const markAllRead = useCallback(() => {
@@ -1109,7 +1052,6 @@ export default function Notification() {
     readRef.current = next;
     setReadMap(next);
     persistAll();
-    dbg("marked ALL as read");
   }, [persistAll]);
 
   const markUnread = useCallback((id) => {
@@ -1134,7 +1076,6 @@ export default function Notification() {
     setSelected((s) => (s && s.id === id ? null : s));
 
     persistAll();
-    dbg("dismissed:", id);
   }, [persistAll]);
 
   const dismissAll = useCallback(() => {
@@ -1147,17 +1088,6 @@ export default function Notification() {
     notifRef.current = [];
     setNotifications([]);
     persistAll();
-    dbg("dismissed all");
-  }, [persistAll]);
-
-  const clearAll = useCallback(() => {
-    notifRef.current = [];
-    readRef.current = {};
-    dismissRef.current = {};
-    setNotifications([]);
-    setReadMap({});
-    setDismissMap({});
-    persistAll();
   }, [persistAll]);
 
   const openItem = useCallback((n) => {
@@ -1166,17 +1096,11 @@ export default function Notification() {
     setSelected(n);
   }, [markRead]);
 
-  /* ── Opening the panel marks everything as read (clears badge) ── */
+  /* Opening the panel no longer auto-marks everything read.
+     The user can mark all as read from the toolbar. */
   const handleToggleOpen = useCallback(() => {
-    setOpen((prev) => {
-      const next = !prev;
-      if (next) {
-        // User opened the panel → treat all current notifications as seen
-        markAllRead();
-      }
-      return next;
-    });
-  }, [markAllRead]);
+    setOpen((prev) => !prev);
+  }, []);
 
   const hardReset = useCallback(() => {
     const w = whoRef.current;
@@ -1193,10 +1117,8 @@ export default function Notification() {
     setNotifications([]);
     setReadMap({});
     setDismissMap({});
-    setToasts([]);
     setDiag({});
     setBlocked([]);
-    dbg("hard reset for", w.storageKey);
   }, []);
 
   const timeAgo = useCallback((iso) => {
@@ -1227,21 +1149,7 @@ export default function Notification() {
     if (filter === "unread") {
       return { newList: unreadItems, olderList: [] };
     }
-    if (filter === "queue") {
-      const q = notifications.filter((n) => n.scope === "queue");
-      return {
-        newList: q.filter((n) => readMap[n.id] === undefined),
-        olderList: q.filter((n) => readMap[n.id] !== undefined),
-      };
-    }
-    if (filter === "self") {
-      const s = notifications.filter((n) => n.scope === "self");
-      return {
-        newList: s.filter((n) => readMap[n.id] === undefined),
-        olderList: s.filter((n) => readMap[n.id] !== undefined),
-      };
-    }
-    // "all"
+
     return { newList: unreadItems, olderList: readItems };
   }, [notifications, filter, readMap]);
 
@@ -1257,8 +1165,8 @@ export default function Notification() {
 
   const filters = [
     { id: "all", label: "All", count: notifications.length },
-    ...(who.isHandler
-      ? [{ id: "unread", label: "New", count: unread}]
+    ...(unread > 0
+      ? [{ id: "unread", label: "Unread", count: unread }]
       : []),
   ];
 
@@ -1309,7 +1217,6 @@ export default function Notification() {
               <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
                 {n.label}
               </span>
-             
             </span>
           </span>
           {!wasRead && (
@@ -1376,12 +1283,7 @@ export default function Notification() {
                   </p>
                   {unread > 0 && (
                     <p className="text-[11px] text-red-600 dark:text-red-400 font-semibold mt-0.5">
-                      {unread} new
-                    </p>
-                  )}
-                  {!who.isHandler && who.email && (
-                    <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 truncate">
-                      matching: {who.email}
+                      {unread} unread
                     </p>
                   )}
                 </div>
@@ -1445,7 +1347,7 @@ export default function Notification() {
                   <div className="flex flex-col items-center gap-2 px-4 py-12 text-center">
                     <Bell className="h-10 w-10 text-slate-300 dark:text-slate-600" />
                     <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">
-                      {filter === "all" ? "No notifications yet" : "Nothing in this filter"}
+                      {filter === "all" ? "No notifications yet" : "Nothing unread"}
                     </p>
                     <p className="text-xs text-slate-400 dark:text-slate-500 max-w-[16rem]">
                       {who.isHandler
@@ -1455,19 +1357,17 @@ export default function Notification() {
                   </div>
                 ) : (
                   <>
-                    {/* ── NEW section ── */}
                     {newList.length > 0 && (
                       <>
                         <div className="px-3 py-1.5 bg-blue-50/80 dark:bg-blue-950/30 border-b border-blue-100 dark:border-blue-900 sticky top-0 z-10">
                           <p className="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">
-                            New · {newList.length}
+                            Unread · {newList.length}
                           </p>
                         </div>
                         {newList.map(renderItem)}
                       </>
                     )}
 
-                    {/* ── OLDER section ── */}
                     {olderList.length > 0 && (
                       <>
                         <div className="px-3 py-1.5 bg-slate-50 dark:bg-slate-900/60 border-b border-slate-100 dark:border-slate-700 sticky top-0 z-10">
@@ -1530,9 +1430,8 @@ export default function Notification() {
                 )}
 
                 <div className="px-4 py-2 flex items-center justify-center gap-2">
-            
                   <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center">
-                    {who.isHandler ? "Admin / Staff" : "Resident"} 
+                    {who.isHandler ? "Admin / Staff" : "Resident"}
                   </p>
                 </div>
               </div>
@@ -1649,54 +1548,6 @@ export default function Notification() {
               </div>
             );
           })()}
-
-          {/* ── Toasts ── */}
-          <div className="fixed right-4 sm:right-6 bottom-4 sm:bottom-6 z-[100001] flex w-[calc(100vw-2rem)] sm:w-80 flex-col gap-2 pointer-events-none">
-            {toasts.map((t) => {
-              const ToneIcon = TONE_ICON[t.tone] || Info;
-              return (
-                <div
-                  key={t.id}
-                  className={`notif-toast pointer-events-auto flex items-start gap-3 rounded-xl border bg-white dark:bg-slate-800 p-3 shadow-xl ${TONE_BORDER[t.tone]}`}
-                >
-                  <ToneIcon
-                    className={`mt-0.5 h-5 w-5 flex-shrink-0 ${TONE_TEXT[t.tone]}`}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-bold text-slate-800 dark:text-slate-100">
-                      {t.title}
-                    </p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2">
-                      {t.message}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    {t.link && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setToasts((p) => p.filter((x) => x.id !== t.id));
-                          markRead(t.id);
-                          navigate(t.link);
-                        }}
-                        className="rounded-lg px-2 py-1 text-[10px] font-bold uppercase text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/30 transition"
-                      >
-                        Open
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setToasts((p) => p.filter((x) => x.id !== t.id))}
-                      aria-label="Dismiss"
-                      className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
         </>,
         document.body
       )}
@@ -1707,12 +1558,6 @@ export default function Notification() {
           to   { opacity: 1; transform: translateY(0) scale(1); }
         }
         .notif-drop { animation: notifDrop 0.16s cubic-bezier(0.16, 1, 0.3, 1); }
-
-        @keyframes notifToast {
-          from { opacity: 0; transform: translateX(24px); }
-          to   { opacity: 1; transform: translateX(0); }
-        }
-        .notif-toast { animation: notifToast 0.28s cubic-bezier(0.16, 1, 0.3, 1); }
       `}</style>
     </div>
   );

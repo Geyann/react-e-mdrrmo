@@ -16,9 +16,8 @@ import {
   Sparkles,
   Target,
 } from "lucide-react";
-
-import imglogo from "../Images/logo1.png";
 import hotImg from "../Images/hotline-h1.png";
+import logoImg from "../Images/logoImg.webp"
 
 const GRADIENT_CLASS =
   "bg-gradient-to-r from-blue-600 via-blue-600 to-purple-600";
@@ -318,7 +317,7 @@ export default function About() {
 
             <div className="mx-auto mt-6 flex w-fit items-center justify-center rounded-3xl border border-white/20 bg-white p-3 shadow-xl ring-1 ring-white/30 lg:mx-0">
               <img
-                src={imglogo}
+                src={logoImg}
                 alt="MDRRMO logo"
                 className="h-20 w-32 object-contain sm:h-24 sm:w-40"
               />
@@ -584,17 +583,7 @@ export default function About() {
               </div>
             </div>
 
-            <a
-              href="tel:+639178128187"
-              className="inline-flex min-h-12 shrink-0 items-center justify-center gap-2 rounded-xl bg-white px-5 py-3 text-sm font-black text-red-700 shadow-xl transition hover:-translate-y-0.5 hover:bg-red-50 focus:outline-none focus-visible:ring-4 focus-visible:ring-white/30"
-            >
-              <Phone
-                className="h-4 w-4"
-                aria-hidden="true"
-              />
-
-              Call Emergency Hotline
-            </a>
+           
           </div>
 
           {/* Contact cards */}

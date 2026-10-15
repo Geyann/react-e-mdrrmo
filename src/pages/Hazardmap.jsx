@@ -9,6 +9,7 @@ import {
 import L from "leaflet";
 import "leaflet/dist/leaflet.css";
 import { supabase } from "../createClient";
+import { HAZARD_FILTER_OPTIONS } from "../utils/HazardTaxonomy";
 
 /* ══════════════════════════════════════════════════════════════════
    MAP VIEW OPTIONS
@@ -18,40 +19,31 @@ const VIEW_OPTIONS = [
   {
     id: "roadmap",
     label: "Default / Roadmap",
-    description:
-      "Standard streets, road names, and local landmarks.",
+    description: "Standard streets, road names, and local landmarks.",
     url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
     maxZoom: 19,
-    attribution:
-      "&copy; OpenStreetMap contributors",
+    attribution: "&copy; OpenStreetMap contributors",
   },
   {
     id: "satellite",
     label: "Satellite",
-    description:
-      "High-resolution aerial and bird's-eye imagery.",
-    url:
-      "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
+    description: "High-resolution aerial and bird's-eye imagery.",
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}",
     maxZoom: 19,
-    attribution:
-      "Tiles &copy; Esri — Esri, Maxar, Earthstar Geographics, and the GIS User Community",
+    attribution: "Tiles &copy; Esri — Esri, Maxar, Earthstar Geographics, and the GIS User Community",
   },
   {
     id: "terrain",
     label: "Terrain",
-    description:
-      "Topographic roads, physical features, terrain details, and elevation shading.",
-    url:
-      "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
+    description: "Topographic roads, physical features, terrain details, and elevation shading.",
+    url: "https://server.arcgisonline.com/ArcGIS/rest/services/World_Topo_Map/MapServer/tile/{z}/{y}/{x}",
     maxZoom: 19,
-    attribution:
-      "Tiles &copy; Esri — Esri, HERE, Garmin, USGS, and the GIS User Community",
+    attribution: "Tiles &copy; Esri — Esri, HERE, Garmin, USGS, and the GIS User Community",
   },
- 
 ];
 
 /* ══════════════════════════════════════════════════════════════════
-   RISK COLORS
+   RISK
    ══════════════════════════════════════════════════════════════════ */
 
 const RISK_COLORS = {
@@ -68,6 +60,14 @@ const RISK_PRIORITY = {
   critical: 4,
 };
 
+const RISK_FILTER_OPTIONS = [
+  { id: "all", label: "All Risk Levels", color: "#94a3b8" },
+  { id: "critical", label: "Critical", color: RISK_COLORS.critical },
+  { id: "high", label: "High", color: RISK_COLORS.high },
+  { id: "medium", label: "Medium", color: RISK_COLORS.medium },
+  { id: "low", label: "Low", color: RISK_COLORS.low },
+];
+
 const WORLD_BOUNDS = [
   [-90, -180],
   [-90, 180],
@@ -76,8 +76,7 @@ const WORLD_BOUNDS = [
 ];
 
 /* ══════════════════════════════════════════════════════════════════
-   NAIC BOUNDARY
-   Stored as [longitude, latitude].
+   NAIC BOUNDARY (unchanged)
    ══════════════════════════════════════════════════════════════════ */
 
 const NAIC_BOUNDARY_RAW = [
@@ -595,7 +594,6 @@ const NAIC_BOUNDARY_RAW = [
   [120.686765, 14.362958],
 ];
 
-/* Convert [longitude, latitude] to [latitude, longitude]. */
 const NAIC_LAT_LNG = NAIC_BOUNDARY_RAW.map(
   ([longitude, latitude]) => [latitude, longitude],
 );
@@ -615,35 +613,18 @@ const MAP_STYLES = `
     width: 100%;
     height: 100%;
     background: #020617;
-    font-family:
-      system-ui,
-      -apple-system,
-      BlinkMacSystemFont,
-      "Segoe UI",
-      sans-serif;
+    font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
   }
 
-  .hazard-map-page.roadmap-mode
-    .leaflet-tile-pane {
+  .hazard-map-page.roadmap-mode .leaflet-tile-pane {
     filter: saturate(0.85);
   }
 
-  .hazard-map-page.satellite-mode
-    .leaflet-tile-pane {
-    filter:
-      brightness(0.68)
-      contrast(1.16)
-      saturate(0.85)
-      hue-rotate(150deg);
+  .hazard-map-page.satellite-mode .leaflet-tile-pane {
+    filter: brightness(0.68) contrast(1.16) saturate(0.85) hue-rotate(150deg);
   }
 
-  /*
-   * Do not tint the terrain tiles. Esri World Topographic Map
-   * already provides the proper colors, contours, labels,
-   * roads, and physical details.
-   */
-  .hazard-map-page.terrain-mode
-    .leaflet-tile-pane {
+  .hazard-map-page.terrain-mode .leaflet-tile-pane {
     filter: none !important;
   }
 
@@ -654,28 +635,18 @@ const MAP_STYLES = `
   .hazard-map-page .hazard-hotspot-glow {
     transform-box: fill-box;
     transform-origin: center;
-    animation:
-      hazard-hotspot-pulse 3.2s ease-in-out infinite;
+    animation: hazard-hotspot-pulse 3.2s ease-in-out infinite;
     pointer-events: none;
   }
 
   .hazard-map-page .hazard-hotspot-core {
-    filter:
-      drop-shadow(
-        0 0 5px rgba(255, 255, 255, 0.45)
-      );
+    filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.45));
     pointer-events: none;
   }
 
   @keyframes hazard-hotspot-pulse {
-    0%,
-    100% {
-      opacity: 0.35;
-    }
-
-    50% {
-      opacity: 0.9;
-    }
+    0%, 100% { opacity: 0.35; }
+    50% { opacity: 0.9; }
   }
 
   @media (prefers-reduced-motion: reduce) {
@@ -691,99 +662,45 @@ const MAP_STYLES = `
    ══════════════════════════════════════════════════════════════════ */
 
 const normalizeRisk = (value) => {
-  const risk = String(value || "medium")
-    .trim()
-    .toLowerCase();
-
-  if (
-    risk === "critical" ||
-    risk === "high" ||
-    risk === "medium" ||
-    risk === "low"
-  ) {
+  const risk = String(value || "medium").trim().toLowerCase();
+  if (risk === "critical" || risk === "high" || risk === "medium" || risk === "low") {
     return risk;
   }
-
   return "medium";
 };
 
-const isPointInsidePolygon = (
-  point,
-  polygon,
-) => {
+const isPointInsidePolygon = (point, polygon) => {
   const [latitude, longitude] = point;
-
   let inside = false;
 
-  for (
-    let current = 0,
-      previous = polygon.length - 1;
-    current < polygon.length;
-    previous = current++
-  ) {
-    const [
-      currentLatitude,
-      currentLongitude,
-    ] = polygon[current];
-
-    const [
-      previousLatitude,
-      previousLongitude,
-    ] = polygon[previous];
+  for (let current = 0, previous = polygon.length - 1; current < polygon.length; previous = current++) {
+    const [currentLatitude, currentLongitude] = polygon[current];
+    const [previousLatitude, previousLongitude] = polygon[previous];
 
     const intersects =
-      (currentLongitude > longitude) !==
-        (previousLongitude > longitude) &&
+      (currentLongitude > longitude) !== (previousLongitude > longitude) &&
       latitude <
-        ((previousLatitude - currentLatitude) *
-          (longitude - currentLongitude)) /
+        ((previousLatitude - currentLatitude) * (longitude - currentLongitude)) /
           (previousLongitude - currentLongitude) +
           currentLatitude;
 
-    if (intersects) {
-      inside = !inside;
-    }
+    if (intersects) inside = !inside;
   }
 
   return inside;
 };
 
-const getStreetViewUrl = (
-  latitude,
-  longitude,
-) =>
-  `https://www.google.com/maps/@?api=1&map_action=papi&viewpoint=${latitude},${longitude}&heading=0&pitch=0&fov=90`;
-
-const formatSupabaseError = (
-  error,
-  field,
-) => {
-  const parts = [
-    `${field} query failed`,
-  ];
-
-  if (error?.code) {
-    parts.push(`code: ${error.code}`);
-  }
-
-  if (error?.message) {
-    parts.push(`message: ${error.message}`);
-  }
-
-  if (error?.details) {
-    parts.push(`details: ${error.details}`);
-  }
-
-  if (error?.hint) {
-    parts.push(`hint: ${error.hint}`);
-  }
-
+const formatSupabaseError = (error, field) => {
+  const parts = [`${field} query failed`];
+  if (error?.code) parts.push(`code: ${error.code}`);
+  if (error?.message) parts.push(`message: ${error.message}`);
+  if (error?.details) parts.push(`details: ${error.details}`);
+  if (error?.hint) parts.push(`hint: ${error.hint}`);
   return parts.join(" — ");
 };
 
 const fetchApprovedHotspotRows = async () => {
-  const columns =
-    "latitude, longitude, risk_level, show_on_heatmap";
+  const columns = "latitude, longitude, risk_level, show_on_heatmap, hazard_category";
 
   const attempts = [
     {
@@ -806,58 +723,31 @@ const fetchApprovedHotspotRows = async () => {
     },
   ];
 
-  const results = await Promise.allSettled(
-    attempts.map((attempt) => attempt.query),
-  );
-
+  const results = await Promise.allSettled(attempts.map((a) => a.query));
   const rows = [];
   const failures = [];
   let successfulQueries = 0;
 
   results.forEach((result, index) => {
     const field = attempts[index].field;
-
     if (result.status === "fulfilled") {
       if (result.value.error) {
-        failures.push(
-          formatSupabaseError(
-            result.value.error,
-            field,
-          ),
-        );
-
+        failures.push(formatSupabaseError(result.value.error, field));
         return;
       }
-
       successfulQueries += 1;
-
-      if (Array.isArray(result.value.data)) {
-        rows.push(...result.value.data);
-      }
-
+      if (Array.isArray(result.value.data)) rows.push(...result.value.data);
       return;
     }
-
-    failures.push(
-      `${field} query failed — ${
-        result.reason?.message ||
-        String(result.reason)
-      }`,
-    );
+    failures.push(`${field} query failed — ${result.reason?.message || String(result.reason)}`);
   });
 
   if (successfulQueries === 0) {
-    throw new Error(
-      failures.join(" | ") ||
-        "No hotspot status query could be completed.",
-    );
+    throw new Error(failures.join(" | ") || "No hotspot status query could be completed.");
   }
 
   if (failures.length > 0) {
-    console.warn(
-      "Some hazard hotspot status queries failed:",
-      failures,
-    );
+    console.warn("Some hazard hotspot status queries failed:", failures);
   }
 
   return rows;
@@ -873,34 +763,69 @@ export default function Hazardmap() {
   const tileLayerRef = useRef(null);
   const hotspotLayerRef = useRef(null);
   const viewMenuRef = useRef(null);
+  const categoryMenuRef = useRef(null);
+  const riskMenuRef = useRef(null);
   const loadRequestRef = useRef(0);
   const viewModeRef = useRef("roadmap");
 
-  const [viewMode, setViewMode] =
-    useState("roadmap");
-  const [viewMenuOpen, setViewMenuOpen] =
-    useState(false);
-  const [notice, setNotice] = useState("");
+  const [viewMode, setViewMode] = useState("roadmap");
+  const [viewMenuOpen, setViewMenuOpen] = useState(false);
+  const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
+  const [riskMenuOpen, setRiskMenuOpen] = useState(false);
 
+  const [selectedCategory, setSelectedCategory] = useState("all");
+  const [selectedRisk, setSelectedRisk] = useState("all");
+
+  const [notice, setNotice] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
-  const [reloadVersion, setReloadVersion] =
-    useState(0);
+  const [reloadVersion, setReloadVersion] = useState(0);
 
   const selectedView =
-    VIEW_OPTIONS.find(
-      (option) => option.id === viewMode,
-    ) || VIEW_OPTIONS[0];
+    VIEW_OPTIONS.find((option) => option.id === viewMode) || VIEW_OPTIONS[0];
+
+  const selectedCategoryLabel =
+    (HAZARD_FILTER_OPTIONS.find((o) => o.id === selectedCategory) ||
+      HAZARD_FILTER_OPTIONS[0]).label;
+
+  const selectedRiskLabel =
+    (RISK_FILTER_OPTIONS.find((o) => o.id === selectedRisk) ||
+      RISK_FILTER_OPTIONS[0]).label;
+
+  /* Close menus when clicking outside */
+  useEffect(() => {
+    const onPointerDown = (event) => {
+      if (viewMenuRef.current && !viewMenuRef.current.contains(event.target)) {
+        setViewMenuOpen(false);
+      }
+      if (categoryMenuRef.current && !categoryMenuRef.current.contains(event.target)) {
+        setCategoryMenuOpen(false);
+      }
+      if (riskMenuRef.current && !riskMenuRef.current.contains(event.target)) {
+        setRiskMenuOpen(false);
+      }
+    };
+
+    const onKeyDown = (event) => {
+      if (event.key === "Escape") {
+        setViewMenuOpen(false);
+        setCategoryMenuOpen(false);
+        setRiskMenuOpen(false);
+      }
+    };
+
+    document.addEventListener("pointerdown", onPointerDown);
+    document.addEventListener("keydown", onKeyDown);
+    return () => {
+      document.removeEventListener("pointerdown", onPointerDown);
+      document.removeEventListener("keydown", onKeyDown);
+    };
+  }, []);
 
   /* ── Initialize Leaflet map ─────────────────────────────────── */
 
   useEffect(() => {
-    if (
-      !mapContainerRef.current ||
-      mapRef.current
-    ) {
-      return undefined;
-    }
+    if (!mapContainerRef.current || mapRef.current) return undefined;
 
     const container = mapContainerRef.current;
     const initialProvider = VIEW_OPTIONS[0];
@@ -920,38 +845,27 @@ export default function Hazardmap() {
 
     mapRef.current = map;
 
-    map.fitBounds(NAIC_BOUNDS, {
-      padding: [8, 8],
-      animate: false,
-    });
+    map.fitBounds(NAIC_BOUNDS, { padding: [8, 8], animate: false });
 
-    const initialTileLayer = L.tileLayer(
-      initialProvider.url,
-      {
-        maxZoom: initialProvider.maxZoom,
-        updateWhenIdle: true,
-        keepBuffer: 2,
-        crossOrigin: true,
-      },
-    ).addTo(map);
+    const initialTileLayer = L.tileLayer(initialProvider.url, {
+      maxZoom: initialProvider.maxZoom,
+      updateWhenIdle: true,
+      keepBuffer: 2,
+      crossOrigin: true,
+    }).addTo(map);
 
     tileLayerRef.current = initialTileLayer;
 
-    /* Darken only the area outside Naic. */
-    L.polygon(
-      [WORLD_BOUNDS, NAIC_LAT_LNG],
-      {
-        fillColor: "#020617",
-        fillOpacity: 0.76,
-        color: "transparent",
-        weight: 0,
-        fillRule: "evenodd",
-        interactive: false,
-        pane: "overlayPane",
-      },
-    ).addTo(map);
+    L.polygon([WORLD_BOUNDS, NAIC_LAT_LNG], {
+      fillColor: "#020617",
+      fillOpacity: 0.76,
+      color: "transparent",
+      weight: 0,
+      fillRule: "evenodd",
+      interactive: false,
+      pane: "overlayPane",
+    }).addTo(map);
 
-    /* Draw the exact Naic boundary. */
     L.polygon(NAIC_LAT_LNG, {
       className: "naic-boundary",
       color: "#a855f7",
@@ -966,226 +880,78 @@ export default function Hazardmap() {
     }).addTo(map);
 
     const invalidateMapSize = () => {
-      if (
-        !mapRef.current ||
-        mapRef.current !== map
-      ) {
-        return;
-      }
-
-      map.invalidateSize({
-        pan: false,
-        animate: false,
-      });
+      if (!mapRef.current || mapRef.current !== map) return;
+      map.invalidateSize({ pan: false, animate: false });
     };
 
     requestAnimationFrame(invalidateMapSize);
-
-    window.addEventListener(
-      "resize",
-      invalidateMapSize,
-    );
+    window.addEventListener("resize", invalidateMapSize);
 
     let resizeObserver = null;
-
-    if (
-      typeof ResizeObserver !== "undefined"
-    ) {
-      resizeObserver = new ResizeObserver(
-        invalidateMapSize,
-      );
-
+    if (typeof ResizeObserver !== "undefined") {
+      resizeObserver = new ResizeObserver(invalidateMapSize);
       resizeObserver.observe(container);
     }
 
     return () => {
-      window.removeEventListener(
-        "resize",
-        invalidateMapSize,
-      );
-
-      if (resizeObserver) {
-        resizeObserver.disconnect();
-      }
-
+      window.removeEventListener("resize", invalidateMapSize);
+      if (resizeObserver) resizeObserver.disconnect();
       if (hotspotLayerRef.current) {
         hotspotLayerRef.current.remove();
         hotspotLayerRef.current = null;
       }
-
       if (tileLayerRef.current) {
         tileLayerRef.current.remove();
         tileLayerRef.current = null;
       }
-
-      if (mapRef.current === map) {
-        mapRef.current = null;
-      }
-
+      if (mapRef.current === map) mapRef.current = null;
       map.remove();
     };
   }, []);
 
-  /* ── Close dropdown when clicking outside ───────────────────── */
-
-  useEffect(() => {
-    if (!viewMenuOpen) {
-      return undefined;
-    }
-
-    const handlePointerDown = (
-      event,
-    ) => {
-      if (
-        viewMenuRef.current &&
-        !viewMenuRef.current.contains(
-          event.target,
-        )
-      ) {
-        setViewMenuOpen(false);
-      }
-    };
-
-    const handleKeyDown = (event) => {
-      if (event.key === "Escape") {
-        setViewMenuOpen(false);
-      }
-    };
-
-    document.addEventListener(
-      "pointerdown",
-      handlePointerDown,
-    );
-
-    document.addEventListener(
-      "keydown",
-      handleKeyDown,
-    );
-
-    return () => {
-      document.removeEventListener(
-        "pointerdown",
-        handlePointerDown,
-      );
-
-      document.removeEventListener(
-        "keydown",
-        handleKeyDown,
-      );
-    };
-  }, [viewMenuOpen]);
-
   /* ── Clear temporary notice ─────────────────────────────────── */
 
   useEffect(() => {
-    if (!notice) {
-      return undefined;
-    }
-
-    const timeout = setTimeout(() => {
-      setNotice("");
-    }, 4500);
-
+    if (!notice) return undefined;
+    const timeout = setTimeout(() => setNotice(""), 4500);
     return () => clearTimeout(timeout);
   }, [notice]);
 
   /* ── Install a tile provider ─────────────────────────────────── */
 
-  const installTileProvider = useCallback(
-    (nextView) => {
-      const map = mapRef.current;
+  const installTileProvider = useCallback((nextView) => {
+    const map = mapRef.current;
+    if (!map || !nextView?.url) return;
 
-      if (!map || !nextView?.url) {
-        return;
-      }
+    if (tileLayerRef.current) {
+      tileLayerRef.current.remove();
+      tileLayerRef.current = null;
+    }
 
-      if (tileLayerRef.current) {
-        tileLayerRef.current.remove();
-        tileLayerRef.current = null;
-      }
+    const nextTileLayer = L.tileLayer(nextView.url, {
+      maxZoom: nextView.maxZoom,
+      minZoom: 10,
+      updateWhenIdle: true,
+      keepBuffer: 2,
+      crossOrigin: true,
+    });
 
-      const nextTileLayer = L.tileLayer(
-        nextView.url,
-        {
-          maxZoom: nextView.maxZoom,
-          minZoom: 10,
-          updateWhenIdle: true,
-          keepBuffer: 2,
-          crossOrigin: true,
-        },
-      );
+    nextTileLayer.addTo(map);
+    nextTileLayer.bringToBack();
+    tileLayerRef.current = nextTileLayer;
+    viewModeRef.current = nextView.id;
+    setViewMode(nextView.id);
 
-      nextTileLayer.addTo(map);
-      nextTileLayer.bringToBack();
-
-      tileLayerRef.current = nextTileLayer;
-      viewModeRef.current = nextView.id;
-
-      setViewMode(nextView.id);
-
-      requestAnimationFrame(() => {
-        if (mapRef.current !== map) {
-          return;
-        }
-
-        map.invalidateSize({
-          pan: false,
-          animate: false,
-        });
-      });
-    },
-    [],
-  );
-
-  /* ── Change map view ────────────────────────────────────────── */
+    requestAnimationFrame(() => {
+      if (mapRef.current !== map) return;
+      map.invalidateSize({ pan: false, animate: false });
+    });
+  }, []);
 
   const changeView = useCallback(
     (nextViewId) => {
-      const nextView =
-        VIEW_OPTIONS.find(
-          (option) => option.id === nextViewId,
-        );
-
-      if (!nextView) {
-        return;
-      }
-
-      if (nextView.disabled) {
-        setViewMenuOpen(false);
-
-        setNotice(
-          "Traffic, transit, and bicycling views require a routing provider API key.",
-        );
-
-        return;
-      }
-
-      if (nextView.action === "street-view") {
-        const map = mapRef.current;
-
-        if (!map) {
-          return;
-        }
-
-        const center = map.getCenter();
-
-        window.open(
-          getStreetViewUrl(
-            center.lat,
-            center.lng,
-          ),
-          "_blank",
-          "noopener,noreferrer",
-        );
-
-        setViewMenuOpen(false);
-
-        setNotice(
-          "Street View opened in a new tab.",
-        );
-
-        return;
-      }
+      const nextView = VIEW_OPTIONS.find((o) => o.id === nextViewId);
+      if (!nextView) return;
 
       if (nextViewId === viewModeRef.current) {
         setViewMenuOpen(false);
@@ -1206,10 +972,7 @@ export default function Hazardmap() {
     const requestId = ++loadRequestRef.current;
 
     if (!map) {
-      if (requestId === loadRequestRef.current) {
-        setLoading(false);
-      }
-
+      if (requestId === loadRequestRef.current) setLoading(false);
       return;
     }
 
@@ -1217,8 +980,7 @@ export default function Hazardmap() {
     setError("");
 
     try {
-      const approvedRows =
-        await fetchApprovedHotspotRows();
+      const approvedRows = await fetchApprovedHotspotRows();
 
       if (
         requestId !== loadRequestRef.current ||
@@ -1234,83 +996,47 @@ export default function Hazardmap() {
         hotspotLayerRef.current = null;
       }
 
-      /*
-       * Deduplicate identical coordinates. If several reports
-       * share a location, use the highest risk color.
-       */
       const uniqueCoordinates = new Map();
 
       for (const row of approvedRows) {
-        if (row.show_on_heatmap !== true) {
+        if (row.show_on_heatmap !== true) continue;
+
+        if (
+          selectedCategory !== "all" &&
+          String(row.hazard_category || "").trim().toLowerCase() !== selectedCategory
+        ) {
+          continue;
+        }
+
+        const risk = normalizeRisk(row.risk_level);
+
+        if (selectedRisk !== "all" && risk !== selectedRisk) {
           continue;
         }
 
         const latitude = Number(row.latitude);
         const longitude = Number(row.longitude);
 
-        if (
-          !Number.isFinite(latitude) ||
-          !Number.isFinite(longitude)
-        ) {
-          continue;
-        }
+        if (!Number.isFinite(latitude) || !Number.isFinite(longitude)) continue;
 
         const point = [latitude, longitude];
+        if (!isPointInsidePolygon(point, NAIC_LAT_LNG)) continue;
 
-        if (
-          !isPointInsidePolygon(
-            point,
-            NAIC_LAT_LNG,
-          )
-        ) {
-          continue;
-        }
+        const coordinateKey = `${latitude.toFixed(5)},${longitude.toFixed(5)}`;
+        const existing = uniqueCoordinates.get(coordinateKey);
 
-        const risk = normalizeRisk(
-          row.risk_level,
-        );
-
-        const coordinateKey =
-          `${latitude.toFixed(5)},` +
-          `${longitude.toFixed(5)}`;
-
-        const existing =
-          uniqueCoordinates.get(coordinateKey);
-
-        if (
-          !existing ||
-          RISK_PRIORITY[risk] >
-            RISK_PRIORITY[existing.risk]
-        ) {
-          uniqueCoordinates.set(
-            coordinateKey,
-            {
-              point,
-              risk,
-            },
-          );
+        if (!existing || RISK_PRIORITY[risk] > RISK_PRIORITY[existing.risk]) {
+          uniqueCoordinates.set(coordinateKey, { point, risk });
         }
       }
 
-      /*
-       * Separate SVG renderers are required because Leaflet
-       * renderers belong to a specific pane.
-       */
-      const overlayRenderer = L.svg({
-        padding: 0.35,
-      });
-
-      const markerRenderer = L.svg({
-        padding: 0.35,
-      });
-
+      const overlayRenderer = L.svg({ padding: 0.35 });
+      const markerRenderer = L.svg({ padding: 0.35 });
       const hotspotLayer = L.layerGroup();
 
       for (const hotspot of uniqueCoordinates.values()) {
-        const color =
-          RISK_COLORS[hotspot.risk];
+        const color = RISK_COLORS[hotspot.risk];
 
-        /* Non-interactive glow. */
         L.circle(hotspot.point, {
           renderer: overlayRenderer,
           pane: "overlayPane",
@@ -1326,7 +1052,6 @@ export default function Hazardmap() {
           bubblingMouseEvents: false,
         }).addTo(hotspotLayer);
 
-        /* Non-interactive center. */
         L.circleMarker(hotspot.point, {
           renderer: markerRenderer,
           pane: "markerPane",
@@ -1356,36 +1081,22 @@ export default function Hazardmap() {
       hotspotLayer.addTo(map);
       hotspotLayerRef.current = hotspotLayer;
     } catch (loadError) {
-      if (
-        requestId !== loadRequestRef.current ||
-        mapRef.current !== map
-      ) {
-        return;
-      }
+      if (requestId !== loadRequestRef.current || mapRef.current !== map) return;
 
-      console.error(
-        "Unable to load hazard hotspots:",
-        loadError,
-      );
+      console.error("Unable to load hazard hotspots:", loadError);
 
       if (hotspotLayerRef.current) {
         hotspotLayerRef.current.remove();
         hotspotLayerRef.current = null;
       }
 
-      setError(
-        loadError?.message ||
-          "The hazard hotspot map is temporarily unavailable.",
-      );
+      setError(loadError?.message || "The hazard hotspot map is temporarily unavailable.");
     } finally {
-      if (
-        requestId === loadRequestRef.current &&
-        mapRef.current === map
-      ) {
+      if (requestId === loadRequestRef.current && mapRef.current === map) {
         setLoading(false);
       }
     }
-  }, []);
+  }, [selectedCategory, selectedRisk]);
 
   useEffect(() => {
     loadHotspots();
@@ -1412,143 +1123,223 @@ export default function Hazardmap() {
         className="h-full w-full"
       />
 
-      {/* Map view dropdown */}
-      <div
-        ref={viewMenuRef}
-        className="absolute right-3 top-20 z-[1000] sm:right-5 sm:top-24"
-      >
-        <button
-          type="button"
-          onClick={() =>
-            setViewMenuOpen((open) => !open)
-          }
-          aria-haspopup="listbox"
-          aria-expanded={viewMenuOpen}
-          aria-label="Choose map view"
-          className="flex min-w-[220px] items-center justify-between gap-4 rounded-xl border border-slate-700/80 bg-slate-950/90 px-4 py-3 text-left shadow-2xl backdrop-blur-md transition hover:bg-slate-900/95 sm:min-w-[270px]"
-        >
-          <span>
-            <span className="block text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">
-              Map View
-            </span>
-
-            <span className="mt-1 block text-sm font-bold text-white">
-              {selectedView.label}
-            </span>
-          </span>
-
-          <svg
-            className={`h-4 w-4 shrink-0 text-slate-300 transition-transform ${
-              viewMenuOpen ? "rotate-180" : ""
-            }`}
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-            aria-hidden="true"
-          >
-            <path
-              strokeLinecap="round"
-              strokeLinejoin="round"
-              strokeWidth="2"
-              d="m6 9 6 6 6-6"
-            />
-          </svg>
-        </button>
-
-        {viewMenuOpen && (
-          <div
-            role="listbox"
-            aria-label="Map view options"
-            className="absolute right-0 top-[calc(100%+0.5rem)] w-[min(340px,calc(100vw-1.5rem))] overflow-hidden rounded-xl border border-slate-700/80 bg-slate-950/95 p-1.5 shadow-2xl backdrop-blur-md"
-          >
-            {VIEW_OPTIONS.map((option) => {
-              const active =
-                option.id === viewMode;
-
-              return (
-                <button
-                  key={option.id}
-                  type="button"
-                  role="option"
-                  aria-selected={active}
-                  disabled={option.disabled}
-                  onClick={() =>
-                    changeView(option.id)
-                  }
-                  className={`w-full rounded-lg px-3 py-3 text-left transition ${
-                    option.disabled
-                      ? "cursor-not-allowed opacity-55"
-                      : active
-                        ? "bg-purple-600 text-white"
-                        : "text-slate-200 hover:bg-white/10"
-                  }`}
-                >
-                  <div className="flex items-start justify-between gap-3">
-                    <span className="text-sm font-bold">
-                      {option.label}
-                    </span>
-
-                    {option.disabled && (
-                      <span className="shrink-0 rounded-full bg-amber-500/15 px-2 py-0.5 text-[9px] font-bold uppercase tracking-wide text-amber-300">
-                        API required
-                      </span>
-                    )}
-
-                    {active && (
-                      <span className="shrink-0 text-xs">
-                        ✓
-                      </span>
-                    )}
-                  </div>
-
-                  <p
-                    className={`mt-1 text-[11px] leading-relaxed ${
-                      active
-                        ? "text-purple-100"
-                        : "text-slate-400"
-                    }`}
-                  >
-                    {option.description}
-                  </p>
-                </button>
-              );
-            })}
-          </div>
-        )}
-      </div>
-
-      {/* Risk legend */}
-      <div className="absolute bottom-5 left-4 z-[1000] sm:left-6 lg:left-20">
-        <div className="w-44 rounded-xl border border-slate-700/80 bg-slate-950/90 p-4 text-slate-200 shadow-2xl backdrop-blur-md">
-          <p className="mb-3 text-[10px] font-bold uppercase tracking-[0.2em] text-slate-400">
-            Risk Level
-          </p>
-
-          <div className="space-y-2.5">
-            {[
-              ["critical", "Critical"],
-              ["high", "High"],
-              ["medium", "Medium"],
-              ["low", "Low"],
-            ].map(([risk, label]) => (
-              <div
-                key={risk}
-                className="flex items-center gap-2.5"
+      {/* ═══════════════ TOP CONTROLS (responsive) ═══════════════ */}
+      <div className="pointer-events-none absolute inset-x-0 top-20 z-[1000] p-3 sm:p-4">
+        <div className="mx-auto flex max-w-7xl flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+          {/* LEFT: Category + Risk */}
+          <div className="pointer-events-auto flex flex-col gap-2 sm:flex-row sm:gap-3">
+            {/* Natural Hazard Category */}
+            <div ref={categoryMenuRef} className="relative">
+              <button
+                type="button"
+                onClick={() => {
+                  setCategoryMenuOpen((o) => !o);
+                  setRiskMenuOpen(false);
+                  setViewMenuOpen(false);
+                }}
+                aria-haspopup="listbox"
+                aria-expanded={categoryMenuOpen}
+                aria-label="Filter natural hazards by category"
+                className="flex min-h-[52px] w-full min-w-[180px] max-w-[min(100vw-1.5rem,280px)] items-center justify-between gap-3 rounded-xl border border-slate-700/80 bg-slate-950/95 px-3.5 py-2.5 text-left shadow-2xl backdrop-blur-md transition hover:bg-slate-900/95 sm:min-w-[200px]"
               >
-                <span
-                  className="h-3.5 w-3.5 shrink-0 rounded-full border border-white/60 shadow-[0_0_8px_currentColor]"
-                  style={{
-                    backgroundColor:
-                      RISK_COLORS[risk],
-                    color: RISK_COLORS[risk],
-                  }}
-                />
-
-                <span className="text-xs font-semibold text-slate-200">
-                  {label}
+                <span className="min-w-0">
+                  <span className="block text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                    Hazard Category
+                  </span>
+                  <span className="mt-0.5 block truncate text-sm font-bold text-white">
+                    {selectedCategoryLabel}
+                  </span>
                 </span>
+                <svg
+                  className={`h-4 w-4 shrink-0 text-slate-300 transition-transform ${categoryMenuOpen ? "rotate-180" : ""}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="m6 9 6 6 6-6" />
+                </svg>
+              </button>
+
+              {categoryMenuOpen && (
+                <div
+                  role="listbox"
+                  aria-label="Hazard category options"
+                  className="absolute left-0 top-[calc(100%+0.4rem)] z-20 max-h-[min(55vh,380px)] w-full min-w-[200px] overflow-y-auto rounded-xl border border-slate-700/80 bg-slate-950/98 py-1 shadow-2xl backdrop-blur-md"
+                >
+                  {HAZARD_FILTER_OPTIONS.filter(
+                    (o) => o.id === "all" || !String(o.label).includes("(legacy)"),
+                  ).map((option) => {
+                    const active = selectedCategory === option.id;
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        role="option"
+                        aria-selected={active}
+                        onClick={() => {
+                          setSelectedCategory(option.id);
+                          setCategoryMenuOpen(false);
+                        }}
+                        className={`flex min-h-[44px] w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm transition ${
+                          active
+                            ? "bg-purple-600/35 font-bold text-white"
+                            : "text-slate-200 hover:bg-slate-800/80"
+                        }`}
+                      >
+                        <span aria-hidden="true" className="text-base">
+                          {option.icon || "📍"}
+                        </span>
+                        <span className="truncate">{option.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+
+            {/* Risk Level (interactive) */}
+            <div ref={riskMenuRef} className="relative">
+              <button
+                type="button"
+                onClick={() => {
+                  setRiskMenuOpen((o) => !o);
+                  setCategoryMenuOpen(false);
+                  setViewMenuOpen(false);
+                }}
+                aria-haspopup="listbox"
+                aria-expanded={riskMenuOpen}
+                aria-label="Filter by risk level"
+                className="flex min-h-[52px] w-full min-w-[160px] max-w-[min(100vw-1.5rem,240px)] items-center justify-between gap-3 rounded-xl border border-slate-700/80 bg-slate-950/95 px-3.5 py-2.5 text-left shadow-2xl backdrop-blur-md transition hover:bg-slate-900/95 sm:min-w-[180px]"
+              >
+                <span className="min-w-0">
+                  <span className="block text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                    Risk Level
+                  </span>
+                  <span className="mt-0.5 flex items-center gap-2 truncate text-sm font-bold text-white">
+                    {selectedRisk !== "all" && (
+                      <span
+                        className="h-2.5 w-2.5 shrink-0 rounded-full border border-white/50"
+                        style={{ backgroundColor: RISK_COLORS[selectedRisk] }}
+                      />
+                    )}
+                    {selectedRiskLabel}
+                  </span>
+                </span>
+                <svg
+                  className={`h-4 w-4 shrink-0 text-slate-300 transition-transform ${riskMenuOpen ? "rotate-180" : ""}`}
+                  fill="none"
+                  stroke="currentColor"
+                  viewBox="0 0 24 24"
+                  aria-hidden="true"
+                >
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="m6 9 6 6 6-6" />
+                </svg>
+              </button>
+
+              {riskMenuOpen && (
+                <div
+                  role="listbox"
+                  aria-label="Risk level options"
+                  className="absolute left-0 top-[calc(100%+0.4rem)] z-20 w-full min-w-[180px] overflow-hidden rounded-xl border border-slate-700/80 bg-slate-950/98 py-1 shadow-2xl backdrop-blur-md"
+                >
+                  {RISK_FILTER_OPTIONS.map((option) => {
+                    const active = selectedRisk === option.id;
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        role="option"
+                        aria-selected={active}
+                        onClick={() => {
+                          setSelectedRisk(option.id);
+                          setRiskMenuOpen(false);
+                        }}
+                        className={`flex min-h-[44px] w-full items-center gap-2.5 px-3 py-2.5 text-left text-sm transition ${
+                          active
+                            ? "bg-purple-600/35 font-bold text-white"
+                            : "text-slate-200 hover:bg-slate-800/80"
+                        }`}
+                      >
+                        <span
+                          className="h-3 w-3 shrink-0 rounded-full border border-white/40"
+                          style={{ backgroundColor: option.color }}
+                        />
+                        <span>{option.label}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* RIGHT: Map View */}
+          <div ref={viewMenuRef} className="pointer-events-auto relative self-end sm:self-start">
+            <button
+              type="button"
+              onClick={() => {
+                setViewMenuOpen((o) => !o);
+                setCategoryMenuOpen(false);
+                setRiskMenuOpen(false);
+              }}
+              aria-haspopup="listbox"
+              aria-expanded={viewMenuOpen}
+              aria-label="Choose map view"
+              className="flex min-h-[52px] w-full min-w-[180px] max-w-[min(100vw-1.5rem,280px)] items-center justify-between gap-3 rounded-xl border border-slate-700/80 bg-slate-950/95 px-3.5 py-2.5 text-left shadow-2xl backdrop-blur-md transition hover:bg-slate-900/95 sm:min-w-[220px]"
+            >
+              <span className="min-w-0">
+                <span className="block text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                  Map View
+                </span>
+                <span className="mt-0.5 block truncate text-sm font-bold text-white">
+                  {selectedView.label}
+                </span>
+              </span>
+              <svg
+                className={`h-4 w-4 shrink-0 text-slate-300 transition-transform ${viewMenuOpen ? "rotate-180" : ""}`}
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+                aria-hidden="true"
+              >
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="m6 9 6 6 6-6" />
+              </svg>
+            </button>
+
+            {viewMenuOpen && (
+              <div
+                role="listbox"
+                aria-label="Map view options"
+                className="absolute right-0 top-[calc(100%+0.4rem)] z-20 w-[min(320px,calc(100vw-1.5rem))] overflow-hidden rounded-xl border border-slate-700/80 bg-slate-950/98 p-1.5 shadow-2xl backdrop-blur-md"
+              >
+                {VIEW_OPTIONS.map((option) => {
+                  const active = option.id === viewMode;
+                  return (
+                    <button
+                      key={option.id}
+                      type="button"
+                      role="option"
+                      aria-selected={active}
+                      onClick={() => changeView(option.id)}
+                      className={`w-full rounded-lg px-3 py-3 text-left transition ${
+                        active
+                          ? "bg-purple-600 text-white"
+                          : "text-slate-200 hover:bg-white/10"
+                      }`}
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <span className="text-sm font-bold">{option.label}</span>
+                        {active && <span className="shrink-0 text-xs">✓</span>}
+                      </div>
+                      <p className={`mt-1 text-[11px] leading-relaxed ${active ? "text-purple-100" : "text-slate-400"}`}>
+                        {option.description}
+                      </p>
+                    </button>
+                  );
+                })}
               </div>
-            ))}
+            )}
           </div>
         </div>
       </div>
@@ -1573,7 +1364,7 @@ export default function Hazardmap() {
 
       {/* Notice */}
       {notice && (
-        <div className="pointer-events-none fixed left-1/2 top-24 z-[1100] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 rounded-xl border border-purple-400/40 bg-slate-950/95 px-4 py-3 text-center text-sm font-semibold text-slate-100 shadow-2xl backdrop-blur">
+        <div className="pointer-events-none fixed left-1/2 top-28 z-[1100] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 rounded-xl border border-purple-400/40 bg-slate-950/95 px-4 py-3 text-center text-sm font-semibold text-slate-100 shadow-2xl backdrop-blur">
           {notice}
         </div>
       )}
@@ -1583,7 +1374,6 @@ export default function Hazardmap() {
         <div className="pointer-events-none fixed inset-0 z-[1100] flex items-center justify-center bg-slate-950/45 backdrop-blur-sm">
           <div className="flex flex-col items-center gap-4">
             <div className="h-12 w-12 animate-spin rounded-full border-4 border-red-600 border-t-transparent" />
-
             <p className="text-sm font-bold uppercase tracking-[0.2em] text-white">
               Loading hotspot map
             </p>
@@ -1591,20 +1381,13 @@ export default function Hazardmap() {
         </div>
       )}
 
-      {/* Database/network error */}
+      {/* Error */}
       {!loading && error && (
-        <div className="fixed left-1/2 top-24 z-[1100] w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2 rounded-xl border border-red-400/50 bg-red-950/95 px-4 py-3 text-center shadow-2xl backdrop-blur">
-          <p className="text-sm font-semibold text-red-100">
-            {error}
-          </p>
-
+        <div className="fixed left-1/2 top-28 z-[1100] w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2 rounded-xl border border-red-400/50 bg-red-950/95 px-4 py-3 text-center shadow-2xl backdrop-blur">
+          <p className="text-sm font-semibold text-red-100">{error}</p>
           <button
             type="button"
-            onClick={() => {
-              setReloadVersion(
-                (version) => version + 1,
-              );
-            }}
+            onClick={() => setReloadVersion((v) => v + 1)}
             className="mt-2 rounded-lg bg-white/10 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-white/20"
           >
             Retry

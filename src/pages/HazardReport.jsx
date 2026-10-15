@@ -1,11 +1,11 @@
 "use client";
+import { Link, useNavigate } from "react-router-dom";
 
 import {
   useCallback,
   useEffect,
   useState,
 } from "react";
-import { Link } from "react-router-dom";
 
 import {
   AlertCircle,
@@ -26,6 +26,12 @@ import {
 
 import reportImg from "../Images/photo-icon.png";
 import { supabase } from "../createClient";
+import {
+  HAZARD_CATEGORIES,
+  getTypesForCategory,
+  composeHazardDescription,
+  isOtherNaturalHazard,
+} from "../utils/HazardTaxonomy";
 import { useSettings } from "./SettingsContext";
 
 import RequestFormShell, {
@@ -99,6 +105,8 @@ const initialForm = {
   dateObserved: "",
   timeObserved: "",
   hazardCategory: "",
+  hazardType: "",
+  otherHazardType: "",
   riskLevel: "",
   hazardPhotos: [],
   hazardDescription: "",
@@ -109,6 +117,8 @@ const initialForm = {
 
 export default function HazardReport() {
   const { prefs, setPref } = useSettings();
+  
+const navigate = useNavigate();
 
   const [realName, setRealName] =
     useState("");
@@ -150,6 +160,19 @@ export default function HazardReport() {
     prefs.location_access !== false;
 
   const todayStr = localDateKey();
+
+  const showOtherInput = isOtherNaturalHazard(
+    form.hazardCategory,
+  );
+
+  const specificOptions = getTypesForCategory(
+    form.hazardCategory,
+  );
+
+  const showSpecificSelect =
+    Boolean(form.hazardCategory) &&
+    !showOtherInput &&
+    specificOptions.length > 0;
 
   useEffect(() => {
     let cancelled = false;
@@ -470,6 +493,18 @@ export default function HazardReport() {
       return;
     }
 
+    // Reset specific type and other text when main category changes
+    if (name === "hazardCategory") {
+      setForm((previous) => ({
+        ...previous,
+        hazardCategory: value,
+        hazardType: "",
+        otherHazardType: "",
+      }));
+      setError("");
+      return;
+    }
+
     setForm((previous) => ({
       ...previous,
       [name]: value,
@@ -522,6 +557,15 @@ export default function HazardReport() {
       setUploadWarning("");
 
       try {
+        if (
+          showOtherInput &&
+          !String(form.otherHazardType || "").trim()
+        ) {
+          throw new Error(
+            "Please describe the natural hazard type when choosing Other Natural Disaster.",
+          );
+        }
+
         let photoPaths = [];
 
         if (form.hazardPhotos.length > 0) {
@@ -559,6 +603,10 @@ export default function HazardReport() {
             "string" &&
           supabaseUser.id.length > 10;
 
+        const typeForDescription = showOtherInput
+          ? String(form.otherHazardType || "").trim()
+          : form.hazardType;
+
         const reportData = {
           reporter_name:
             nameIsMasked
@@ -584,7 +632,10 @@ export default function HazardReport() {
           risk_level: form.riskLevel,
 
           hazard_description:
-            form.hazardDescription,
+            composeHazardDescription(
+              typeForDescription,
+              form.hazardDescription,
+            ),
 
           recommended_action:
             form.recommendedAction || "",
@@ -695,82 +746,75 @@ export default function HazardReport() {
     );
   }
 
-  if (success) {
-    return (
-      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-10 dark:bg-slate-950">
-        <div className="w-full max-w-lg overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
-          <div className="bg-gradient-to-r from-blue-600 via-blue-600 to-purple-600 px-6 py-8 text-center text-white">
-            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/20">
-              <CheckCircle2 className="h-9 w-9" />
-            </div>
+ if (success) {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-10 dark:bg-slate-950">
+      <div className="w-full max-w-lg overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+        <div className="bg-gradient-to-r from-blue-600 via-blue-600 to-purple-600 px-6 py-8 text-center text-white">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/20">
+            <CheckCircle2 className="h-9 w-9" />
+          </div>
 
-            <h1 className="mt-5 text-2xl font-black">
-              Hazard Report Submitted
-            </h1>
+          <h1 className="mt-5 text-2xl font-black">
+            Hazard Report Submitted
+          </h1>
 
-            <p className="mt-2 text-sm leading-6 text-blue-50/85">
-              Your report has been received and will appear on the public map after administrator approval.
+          <p className="mt-2 text-sm leading-6 text-blue-50/85">
+            Your report has been received and will appear on the public map after administrator approval.
+          </p>
+        </div>
+
+        <div className="space-y-4 p-6 sm:p-8">
+          <div className="flex items-start gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800 dark:border-blue-800/70 dark:bg-blue-950/40 dark:text-blue-200">
+            <Camera className="mt-0.5 h-5 w-5 shrink-0" />
+            <p>
+              {submittedPhotoCount} photo{submittedPhotoCount === 1 ? "" : "s"} attached as evidence.
             </p>
           </div>
 
-          <div className="space-y-4 p-6 sm:p-8">
-            <div className="flex items-start gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800 dark:border-blue-800/70 dark:bg-blue-950/40 dark:text-blue-200">
-              <Camera className="mt-0.5 h-5 w-5 shrink-0" />
-
-              <p>
-                {submittedPhotoCount} photo{submittedPhotoCount === 1 ? "" : "s"} attached as evidence.
-              </p>
+          {uploadWarning && (
+            <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800/70 dark:bg-amber-950/40 dark:text-amber-200">
+              <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+              <p>{uploadWarning}</p>
             </div>
+          )}
 
-            {uploadWarning && (
-              <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800/70 dark:bg-amber-950/40 dark:text-amber-200">
-                <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+          {nameIsMasked && (
+            <p className="text-center text-xs text-slate-500 dark:text-slate-400">
+              Filed as <strong>Anonymous</strong> according to your privacy setting.
+            </p>
+          )}
 
-                <p>{uploadWarning}</p>
-              </div>
-            )}
+          {!locationEnabled && (
+            <p className="text-center text-xs text-slate-500 dark:text-slate-400">
+              No GPS coordinates were attached because location access is off.
+            </p>
+          )}
 
-            {nameIsMasked && (
-              <p className="text-center text-xs text-slate-500 dark:text-slate-400">
-                Filed as <strong>Anonymous</strong> according to your privacy setting.
-              </p>
-            )}
+          <div className="flex flex-col gap-3 sm:flex-row">
+            <button
+              type="button"
+              onClick={handleResetForAnother}
+              className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-black text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+            >
+              Submit Another
+            </button>
 
-            {!locationEnabled && (
-              <p className="text-center text-xs text-slate-500 dark:text-slate-400">
-                No GPS coordinates were attached because location access is off.
-              </p>
-            )}
-
-            <div className="flex flex-col gap-3 sm:flex-row">
-              <button
-                type="button"
-                onClick={
-                  handleResetForAnother
-                }
-                className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 via-blue-600 to-purple-600 px-5 py-3 text-sm font-black text-white shadow-lg transition hover:brightness-105"
-              >
-                Submit Another
-              </button>
-
-              <Link
-                to="/home"
-                className="inline-flex min-h-12 flex-1 items-center justify-center rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-black text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-              >
-                Dashboard
-              </Link>
-            </div>
+            <button
+              type="button"
+              onClick={() => navigate(identity === "staff" ? "/staff/dashboard" : "/home")}
+              className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 via-blue-600 to-purple-600 px-5 py-3 text-sm font-black text-white shadow-lg transition hover:brightness-105"
+            >
+              Back to Dashboard
+            </button>
           </div>
         </div>
       </div>
-    );
-  }
-
+    </div>
+  );
+}
   const bannerName =
     realName || "User";
-
-  const bannerInitial =
-    bannerName.charAt(0).toUpperCase();
 
   const hasCoords =
     form.latitude != null &&
@@ -780,8 +824,8 @@ export default function HazardReport() {
     <RequestFormShell
       icon={TriangleAlert}
       eyebrow="Community Safety"
-      title="Hazard & Risk Report"
-      description="Report a dangerous condition, incident risk, or safety concern in your community."
+      title="Report Natural Disaster Hazard & Risk"
+      description="Report a dangerous condition, Natural Disaster risk, or safety concern in your community."
       account={{
         name: bannerName,
         detail: nameIsMasked
@@ -878,8 +922,8 @@ export default function HazardReport() {
         <FormSectionHeading
           icon={TriangleAlert}
           step="02"
-          title="Hazard Classification"
-          description="Classify the hazard and its assessed risk level."
+          title="Natural Disaster Classification"
+          description="Report a natural hazard for verification and mapping. For medical, fire, accident, or other emergencies that need immediate response, use Incident Report instead."
         />
 
         <div className="grid gap-5 md:grid-cols-2">
@@ -895,36 +939,85 @@ export default function HazardReport() {
               onChange={handleChange}
               className={FORM_INPUT_CLASS}
               required
+              aria-describedby="hazardCategory-hint"
             >
               <option value="">
-                Select a category
+                Select a main category
               </option>
-
-              <option value="physical">
-                Physical
-              </option>
-
-              <option value="chemical/biological">
-                Chemical / Biological
-              </option>
-
-              <option value="electrical">
-                Electrical
-              </option>
-
-              <option value="procedural/safety practices">
-                Procedural / Safety Practices
-              </option>
-
-              <option value="natural disaster">
-                Natural Disaster
-              </option>
+              {HAZARD_CATEGORIES.map((cat) => (
+                <option key={cat.id} value={cat.id}>
+                  {cat.icon} {cat.label}
+                </option>
+              ))}
             </select>
+            <p
+              id="hazardCategory-hint"
+              className="mt-1.5 text-xs text-slate-500 dark:text-slate-400"
+            >
+              Natural disaster category used for map filters after admin verification.
+            </p>
           </FormField>
+
+          {showSpecificSelect && (
+            <FormField
+              id="hazardType"
+              label="Hazard Type (specific)"
+            >
+              <select
+                id="hazardType"
+                name="hazardType"
+                value={form.hazardType}
+                onChange={handleChange}
+                className={FORM_INPUT_CLASS}
+                aria-describedby="hazardType-hint"
+              >
+                <option value="">
+                  Select a specific type (optional)
+                </option>
+                {specificOptions.map((t) => (
+                  <option key={t} value={t}>
+                    {t}
+                  </option>
+                ))}
+              </select>
+              <p
+                id="hazardType-hint"
+                className="mt-1.5 text-xs text-slate-500 dark:text-slate-400"
+              >
+                Optional detail (e.g. Flash flood). Helps MDRRMO verify and map the hazard.
+              </p>
+            </FormField>
+          )}
+
+          {showOtherInput && (
+            <FormField
+              id="otherHazardType"
+              label="Specify Natural Hazard Type"
+              required
+            >
+              <input
+                id="otherHazardType"
+                name="otherHazardType"
+                type="text"
+                value={form.otherHazardType}
+                onChange={handleChange}
+                placeholder="Describe the natural hazard type"
+                className={FORM_INPUT_CLASS}
+                required
+                aria-describedby="otherHazardType-hint"
+              />
+              <p
+                id="otherHazardType-hint"
+                className="mt-1.5 text-xs text-slate-500 dark:text-slate-400"
+              >
+                Required when Other Natural Disaster is selected so the report can be classified correctly.
+              </p>
+            </FormField>
+          )}
 
           <FormField
             id="riskLevel"
-            label="Risk Level"
+            label="Severity / Risk Level"
             required
           >
             <select
@@ -936,23 +1029,19 @@ export default function HazardReport() {
               required
             >
               <option value="">
-                Select a risk level
+                Select severity level
               </option>
-
               <option value="low">
-                Low Risk
+                Low
               </option>
-
               <option value="medium">
-                Medium Risk
+                Moderate
               </option>
-
               <option value="high">
-                High Risk
+                High
               </option>
-
               <option value="critical">
-                Critical Risk
+                Critical
               </option>
             </select>
           </FormField>
