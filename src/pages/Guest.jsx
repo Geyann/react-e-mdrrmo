@@ -18,7 +18,7 @@ import {
 } from "lucide-react";
 import Icon from "../Images/logo.png";
 import Icon1 from "../Images/icon3.png";
-import Mdrrmo from "../Images/mdrrmo.jpg";
+import Mdrrmo from "../Images/MDRRMO.jpg";
 
 import earthquakeImg from "../Images/earthquake.png";
 import backgroundImg from "../Images/background.png";
