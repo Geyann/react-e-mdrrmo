@@ -666,8 +666,9 @@ export default function AdminDashboard() {
   }, [authState, auto, fetchAll]);
 
   const handleRefresh = () => {
+    // Full page refresh so session, charts, and all tables reload cleanly
     setRefreshing(true);
-    fetchAll();
+    window.location.reload();
   };
 
   const toggleAuto = () => {
@@ -928,30 +929,6 @@ export default function AdminDashboard() {
         label: "Confirmed",
         icon: CalendarClock,
       },
-      {
-        ...build(
-          mine.vehicles,
-          (r) => r.borrowerId,
-          (r) => r.purpose || "Vehicle dispatch",
-          (r) => r.destination,
-          (r) => r.status,
-          "/staff/borrow"
-        ),
-        label: "My Vehicles",
-        icon: Truck,
-      },
-      {
-        ...build(
-          mine.slips,
-          (r) => r.id,
-          (r) => r.borrower_name || "Borrower slip",
-          (r) => [r.plateNo, r.hospital].filter(Boolean).join(" · "),
-          () => "filed",
-          "/staff/borrower-slip"
-        ),
-        label: "My Slips",
-        icon: ClipboardList,
-      },
     ];
   }, [session, data, mine]);
 
@@ -1003,7 +980,7 @@ export default function AdminDashboard() {
             </div>
             <div className="min-w-0">
               <h1 className="text-xl sm:text-2xl font-bold text-white">
-                {isAdmin ? "Centralized Dashboard" : "My Work Dashboard"}
+                {isAdmin ? "Centralized Dashboard" : "Work Dashboard"}
               </h1>
               <p className="text-blue-100 text-xs sm:text-sm truncate">
                 {isAdmin
@@ -1019,18 +996,7 @@ export default function AdminDashboard() {
             <span className="px-2.5 py-1.5 bg-white/15 text-white rounded-xl text-[11px] font-bold uppercase tracking-wide">
               {isAdmin ? "Admin" : pretty(session?.role)}
             </span>
-            <button
-              type="button"
-              onClick={toggleAuto}
-              className={`flex items-center gap-1.5 px-3 py-2 rounded-xl text-xs font-bold transition ${
-                auto
-                  ? "bg-white text-purple-700 hover:bg-white/90"
-                  : "bg-white/15 text-white hover:bg-white/25"
-              }`}
-            >
-              <Radio className={`w-3.5 h-3.5 ${auto ? "animate-pulse" : ""}`} />
-              Auto {auto ? "ON" : "OFF"}
-            </button>
+           
             <button
               type="button"
               onClick={handleRefresh}
@@ -1156,10 +1122,10 @@ export default function AdminDashboard() {
         {!isAdmin && (
           <>
             <SectionLabel>Assigned To Me</SectionLabel>
-            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+            <div className="grid grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
               <StatCard
                 icon={ClipboardCheck}
-                label="Awaiting My Response"
+                label="Awaiting Response"
                 value={loading ? null : m.awaitingStaff}
                 sub={!loading && m.awaitingStaff > 0 ? "action needed" : null}
                 tone={m.awaitingStaff > 0 ? "amber" : "emerald"}
@@ -1181,24 +1147,8 @@ export default function AdminDashboard() {
                 to="/staff/checkupqueue"
               />
               <StatCard
-                icon={Truck}
-                label="My Vehicle Reqs"
-                value={loading ? null : mine.count.vehicles}
-                sub={!loading && m.vehiclesOut > 0 ? `${m.vehiclesOut} out` : null}
-                tone="blue"
-                accent="bg-indigo-600"
-                to="/staff/borrow"
-              />
-              <StatCard
-                icon={ClipboardList}
-                label="My Borrower Slips"
-                value={loading ? null : mine.count.slips}
-                accent="bg-teal-600"
-                to="/staff/borrower-slip"
-              />
-              <StatCard
                 icon={FileText}
-                label="My Reports"
+                label="Reports"
                 value={loading ? null : mine.count.reports}
                 sub={!loading && m.myPendingReports > 0 ? `${m.myPendingReports} pending` : null}
                 tone={m.myPendingReports > 0 ? "amber" : undefined}
@@ -1260,7 +1210,7 @@ export default function AdminDashboard() {
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 sm:gap-5 mt-5">
           <Panel
             className="lg:col-span-2"
-            title={isAdmin ? "System Activity — Last 7 Days" : "My Activity — Last 7 Days"}
+            title={isAdmin ? "System Activity — Last 7 Days" : "Activity — Last 7 Days"}
             subtitle={
               isAdmin
                 ? "Combined submissions across every request type"
@@ -1531,7 +1481,7 @@ export default function AdminDashboard() {
         <SectionLabel>
           {isAdmin ? "Awaiting Your Decision" : "Your Queues"}
         </SectionLabel>
-        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4 sm:gap-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-2 gap-4 sm:gap-5">
           {queues.map((q) => {
             const QIcon = q.icon || Clock;
             return (
@@ -1703,7 +1653,7 @@ export default function AdminDashboard() {
         {!isAdmin && (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-5 mt-5">
             <Panel
-              title="My Borrower Slips"
+              title="Borrower Slips"
               subtitle={`${mine.count.slips} filed by you`}
               action={
                 <Link
@@ -1762,7 +1712,7 @@ export default function AdminDashboard() {
             </Panel>
 
             <Panel
-              title="My Inventory Reports"
+              title="Inventory Reports"
               subtitle={`${mine.count.reports} generated by you`}
               action={
                 <Link
@@ -1815,7 +1765,7 @@ export default function AdminDashboard() {
         {/* ═══ RECENT ACTIVITY ═══ */}
         <Panel
           className="mt-5"
-          title={isAdmin ? "Recent Activity" : "My Recent Activity"}
+          title={isAdmin ? "Recent Activity" : "Recent Activity"}
           subtitle={
             isAdmin
               ? "Latest submissions across all systems"
@@ -1905,9 +1855,8 @@ export default function AdminDashboard() {
               ]
             : [
                 { label: "Check-Ups", value: data.checkups.length, icon: Stethoscope },
-                { label: "My Vehicles", value: mine.count.vehicles, icon: Truck },
-                { label: "My Slips", value: mine.count.slips, icon: ClipboardList },
-                { label: "My Reports", value: mine.count.reports, icon: FileText },
+                { label: "Slips", value: mine.count.slips, icon: ClipboardList },
+                { label: "Reports", value: mine.count.reports, icon: FileText },
                 { label: "Supplies", value: data.supplies.length, icon: Package },
                 { label: "Tools", value: data.tools.length, icon: Wrench },
               ]
@@ -1929,21 +1878,7 @@ export default function AdminDashboard() {
           ))}
         </div>
 
-        {/* ═══ DIAGNOSTICS ═══ */}
-        <div className="mt-5 text-center">
-          {blocked.length > 0 ? (
-            <p className="text-[10px] text-amber-600 dark:text-amber-400">
-              <AlertTriangle className="inline w-3 h-3 mr-1" />
-              Blocked by row-level security: {blocked.join(", ")}
-            </p>
-          ) : (
-            <p className="text-[10px] text-gray-400 dark:text-slate-600">
-              {isAdmin ? "Admin view" : "Staff view — your work only"} ·{" "}
-              {blocked.length === 0 ? "all sources readable" : ""} · auto-refresh{" "}
-              {auto ? `every ${AUTO_REFRESH_MS / 1000}s` : "disabled"}
-            </p>
-          )}
-        </div>
+       
       </div>
     </div>
   );

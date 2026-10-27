@@ -19,7 +19,6 @@ import {
 import Icon from "../Images/logo.png";
 import Icon1 from "../Images/icon3.png";
 import Mdrrmo from "../Images/MDRRMO.jpg";
-
 import earthquakeImg from "../Images/earthquake.png";
 import backgroundImg from "../Images/background.png";
 import floodingImg from "../Images/flooding.png";
@@ -158,7 +157,7 @@ function ContactCard({ contact }) {
   );
 }
 
-export default function Guest() {
+export default function Home() {
   return (
     <main className="min-h-screen overflow-hidden bg-slate-50 text-slate-800 dark:bg-slate-950 dark:text-slate-100">
       {/* ══════════════════════════════════════════════════════════
@@ -258,10 +257,10 @@ export default function Guest() {
               {/* Main image */}
               <div className="absolute right-0 top-0 h-[370px] w-[84%] overflow-hidden rounded-[2rem] border-4 border-white/10 bg-slate-800 shadow-2xl sm:h-[440px]">
                 <img
-                  src={Mdrrmo}
-                  alt="Flooding affecting a community"
-                  className="h-full w-full object-cover"
-                />
+                                  src={Mdrrmo}
+                                  alt="Flooding affecting a community"
+                                  className="h-full w-full object-cover"
+                                />
 
                 <div className="absolute inset-0 bg-gradient-to-t from-[#071426] via-[#071426]/15 to-transparent" />
 
@@ -385,7 +384,7 @@ export default function Guest() {
             <article className="group relative min-h-[390px] overflow-hidden rounded-[1.75rem] bg-slate-900 shadow-xl">
               <img
                 src={earthquakeImg}
-alt="Earthquake preparedness"
+                alt="Earthquake preparedness"
                 className="absolute inset-0 h-full w-full object-cover transition duration-700 group-hover:scale-105"
               />
 
@@ -477,7 +476,7 @@ alt="Earthquake preparedness"
             </p>
           </div>
 
-          <div className="mt-10 grid min-w-0 gap-6 xl:grid-cols-2">
+          <div className="mt-10 grid min-w-0 gap-6 xl:grid-cols-1">
             <article className="min-w-0">
               <div className="mb-4 flex items-center gap-3 rounded-2xl border border-red-100 bg-red-50 p-4 dark:border-red-900/70 dark:bg-red-950/20">
                 <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300">

@@ -7,7 +7,7 @@ import {
   useState,
 } from "react";
 import { useNavigate } from "react-router-dom";
-
+import { useDialog } from "../components/AppDialog";
 import {
   AlertCircle,
   ArrowLeft,
@@ -486,7 +486,7 @@ function ProfilePictureEditor({
   onUpdated,
 }) {
   const inputRef = useRef(null);
-
+  const {showConfirm} = useDialog();
   const [uploading, setUploading] =
     useState(false);
 
@@ -697,7 +697,7 @@ function ProfilePictureEditor({
       return;
     }
 
-    const confirmed = window.confirm(
+    const confirmed = await showConfirm(
       "Remove your profile picture?",
     );
 
@@ -1444,7 +1444,7 @@ export default function Profile() {
   --------------------------------------------------------- */
 
   const handleLogout = async () => {
-    const confirmed = window.confirm(
+    const confirmed = await showConfirm(
       "Sign out of SafeResponse on this device?",
     );
 

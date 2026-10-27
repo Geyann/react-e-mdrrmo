@@ -5,6 +5,7 @@ import {
   Package,
   Settings as SettingsIcon,
   Stethoscope,
+  TriangleAlert,   // ← add
   Truck,
 } from "lucide-react";
 
@@ -35,6 +36,12 @@ const STAFF_LINKS = [
     to: "/staff/borrower-slip",
     label: "Borrower Slip",
     icon: ClipboardList,
+  },
+  // ── NEW ──
+  {
+    to: "/staff/hazard-reports",
+    label: "Hazard Reports",
+    icon: TriangleAlert,
   },
   {
     to: "/staff/inventory",

@@ -28,7 +28,7 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-
+import { useDialog } from "../components/AppDialog";
 import { supabase } from "../createClient";
 
 /* =============================================================
@@ -703,7 +703,7 @@ const uploadProfilePicture = async ({
 
 export default function EditProfile() {
   const navigate = useNavigate();
-
+    const { showConfirm, showAlert } = useDialog();
   const fileInputRef = useRef(null);
   const previewUrlRef = useRef(null);
   const successTimerRef = useRef(null);
@@ -1065,12 +1065,12 @@ export default function EditProfile() {
     setImageFailed(false);
   };
 
-  const handleRemovePicture = () => {
+  const handleRemovePicture = async () => {
     if (saving) {
       return;
     }
 
-    const confirmed = window.confirm(
+    const confirmed = await showConfirm(
       "Remove your profile picture when this form is saved?",
     );
 
@@ -1097,18 +1097,18 @@ export default function EditProfile() {
     setWarning("");
   };
 
-  const handleReset = () => {
+  const handleReset = async () => {
     if (saving) {
       return;
     }
 
-    if (
-      hasUnsavedChanges &&
-      !window.confirm(
+    if (hasUnsavedChanges) {
+      const confirmed = await showConfirm(
         "Discard all unsaved changes on this page?",
-      )
-    ) {
-      return;
+      );
+      if (!confirmed) {
+        return;
+      }
     }
 
     if (previewUrlRef.current) {

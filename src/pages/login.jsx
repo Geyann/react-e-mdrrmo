@@ -7,7 +7,7 @@ import {
   useLocation,
   useNavigate,
 } from "react-router-dom";
-import Icon from '../Images/logo.png';
+import Icon from "../Images/logo.png";
 import {
   AlertCircle,
   ArrowLeft,
@@ -72,13 +72,154 @@ async function hashPassword(
     .join("");
 }
 
+async function passwordMatches(plainPassword, storedPassword) {
+  const stored = clean(storedPassword);
+  if (!stored) return false;
+
+  const saltedHash = await hashPassword(plainPassword);
+  const unsaltedHash = await hashPassword(plainPassword, "");
+
+  return (
+    stored === saltedHash ||
+    stored === unsaltedHash
+  );
+}
+
 /* ══════════════════════════════════════════════════════════════════
-   DATABASE LOOKUPS
+   ADMIN / STAFF LOOKUPS (silent — not advertised in the UI)
    ══════════════════════════════════════════════════════════════════ */
 
-async function findRegistrationByEmail(
-  email,
-) {
+async function findAdminAccount(identifier) {
+  const isEmail = identifier.includes("@");
+
+  if (isEmail) {
+    const { data, error } = await supabase
+      .from("admin_users")
+      .select("*")
+      .eq("email", identifier.toLowerCase())
+      .maybeSingle();
+
+    if (error) throw new Error(error.message);
+    if (data) return { source: "admin_users", account: data };
+    return null;
+  }
+
+  const byWorkId = await supabase
+    .from("admin_users")
+    .select("*")
+    .eq("custom_id", identifier)
+    .maybeSingle();
+
+  if (byWorkId.error) throw new Error(byWorkId.error.message);
+  if (byWorkId.data) {
+    return { source: "admin_users", account: byWorkId.data };
+  }
+
+  const byUsername = await supabase
+    .from("admin_users")
+    .select("*")
+    .eq("username", identifier)
+    .maybeSingle();
+
+  if (byUsername.error) throw new Error(byUsername.error.message);
+  if (byUsername.data) {
+    return { source: "admin_users", account: byUsername.data };
+  }
+
+  return null;
+}
+
+async function findStaffAccount(identifier) {
+  const isEmail = identifier.includes("@");
+
+  if (isEmail) {
+    const { data, error } = await supabase
+      .from("staff_users")
+      .select("*")
+      .eq("email", identifier.toLowerCase())
+      .maybeSingle();
+
+    if (error) throw new Error(error.message);
+    if (data) return { source: "staff_users", account: data };
+    return null;
+  }
+
+  const byWorkId = await supabase
+    .from("staff_users")
+    .select("*")
+    .eq("user_id", identifier)
+    .maybeSingle();
+
+  if (byWorkId.error) throw new Error(byWorkId.error.message);
+  if (byWorkId.data) {
+    return { source: "staff_users", account: byWorkId.data };
+  }
+
+  const byUsername = await supabase
+    .from("staff_users")
+    .select("*")
+    .eq("username", identifier)
+    .maybeSingle();
+
+  if (byUsername.error) throw new Error(byUsername.error.message);
+  if (byUsername.data) {
+    return { source: "staff_users", account: byUsername.data };
+  }
+
+  return null;
+}
+
+function buildStaffSession(source, account) {
+  if (source === "admin_users") {
+    return {
+      id: account.id,
+      user_id:
+        account.custom_id ||
+        account.username ||
+        account.user_id ||
+        "",
+      username:
+        account.username ||
+        account.custom_id ||
+        "",
+      email: account.email || "",
+      full_name:
+        account.full_name || "Administrator",
+      role: "admin",
+      department: "",
+      is_active: true,
+      source: "admin_users",
+      created_at: account.created_at || null,
+    };
+  }
+
+  return {
+    id: account.id,
+    user_id:
+      account.user_id ||
+      account.username ||
+      "",
+    username:
+      account.username ||
+      account.user_id ||
+      "",
+    email: account.email || "",
+    full_name:
+      account.full_name || "Staff Member",
+    role:
+      account.role === "admin" ? "admin" : "staff",
+    department: account.department || "",
+    is_active: account.is_active !== false,
+    source: "staff_users",
+    created_at: account.created_at || null,
+  };
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   RESIDENT DATABASE LOOKUPS
+   ══════════════════════════════════════════════════════════════════ */
+
+async function findRegistrationByEmail(email) {
   const { data, error } = await supabase
     .from("pending_registrations")
     .select("*")
@@ -92,9 +233,7 @@ async function findRegistrationByEmail(
   return data;
 }
 
-async function findRegistrationByUsername(
-  username,
-) {
+async function findRegistrationByUsername(username) {
   const { data, error } = await supabase
     .from("pending_registrations")
     .select("*")
@@ -126,9 +265,7 @@ async function findProfileById(id) {
   return data;
 }
 
-async function findProfileByEmail(
-  email,
-) {
+async function findProfileByEmail(email) {
   if (!email) return null;
 
   const { data, error } = await supabase
@@ -147,9 +284,7 @@ async function findProfileByEmail(
   return data;
 }
 
-async function findProfileForRegistration(
-  registration,
-) {
+async function findProfileForRegistration(registration) {
   if (
     registration?.user_id &&
     isUuid(registration.user_id)
@@ -328,7 +463,7 @@ function GoogleIcon() {
 }
 
 /* ══════════════════════════════════════════════════════════════════
-   LOGIN PAGE
+   LOGIN PAGE (unified auth, resident UI)
    ══════════════════════════════════════════════════════════════════ */
 
 export default function LoginPage() {
@@ -376,22 +511,23 @@ export default function LoginPage() {
     setNotice(routeNotice);
   }, [routeError, routeNotice]);
 
-  const saveResidentSession = (
-    session,
-  ) => {
+  const clearOtherSessions = () => {
+    window.localStorage.removeItem("currentUser");
+    window.localStorage.removeItem("currentStaff");
+    window.sessionStorage.removeItem("mdrrmo_previous_hash");
+  };
+
+  const saveResidentSession = (session) => {
     if (!session.id) {
       throw new Error(
         "Your approved account could not be resolved. Please contact the MDRRMO administrator.",
       );
     }
 
+    clearOtherSessions();
     window.localStorage.setItem(
       "currentUser",
       JSON.stringify(session),
-    );
-
-    window.sessionStorage.removeItem(
-      "mdrrmo_previous_hash",
     );
 
     navigate("/home", {
@@ -399,34 +535,36 @@ export default function LoginPage() {
     });
   };
 
+  const saveStaffSession = (session) => {
+    clearOtherSessions();
+    window.localStorage.setItem(
+      "currentStaff",
+      JSON.stringify(session),
+    );
+
+    if (session.role === "admin") {
+      navigate("/admin/dashboard", { replace: true });
+    } else {
+      navigate("/staff/dashboard", { replace: true });
+    }
+  };
+
   /* ══════════════════════════════════════════════════════════════
      USERNAME / EMAIL / PASSWORD LOGIN
+     Silently supports admin + staff + resident
   ══════════════════════════════════════════════════════════════ */
 
-  const handlePasswordLogin = async (
-    event,
-  ) => {
+  const handlePasswordLogin = async (event) => {
     event.preventDefault();
 
-    if (
-      loading ||
-      googleLoading
-    ) {
+    if (loading || googleLoading) {
       return;
     }
 
-    const loginIdentifier = clean(
-      identifier,
-    );
+    const loginIdentifier = clean(identifier);
+    const plainPassword = clean(password);
 
-    const plainPassword = clean(
-      password,
-    );
-
-    if (
-      !loginIdentifier ||
-      !plainPassword
-    ) {
+    if (!loginIdentifier || !plainPassword) {
       setError(
         "Enter your username or email and password.",
       );
@@ -438,19 +576,54 @@ export default function LoginPage() {
     setNotice("");
 
     try {
-      const isEmail =
-        loginIdentifier.includes("@");
+      const isEmail = loginIdentifier.includes("@");
+      const normalizedEmail = loginIdentifier.toLowerCase();
 
-      const normalizedEmail =
-        loginIdentifier.toLowerCase();
+      /* ── Silent admin / staff check (not shown in UI) ── */
+      const portalAccount =
+        (await findAdminAccount(loginIdentifier)) ||
+        (await findStaffAccount(loginIdentifier));
 
+      if (portalAccount) {
+        const account = portalAccount.account;
+
+        if (
+          portalAccount.source === "staff_users" &&
+          account.is_active === false
+        ) {
+          throw new Error(
+            "Your account has been deactivated. Contact the MDRRMO office.",
+          );
+        }
+
+        const matches = await passwordMatches(
+          plainPassword,
+          account.password,
+        );
+
+        if (!matches) {
+          throw new Error(
+            "Incorrect username or password.",
+          );
+        }
+
+        try {
+          await supabase.auth.signOut();
+        } catch {
+          /* ignore */
+        }
+
+        const session = buildStaffSession(
+          portalAccount.source,
+          account,
+        );
+        saveStaffSession(session);
+        return;
+      }
+
+      /* ── Resident: Supabase Auth ── */
       let authResult = null;
 
-      /*
-       * First attempt Supabase Auth for migrated
-       * and Google/OAuth accounts that also have
-       * a password.
-       */
       if (isEmail) {
         const result =
           await supabase.auth.signInWithPassword({
@@ -466,17 +639,10 @@ export default function LoginPage() {
         }
       }
 
-      /*
-       * Fall back to the approved local
-       * pending_registrations account.
-       */
+      /* ── Resident: pending_registrations ── */
       const registration = isEmail
-        ? await findRegistrationByEmail(
-            normalizedEmail,
-          )
-        : await findRegistrationByUsername(
-            loginIdentifier,
-          );
+        ? await findRegistrationByEmail(normalizedEmail)
+        : await findRegistrationByUsername(loginIdentifier);
 
       if (registration) {
         const status = clean(
@@ -489,7 +655,7 @@ export default function LoginPage() {
           }
 
           throw new Error(
-            "Your account is still pending administrator approval.",
+            "Your account is still pending administrator approval. You will be able to sign in once an administrator approves your registration.",
           );
         }
 
@@ -498,41 +664,30 @@ export default function LoginPage() {
             await supabase.auth.signOut();
           }
 
-          throw new Error(
-            "Your registration was rejected. Please contact the MDRRMO office.",
+          const rawReason = clean(
+            registration.review_notes,
           );
+
+          const reasonMessage = rawReason
+            ? `Your registration was declined by the administrator.\n\nReason: ${rawReason}\n\nIf you believe this is a mistake, please contact the MDRRMO office.`
+            : "Your registration was declined by the administrator. Please contact the MDRRMO office for more information.";
+
+          throw new Error(reasonMessage);
         }
 
-        if (
-          status &&
-          status !== "approved"
-        ) {
+        if (status && status !== "approved") {
           throw new Error(
-            "Your account is not available for login.",
+            "Your account is not available for login. Please contact the MDRRMO office.",
           );
         }
 
         if (!authResult?.session) {
-          const saltedHash =
-            await hashPassword(
-              plainPassword,
-            );
-
-          const unsaltedHash =
-            await hashPassword(
-              plainPassword,
-              "",
-            );
-
-          const storedPassword = clean(
+          const matches = await passwordMatches(
+            plainPassword,
             registration.password,
           );
 
-          if (
-            !storedPassword ||
-            (storedPassword !== saltedHash &&
-              storedPassword !== unsaltedHash)
-          ) {
+          if (!matches) {
             throw new Error(
               "Incorrect username or password.",
             );
@@ -544,9 +699,7 @@ export default function LoginPage() {
             registration,
           );
 
-        if (
-          profile?.is_active === false
-        ) {
+        if (profile?.is_active === false) {
           if (authResult?.session) {
             await supabase.auth.signOut();
           }
@@ -566,17 +719,11 @@ export default function LoginPage() {
               registration.email,
           });
 
-        saveResidentSession(
-          residentSession,
-        );
-
+        saveResidentSession(residentSession);
         return;
       }
 
-      /*
-       * The account may exist only as an
-       * approved Supabase profile.
-       */
+      /* ── Resident: approved Supabase profile only ── */
       if (authResult?.session) {
         const profile =
           await findProfileById(
@@ -599,15 +746,12 @@ export default function LoginPage() {
         ).toLowerCase();
 
         if (
-          ![
-            "user",
-            "resident",
-          ].includes(role)
+          !["user", "resident"].includes(role)
         ) {
           await supabase.auth.signOut();
 
           throw new Error(
-            "Use the staff or administrator portal to sign in with this account.",
+            "Incorrect username or password.",
           );
         }
 
@@ -620,10 +764,7 @@ export default function LoginPage() {
               authResult.user.email || "",
           });
 
-        saveResidentSession(
-          residentSession,
-        );
-
+        saveResidentSession(residentSession);
         return;
       }
 
@@ -634,7 +775,7 @@ export default function LoginPage() {
       );
     } catch (loginError) {
       console.error(
-        "Resident login error:",
+        "Login error:",
         loginError,
       );
 
@@ -652,10 +793,7 @@ export default function LoginPage() {
   ══════════════════════════════════════════════════════════════ */
 
   const handleGoogleLogin = async () => {
-    if (
-      loading ||
-      googleLoading
-    ) {
+    if (loading || googleLoading) {
       return;
     }
 
@@ -664,6 +802,8 @@ export default function LoginPage() {
     setNotice("");
 
     try {
+      window.localStorage.removeItem("currentStaff");
+
       const redirectTo =
         `${window.location.origin}/auth/callback`;
 
@@ -694,7 +834,7 @@ export default function LoginPage() {
   };
 
   /* ══════════════════════════════════════════════════════════════
-     RENDER
+     RENDER — original resident look (no admin/staff messaging)
   ══════════════════════════════════════════════════════════════ */
 
   return (
@@ -755,7 +895,7 @@ export default function LoginPage() {
                   </p>
 
                   <p className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-100">
-                  OMDRRMO - NAIC, CAVITE
+                    OMDRRMO - NAIC, CAVITE
                   </p>
                 </div>
               </div>
@@ -771,16 +911,12 @@ export default function LoginPage() {
                   monitor your submitted reports.
                 </p>
               </div>
-
-             
             </div>
           </section>
 
           {/* Form panel */}
           <section className="p-6 sm:p-10 lg:p-12">
             <div className="mx-auto max-w-md">
-            
-
               {/* Error */}
               {error && (
                 <div
@@ -789,7 +925,7 @@ export default function LoginPage() {
                 >
                   <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
 
-                  <p className="text-sm font-semibold leading-5 text-red-700">
+                  <p className="whitespace-pre-line text-sm font-semibold leading-5 text-red-700">
                     {error}
                   </p>
                 </div>
@@ -803,7 +939,7 @@ export default function LoginPage() {
                 >
                   <CheckCircle2 className="mt-0.5 h-5 w-5 shrink-0 text-emerald-600" />
 
-                  <p className="text-sm font-semibold leading-5 text-emerald-700">
+                  <p className="whitespace-pre-line text-sm font-semibold leading-5 text-emerald-700">
                     {notice}
                   </p>
                 </div>
@@ -975,17 +1111,6 @@ export default function LoginPage() {
                   className="font-black text-blue-700 underline decoration-blue-300 underline-offset-4 transition hover:text-purple-700"
                 >
                   Create an account
-                </Link>
-              </p>
-
-              {/* Personnel login */}
-              <p className="mt-5 text-center text-sm text-slate-500">
-                Authorized staff member?{" "}
-                <Link
-                  to="/admin"
-                  className="font-black text-purple-700 underline decoration-purple-300 underline-offset-4 transition hover:text-blue-700"
-                >
-                  Staff login
                 </Link>
               </p>
             </div>

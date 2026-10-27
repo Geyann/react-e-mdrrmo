@@ -4,14 +4,22 @@ import React, { useEffect, useMemo, useState } from "react";
 import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
 import { supabase } from "../createClient";
+import { useDialog } from "./AppDialog";
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
     PieChart, Pie, Legend
 } from "recharts";
-import { Check, X, Clock, CheckCircle, XCircle, Search, AlertCircle, History, CalendarDays, Download } from "lucide-react";
+import {
+    Check, X, Clock, CheckCircle, XCircle, Search, AlertCircle, History,
+    CalendarDays, Download, Loader2
+} from "lucide-react";
+
 const AdminDashboard = () => {
+    // ─────────────────────────────────────────────────────────────
     // Shared State
+    // ─────────────────────────────────────────────────────────────
     const [appointments, setAppointments] = useState([]);
+    const {showAlert, showConfirm} = useDialog();
     const [unavailableDates, setUnavailableDates] = useState([]);
     const [dateVolumeLimits, setDateVolumeLimits] = useState({});
     const [startDate, setStartDate] = useState("");
@@ -21,8 +29,9 @@ const AdminDashboard = () => {
     const [volumeLimit, setVolumeLimit] = useState("");
     const [showVolumeModal, setShowVolumeModal] = useState(false);
     const [makeUnavailable, setMakeUnavailable] = useState(false);
+
     // Summary Report State
-const [showReportModal, setShowReportModal] = useState(false);
+    const [showReportModal, setShowReportModal] = useState(false);
 
     // Appointment Management State
     const [allAppointments, setAllAppointments] = useState([]);
@@ -41,8 +50,18 @@ const [showReportModal, setShowReportModal] = useState(false);
     const [historyFilter, setHistoryFilter] = useState("all");
     const [historySearchTerm, setHistorySearchTerm] = useState("");
 
-    // ---------- FIXED: timezone-safe helpers ----------
-    // toISOString().split("T")[0] shifts the date by a day in negative-UTC timezones.
+    // ─────────────────────────────────────────────────────────────
+    // NEW: Decline Reason Modal State
+    // ─────────────────────────────────────────────────────────────
+    const [showDeclineModal, setShowDeclineModal] = useState(false);
+    const [declineAppointment, setDeclineAppointment] = useState(null);
+    const [declineReason, setDeclineReason] = useState("");
+    const [declineError, setDeclineError] = useState("");
+    const [declineSaving, setDeclineSaving] = useState(false);
+
+    // ─────────────────────────────────────────────────────────────
+    // Timezone-safe helpers
+    // ─────────────────────────────────────────────────────────────
     const toDateString = (date) => {
         const y = date.getFullYear();
         const m = String(date.getMonth() + 1).padStart(2, "0");
@@ -50,14 +69,34 @@ const [showReportModal, setShowReportModal] = useState(false);
         return `${y}-${m}-${d}`;
     };
 
-    // Parse month directly from the stored YYYY-MM-DD text (handles "2026-08-07" and ISO strings)
     const getMonthIndex = (dateStr) => {
         if (!dateStr) return -1;
         const m = Number(dateStr.split("T")[0].split("-")[1]);
         return m >= 1 && m <= 12 ? m - 1 : -1;
     };
 
-    // Auto-mark date as unavailable when volume limit is reached
+    // ─────────────────────────────────────────────────────────────
+    // Notification helper
+    // ─────────────────────────────────────────────────────────────
+    const createNotification = async (userId, title, message, type, relatedId) => {
+        if (!userId) return;
+        try {
+            const { error } = await supabase.from("notifications").insert({
+                user_id: userId,
+                title,
+                message,
+                type,
+                related_id: relatedId,
+            });
+            if (error) console.error("Notification insert error:", error);
+        } catch (err) {
+            console.error("Failed to create notification:", err);
+        }
+    };
+
+    // ─────────────────────────────────────────────────────────────
+    // Auto-mark date unavailable when volume limit is reached
+    // ─────────────────────────────────────────────────────────────
     const autoMarkUnavailableIfFull = async (date, limit, currentBookingCount) => {
         if (!limit) return;
         if (currentBookingCount >= limit) {
@@ -79,7 +118,9 @@ const [showReportModal, setShowReportModal] = useState(false);
         }
     };
 
+    // ─────────────────────────────────────────────────────────────
     // Fetch all data
+    // ─────────────────────────────────────────────────────────────
     const fetchData = async () => {
         setLoading(true);
         try {
@@ -104,12 +145,8 @@ const [showReportModal, setShowReportModal] = useState(false);
             const limits = {};
 
             restrictionData?.forEach(restriction => {
-                if (restriction.is_unavailable) {
-                    unavailable.push(restriction.date);
-                }
-                if (restriction.volume_limit) {
-                    limits[restriction.date] = restriction.volume_limit;
-                }
+                if (restriction.is_unavailable) unavailable.push(restriction.date);
+                if (restriction.volume_limit) limits[restriction.date] = restriction.volume_limit;
             });
 
             const updatedUnavailable = [...unavailable];
@@ -135,10 +172,7 @@ const [showReportModal, setShowReportModal] = useState(false);
             setUnavailableDates(updatedUnavailable);
             setDateVolumeLimits(limits);
 
-            // ============================================================
-            // FIXED: Select all appointments directly — no join needed
-            // Uses user_id_from_auth (auth UUID) as the user identifier
-            // ============================================================
+            // Load all appointments directly
             const { data: allApts, error: allAptsError } = await supabase
                 .from("appointments")
                 .select("*")
@@ -147,17 +181,14 @@ const [showReportModal, setShowReportModal] = useState(false);
             if (allAptsError) throw allAptsError;
 
             // Normalize appointments
-            const processedApts = (allApts || []).map(apt => {
-                return {
-                    ...apt,
-                    id: apt.appointmentId || apt.id,
-                    appointmentId: apt.appointmentId || apt.id,
-                    status: apt.status || "pending",
-                    // Use user_id_from_auth (auth UUID) as primary user ID
-                    // Falls back to user_id (text) if null
-                    user_id: apt.user_id_from_auth || apt.userId || "N/A", // Changed apt.user_id to apt.userId as per the `createAppointment` logic
-                };
-            });
+            const processedApts = (allApts || []).map(apt => ({
+                ...apt,
+                id: apt.appointmentId || apt.id,
+                appointmentId: apt.appointmentId || apt.id,
+                status: apt.status || "pending",
+                // Use Supabase Auth UUID as the primary user identifier
+                user_id: apt.user_id_from_auth || "N/A",
+            }));
 
             setAllAppointments(processedApts);
 
@@ -175,7 +206,9 @@ const [showReportModal, setShowReportModal] = useState(false);
         setLoading(false);
     };
 
+    // ─────────────────────────────────────────────────────────────
     // Filter appointments for the main Appointments tab
+    // ─────────────────────────────────────────────────────────────
     useEffect(() => {
         let filtered = allAppointments;
 
@@ -197,9 +230,12 @@ const [showReportModal, setShowReportModal] = useState(false);
 
     useEffect(() => {
         fetchData();
+        // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [startDate, endDate]);
 
+    // ─────────────────────────────────────────────────────────────
     // Toggle date availability
+    // ─────────────────────────────────────────────────────────────
     const toggleDateAvailability = async (date) => {
         try {
             const isCurrentlyUnavailable = unavailableDates.includes(date);
@@ -227,26 +263,26 @@ const [showReportModal, setShowReportModal] = useState(false);
             }
         } catch (error) {
             console.error("Error toggling date availability:", error);
-            alert("Failed to update date availability");
+            await showAlert("Failed to update date availability");
         }
     };
 
+    // ─────────────────────────────────────────────────────────────
     // Set volume limit for a date
+    // ─────────────────────────────────────────────────────────────
     const setVolumeLimitForDate = async () => {
         if (!selectedDate || !volumeLimit) {
-            alert("Please select a date and enter a volume limit");
+            await showAlert("Please select a date and enter a volume limit");
             return;
         }
 
         try {
             const limit = parseInt(volumeLimit);
             if (limit < 1) {
-                alert("Volume limit must be at least 1");
+                await showAlert("Volume limit must be at least 1");
                 return;
             }
 
-            // FIXED: count from ALL appointments (unfiltered) so date-range filters
-            // don't corrupt the booking count used for auto-disable
             const currentBookingCount = allAppointments.filter(a => a.date === selectedDate).length;
             const shouldBeUnavailable = makeUnavailable || (currentBookingCount >= limit);
 
@@ -280,47 +316,149 @@ const [showReportModal, setShowReportModal] = useState(false);
             setShowVolumeModal(false);
 
             if (currentBookingCount >= limit) {
-                alert(`Volume limit for ${selectedDate} set to ${limit}. Date has been auto-marked as unavailable because ${currentBookingCount} appointments already exist.`);
+                await showAlert(`Volume limit for ${selectedDate} set to ${limit}. Date has been auto-marked as unavailable because ${currentBookingCount} appointments already exist.`);
             } else {
-                alert(`Volume limit for ${selectedDate} set to ${limit}`);
+                await showAlert(`Volume limit for ${selectedDate} set to ${limit}`);
             }
         } catch (error) {
             console.error("Error setting volume limit:", error);
-            alert("Failed to set volume limit");
+            await showAlert("Failed to set volume limit");
         }
     };
 
     const handleCalendarDateClick = (date) => {
-        const dateString = toDateString(date); // FIXED: timezone-safe
+        const dateString = toDateString(date);
         setSelectedDate(dateString);
         setVolumeLimit(dateVolumeLimits[dateString] ? dateVolumeLimits[dateString].toString() : "");
         setMakeUnavailable(unavailableDates.includes(dateString));
         setShowVolumeModal(true);
     };
 
-    // Update appointment status
-    const updateAppointmentStatus = async (appointmentId, newStatus) => {
+    // ─────────────────────────────────────────────────────────────
+    // Approve handler (direct)
+    // ─────────────────────────────────────────────────────────────
+    const handleApprove = async (appointmentId) => {
+        await updateAppointmentStatus(appointmentId, "approved");
+    };
+
+    // ─────────────────────────────────────────────────────────────
+    // Open / close the decline modal
+    // ─────────────────────────────────────────────────────────────
+    const openDeclineModal = (apt) => {
+        setDeclineAppointment(apt);
+        setDeclineReason("");
+        setDeclineError("");
+        setShowDeclineModal(true);
+    };
+
+    const closeDeclineModal = () => {
+        if (declineSaving) return;
+        setShowDeclineModal(false);
+        setDeclineAppointment(null);
+        setDeclineReason("");
+        setDeclineError("");
+    };
+
+    // ─────────────────────────────────────────────────────────────
+    // Submit decline with reason
+    // ─────────────────────────────────────────────────────────────
+    const submitDecline = async () => {
+        if (!declineAppointment) return;
+
+        const trimmed = declineReason.trim();
+        if (trimmed.length < 5) {
+            setDeclineError("Please provide a reason (at least 5 characters).");
+            return;
+        }
+
+        setDeclineSaving(true);
+        setDeclineError("");
+
+        await updateAppointmentStatus(
+            declineAppointment.appointmentId,
+            "rejected",
+            trimmed
+        );
+
+        setDeclineSaving(false);
+        setShowDeclineModal(false);
+        setDeclineAppointment(null);
+        setDeclineReason("");
+    };
+
+    // ─────────────────────────────────────────────────────────────
+    // Update appointment status (with decline reason support)
+    // ─────────────────────────────────────────────────────────────
+    const updateAppointmentStatus = async (appointmentId, newStatus, reason = null) => {
         try {
-            const { error } = await supabase
+            const updatePayload = {
+                status: newStatus,
+                updated_at: new Date().toISOString(),
+            };
+
+            // Only persist a reason when rejecting; clear it otherwise.
+            if (newStatus === "rejected") {
+                updatePayload.decline_reason = reason || null;
+            } else {
+                updatePayload.decline_reason = null;
+            }
+
+            const { data: updatedRow, error } = await supabase
                 .from("appointments")
-                .update({
-                    status: newStatus,
-                    updated_at: new Date().toISOString(),
-                })
-                .eq("appointmentId", appointmentId);
+                .update(updatePayload)
+                .eq("appointmentId", appointmentId)
+                .select("*, user_id_from_auth, userId, fullName, purpose, date, time, decline_reason")
+                .single();
 
             if (error) {
-                if (error.message && error.message.includes("status")) {
-                    alert("The 'status' column doesn't exist in the appointments table. Please add it with: ALTER TABLE appointments ADD COLUMN status TEXT DEFAULT 'pending';");
-                } else if (error.message && error.message.includes("updated_at")) {
-                    alert("The 'updated_at' column doesn't exist. Please add it with: ALTER TABLE appointments ADD COLUMN updated_at TIMESTAMPTZ;");
+                if (error.message?.includes("decline_reason")) {
+                    await showAlert(
+                        "The 'decline_reason' column is missing.\n\n" +
+                        "Run this in Supabase SQL Editor:\n" +
+                        "ALTER TABLE public.appointments ADD COLUMN decline_reason text null;"
+                    );
+                } else if (error.message?.includes("status")) {
+                    await showAlert("The 'status' column is missing in the appointments table.");
+                } else if (error.message?.includes("updated_at")) {
+                    await showAlert("The 'updated_at' column is missing in the appointments table.");
                 } else {
                     throw error;
                 }
                 return;
             }
 
-            // If approving an appointment, check if the date's volume limit is reached
+            // Send notification to the user
+            const targetAuthUserId = updatedRow?.user_id_from_auth || null;
+
+            if (targetAuthUserId) {
+                if (newStatus === "approved") {
+                    await createNotification(
+                        targetAuthUserId,
+                        "Appointment Approved",
+                        `Your appointment for "${updatedRow.purpose || "appointment"}" on ${updatedRow.date || ""} at ${updatedRow.time || ""} has been approved.`,
+                        "success",
+                        appointmentId
+                    );
+                } else if (newStatus === "rejected") {
+                    await createNotification(
+                        targetAuthUserId,
+                        "Appointment Declined",
+                        `Your appointment for "${updatedRow.purpose || "appointment"}" on ${updatedRow.date || ""} at ${updatedRow.time || ""} has been declined.\n\nReason: ${reason || "No reason provided."}`,
+                        "error",
+                        appointmentId
+                    );
+                } else if (newStatus === "pending") {
+                    await createNotification(
+                        targetAuthUserId,
+                        "Appointment Reset",
+                        `Your appointment for "${updatedRow.purpose || "appointment"}" on ${updatedRow.date || ""} at ${updatedRow.time || ""} has been reset to pending.`,
+                        "info",
+                        appointmentId
+                    );
+                }
+            }
+
+            // If approving, check the date's volume limit
             if (newStatus === "approved") {
                 const updatedAppt = allAppointments.find(a => a.appointmentId === appointmentId);
                 if (updatedAppt) {
@@ -342,11 +480,13 @@ const [showReportModal, setShowReportModal] = useState(false);
             fetchData();
         } catch (err) {
             console.error("Error updating appointment:", err);
-            alert("Failed to update appointment: " + err.message);
+            await showAlert("Failed to update appointment: " + err.message);
         }
     };
 
+    // ─────────────────────────────────────────────────────────────
     // Chart Data Processing
+    // ─────────────────────────────────────────────────────────────
     const purposeCounts = appointments.reduce((acc, curr) => {
         const p = curr.purpose || "Unspecified";
         acc[p] = (acc[p] || 0) + 1;
@@ -366,25 +506,20 @@ const [showReportModal, setShowReportModal] = useState(false);
         { name: "Rejected", value: appointmentStats.rejected, fill: "#F87171" },
     ];
 
-    // ============================================================
-    // NEW: Monthly Appointment Trends (same logic as AdminBorrowAnalytics)
-    // Groups appointments into Jan–Dec, stacked bars by purpose,
-    // filtered by the shared startDate/endDate range.
-    // ============================================================
+    // ─────────────────────────────────────────────────────────────
+    // Monthly Appointment Trends
+    // ─────────────────────────────────────────────────────────────
     const monthlyTrendData = useMemo(() => {
         const months = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-        // 1. Identify unique purposes (same as uniqueVehicles in borrow analytics)
         const uniquePurposes = [...new Set(appointments.map(a => a.purpose).filter(Boolean))];
 
-        // 2. Initialize monthly structure
         const formattedData = months.map(month => {
             const entry = { name: month };
             uniquePurposes.forEach(p => { entry[p] = 0; });
             return entry;
         });
 
-        // 3. Grouping logic (timezone-safe month parse)
         appointments.forEach(apt => {
             if (apt.date) {
                 const monthIndex = getMonthIndex(apt.date);
@@ -400,9 +535,11 @@ const [showReportModal, setShowReportModal] = useState(false);
     }, [appointments]);
 
     const TREND_COLORS = ["#10b981", "#3b82f6", "#f59e0b", "#8b5cf6", "#ec4899", "#f43f5e", "#6366f1"];
-
     const COLORS = ["#6366f1", "#8b5cf6", "#ec4899", "#f43f5e", "#f59e0b"];
 
+    // ─────────────────────────────────────────────────────────────
+    // Small reusable components
+    // ─────────────────────────────────────────────────────────────
     const StatCard = ({ icon: Icon, label, count, color }) => (
         <div className={`p-4 rounded-xl border ${color} shadow-sm`}>
             <div className="flex items-center justify-between">
@@ -415,7 +552,9 @@ const [showReportModal, setShowReportModal] = useState(false);
         </div>
     );
 
-    // Get unique dates that have either restrictions or appointments
+    // ─────────────────────────────────────────────────────────────
+    // Date restriction helpers
+    // ─────────────────────────────────────────────────────────────
     const getAllDatesWithRestrictions = () => {
         const allDates = new Set([
             ...Object.keys(dateVolumeLimits),
@@ -425,7 +564,9 @@ const [showReportModal, setShowReportModal] = useState(false);
         return Array.from(allDates).sort();
     };
 
-    // Get processed (approved/rejected) appointments for History tab
+    // ─────────────────────────────────────────────────────────────
+    // History helper
+    // ─────────────────────────────────────────────────────────────
     const getHistoryAppointments = () => {
         let history = allAppointments.filter(
             (apt) => apt.status === "approved" || apt.status === "rejected"
@@ -447,6 +588,9 @@ const [showReportModal, setShowReportModal] = useState(false);
         return history;
     };
 
+    // ─────────────────────────────────────────────────────────────
+    // Loading
+    // ─────────────────────────────────────────────────────────────
     if (loading) {
         return (
             <div className="min-h-screen flex items-center justify-center bg-slate-50">
@@ -458,28 +602,31 @@ const [showReportModal, setShowReportModal] = useState(false);
         );
     }
 
+    // ─────────────────────────────────────────────────────────────
+    // Main render
+    // ─────────────────────────────────────────────────────────────
     return (
         <div className="p-6 md:p-10 bg-slate-50 min-h-screen">
             <div className="max-w-7xl mx-auto">
-               {/* Header */}
-<div className="flex items-center justify-between mb-6">
-    <div>
-        <h1 className="text-3xl font-black text-slate-800 flex items-center gap-3">
-            <CalendarDays className="w-8 h-8 text-purple-600" />
-            Admin Appointments
-        </h1>
-        <p className="text-slate-500 mt-1">
-            Manage appointment availability, review requests, and view analytics.
-        </p>
-    </div>
-    <button
-        onClick={() => setShowReportModal(true)}
-        className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold transition"
-    >
-        <Download className="w-5 h-5" />
-        Summary Report
-    </button>
-</div>
+                {/* Header */}
+                <div className="flex items-center justify-between mb-6">
+                    <div>
+                        <h1 className="text-3xl font-black text-slate-800 flex items-center gap-3">
+                            <CalendarDays className="w-8 h-8 text-purple-600" />
+                            Admin Appointments
+                        </h1>
+                        <p className="text-slate-500 mt-1">
+                            Manage appointment availability, review requests, and view analytics.
+                        </p>
+                    </div>
+                    <button
+                        onClick={() => setShowReportModal(true)}
+                        className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold transition"
+                    >
+                        <Download className="w-5 h-5" />
+                        Summary Report
+                    </button>
+                </div>
 
                 {/* Tab Navigation */}
                 <div className="mb-6 flex gap-4 border-b border-slate-200 bg-white p-4 rounded-t-2xl shadow-sm">
@@ -521,7 +668,6 @@ const [showReportModal, setShowReportModal] = useState(false);
                 {activeTab === "calendar" && (
                     <>
                         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 mb-6">
-
                             {/* Analytics Section */}
                             <div className="lg:col-span-2 p-6 bg-white rounded-2xl border border-slate-200 shadow-sm">
                                 <div className="flex flex-wrap justify-between items-center mb-6 gap-4">
@@ -579,7 +725,7 @@ const [showReportModal, setShowReportModal] = useState(false);
                                 <Calendar
                                     onClickDay={handleCalendarDateClick}
                                     tileClassName={({ date }) => {
-                                        const d = toDateString(date); // FIXED: timezone-safe
+                                        const d = toDateString(date);
                                         const isUnavailable = unavailableDates.includes(d);
                                         const hasLimit = dateVolumeLimits[d];
 
@@ -592,7 +738,7 @@ const [showReportModal, setShowReportModal] = useState(false);
                                         }
                                         return baseClasses + "!bg-green-100 !text-slate-800 hover:bg-green-200";
                                     }}
-                                    className="react-calendar-custom" // Add a custom class for further styling if needed
+                                    className="react-calendar-custom"
                                 />
                                 <div className="mt-6 text-xs font-bold text-slate-600 space-y-2 p-3 bg-slate-50 rounded-xl border border-slate-200">
                                     <div className="flex items-center"><span className="inline-block w-4 h-4 bg-red-500 rounded-full mr-2"></span>Unavailable (auto when full)</div>
@@ -602,9 +748,7 @@ const [showReportModal, setShowReportModal] = useState(false);
                             </div>
                         </div>
 
-                        {/* ============================================================ */}
-                        {/* NEW: MONTHLY APPOINTMENT TRENDS (borrow-analytics style) */}
-                        {/* ============================================================ */}
+                        {/* Monthly Trends */}
                         <div className="p-6 bg-white rounded-2xl border border-slate-200 shadow-sm mb-6">
                             <div className="flex flex-wrap justify-between items-start mb-4 gap-4">
                                 <div>
@@ -673,12 +817,10 @@ const [showReportModal, setShowReportModal] = useState(false);
                                     <tbody>
                                         {getAllDatesWithRestrictions().length > 0 ? (
                                             getAllDatesWithRestrictions().map((date) => {
-                                                // FIXED: count from ALL appointments so the date-range
-                                                // filter can't make this number wrong
                                                 const bookingsOnDate = allAppointments.filter(a => a.date === date).length;
                                                 const isUnavailable = unavailableDates.includes(date);
                                                 const limit = dateVolumeLimits[date];
-                                                const isAutoDisabled = limit && bookingsOnDate >= limit && isUnavailable; // Only show auto-disabled if it's also marked unavailable
+                                                const isAutoDisabled = limit && bookingsOnDate >= limit && isUnavailable;
 
                                                 return (
                                                     <tr key={date} className={`border-b border-slate-200 hover:bg-slate-50 ${isAutoDisabled ? 'bg-red-50' : ''}`}>
@@ -709,7 +851,7 @@ const [showReportModal, setShowReportModal] = useState(false);
                                                         <td className="py-3 px-4 space-x-2">
                                                             <button
                                                                 onClick={() => toggleDateAvailability(date)}
-                                                                disabled={isAutoDisabled} // Disable if auto-disabled by full capacity
+                                                                disabled={isAutoDisabled}
                                                                 className={`px-3 py-2 rounded-lg text-xs font-bold transition-colors flex items-center gap-1 ${
                                                                     isAutoDisabled
                                                                         ? "bg-slate-300 text-slate-500 cursor-not-allowed"
@@ -752,36 +894,16 @@ const [showReportModal, setShowReportModal] = useState(false);
                 )}
 
                 {/* ===================== */}
-                {/* APPOINTMENTS TAB        */}
+                {/* APPOINTMENTS TAB */}
                 {/* ===================== */}
                 {activeTab === "appointments" && (
                     <>
                         {/* Statistics Cards */}
                         <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-6">
-                            <StatCard
-                                icon={Clock}
-                                label="Pending Approval"
-                                count={appointmentStats.pending}
-                                color="bg-yellow-50 border-yellow-200 text-yellow-700"
-                            />
-                            <StatCard
-                                icon={CheckCircle}
-                                label="Approved"
-                                count={appointmentStats.approved}
-                                color="bg-green-50 border-green-200 text-green-700"
-                            />
-                            <StatCard
-                                icon={XCircle}
-                                label="Rejected"
-                                count={appointmentStats.rejected}
-                                color="bg-red-50 border-red-200 text-red-700"
-                            />
-                            <StatCard
-                                icon={CalendarDays}
-                                label="Total Appointments"
-                                count={appointmentStats.total}
-                                color="bg-blue-50 border-blue-200 text-blue-700"
-                            />
+                            <StatCard icon={Clock} label="Pending Approval" count={appointmentStats.pending} color="bg-yellow-50 border-yellow-200 text-yellow-700" />
+                            <StatCard icon={CheckCircle} label="Approved" count={appointmentStats.approved} color="bg-green-50 border-green-200 text-green-700" />
+                            <StatCard icon={XCircle} label="Rejected" count={appointmentStats.rejected} color="bg-red-50 border-red-200 text-red-700" />
+                            <StatCard icon={CalendarDays} label="Total Appointments" count={appointmentStats.total} color="bg-blue-50 border-blue-200 text-blue-700" />
                         </div>
 
                         {/* Status Pie Chart */}
@@ -815,7 +937,6 @@ const [showReportModal, setShowReportModal] = useState(false);
                         {/* Filters and Search */}
                         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 mb-6">
                             <div className="flex flex-col sm:flex-row gap-3">
-                                {/* Search */}
                                 <div className="relative flex-1">
                                     <Search className="absolute left-3 top-3 w-5 h-5 text-slate-400" />
                                     <input
@@ -827,7 +948,6 @@ const [showReportModal, setShowReportModal] = useState(false);
                                     />
                                 </div>
 
-                                {/* Filter Buttons */}
                                 <div className="flex gap-2 flex-wrap">
                                     {["all", "pending", "approved", "rejected"].map((status) => (
                                         <button
@@ -868,7 +988,6 @@ const [showReportModal, setShowReportModal] = useState(false);
                                                     key={apt.id || apt.appointmentId}
                                                     className="border-b border-slate-200 hover:bg-slate-50 transition"
                                                 >
-                                                    {/* USER ID CELL — shows user_id_from_auth (auth UUID) */}
                                                     <td className="px-4 py-4">
                                                         <p className="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-1 rounded truncate max-w-[120px]">
                                                             {apt.user_id}
@@ -909,14 +1028,14 @@ const [showReportModal, setShowReportModal] = useState(false);
                                                             {apt.status === "pending" ? (
                                                                 <>
                                                                     <button
-                                                                        onClick={() => updateAppointmentStatus(apt.appointmentId, "approved")}
+                                                                        onClick={() => handleApprove(apt.appointmentId)}
                                                                         className="flex items-center gap-1 px-3 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg text-xs font-bold transition"
                                                                     >
                                                                         <Check className="w-3 h-3" />
                                                                         Approve
                                                                     </button>
                                                                     <button
-                                                                        onClick={() => updateAppointmentStatus(apt.appointmentId, "rejected")}
+                                                                        onClick={() => openDeclineModal(apt)}
                                                                         className="flex items-center gap-1 px-3 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs font-bold transition"
                                                                     >
                                                                         <X className="w-3 h-3" />
@@ -948,7 +1067,6 @@ const [showReportModal, setShowReportModal] = useState(false);
                             </div>
                         </div>
 
-                        {/* Pagination Info */}
                         <div className="mt-4 text-sm text-slate-500 text-center">
                             Showing {filteredAppointments.length} of {allAppointments.length} total appointments
                         </div>
@@ -956,7 +1074,7 @@ const [showReportModal, setShowReportModal] = useState(false);
                 )}
 
                 {/* ===================== */}
-                {/* HISTORY TAB             */}
+                {/* HISTORY TAB */}
                 {/* ===================== */}
                 {activeTab === "history" && (
                     <>
@@ -969,7 +1087,6 @@ const [showReportModal, setShowReportModal] = useState(false);
                                 View all approved and declined appointments.
                             </p>
 
-                            {/* Search & Filter */}
                             <div className="flex flex-col md:flex-row gap-3 mb-6">
                                 <div className="flex-1 relative">
                                     <Search className="absolute left-3 top-3 w-5 h-5 text-slate-400" />
@@ -998,7 +1115,6 @@ const [showReportModal, setShowReportModal] = useState(false);
                                 </div>
                             </div>
 
-                            {/* Summary Cards */}
                             <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 mb-6">
                                 <div className="p-4 rounded-xl border border-green-200 bg-green-50 shadow-sm">
                                     <p className="text-xs font-bold opacity-70 text-green-700">Approved</p>
@@ -1017,7 +1133,6 @@ const [showReportModal, setShowReportModal] = useState(false);
                             </div>
                         </div>
 
-                        {/* History Table */}
                         <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
                             <div className="overflow-x-auto">
                                 <table className="w-full">
@@ -1043,7 +1158,6 @@ const [showReportModal, setShowReportModal] = useState(false);
                                                     <td className="px-4 py-4 text-sm text-slate-500 font-mono">
                                                         {index + 1}
                                                     </td>
-                                                    {/* USER ID CELL — shows user_id_from_auth (auth UUID) */}
                                                     <td className="px-4 py-4">
                                                         <p className="text-xs font-mono text-slate-500 bg-slate-100 px-2 py-1 rounded truncate max-w-[120px]">
                                                             {apt.user_id}
@@ -1062,9 +1176,26 @@ const [showReportModal, setShowReportModal] = useState(false);
                                                         </div>
                                                     </td>
                                                     <td className="px-4 py-4">
-                                                        <p className="text-sm text-slate-600 max-w-xs truncate">
-                                                            {apt.reason || "N/A"}
-                                                        </p>
+                                                        <div className="text-sm text-slate-600 max-w-xs">
+                                                            {apt.reason ? (
+                                                                <p className="truncate" title={apt.reason}>
+                                                                    <span className="font-semibold text-slate-700">Request: </span>
+                                                                    {apt.reason}
+                                                                </p>
+                                                            ) : (
+                                                                <p className="italic text-slate-400">No notes</p>
+                                                            )}
+
+                                                            {apt.status === "rejected" && apt.decline_reason && (
+                                                                <p
+                                                                    className="mt-1 truncate text-xs font-semibold text-red-700"
+                                                                    title={apt.decline_reason}
+                                                                >
+                                                                    <span className="font-bold">Declined: </span>
+                                                                    {apt.decline_reason}
+                                                                </p>
+                                                            )}
+                                                        </div>
                                                     </td>
                                                     <td className="px-4 py-4">
                                                         <span
@@ -1108,14 +1239,15 @@ const [showReportModal, setShowReportModal] = useState(false);
                             </div>
                         </div>
 
-                        {/* Pagination Info */}
                         <div className="mt-4 text-sm text-slate-500 text-center">
                             Showing {getHistoryAppointments().length} processed appointment(s)
                         </div>
                     </>
                 )}
 
-                {/* Volume Limit Modal */}
+                {/* ============================================================= */}
+                {/* VOLUME LIMIT MODAL                                            */}
+                {/* ============================================================= */}
                 {showVolumeModal && (
                     <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
                         <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl border border-slate-200">
@@ -1169,31 +1301,167 @@ const [showReportModal, setShowReportModal] = useState(false);
                         </div>
                     </div>
                 )}
-                {/* Summary Report Modal */}
-{showReportModal && (
-    <AdminAppointmentsSummaryReportModal
-        reportData={allAppointments}
-        dateRange={{ startDate, endDate }}
-        unavailableDates={unavailableDates}
-        dateVolumeLimits={dateVolumeLimits}
-        onClose={() => setShowReportModal(false)}
-        onPrint={() => window.print()}
-    />
-)}
+
+                {/* ============================================================= */}
+                {/* DECLINE REASON MODAL                                          */}
+                {/* ============================================================= */}
+                {showDeclineModal && declineAppointment && (
+                    <div
+                        className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4"
+                        onClick={closeDeclineModal}
+                    >
+                        <div
+                            role="dialog"
+                            aria-modal="true"
+                            aria-labelledby="decline-modal-title"
+                            className="bg-white rounded-2xl border border-slate-200 shadow-2xl w-full max-w-md overflow-hidden"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            {/* Header */}
+                            <div className="flex items-center justify-between p-4 border-b border-slate-200">
+                                <div className="flex items-center gap-3">
+                                    <div className="w-10 h-10 rounded-xl bg-red-100 text-red-600 flex items-center justify-center">
+                                        <XCircle className="w-5 h-5" />
+                                    </div>
+                                    <div>
+                                        <h3
+                                            id="decline-modal-title"
+                                            className="font-bold text-slate-800"
+                                        >
+                                            Decline Appointment
+                                        </h3>
+                                        <p className="text-xs text-slate-500">
+                                            {declineAppointment.fullName || "Resident"} ·{" "}
+                                            {declineAppointment.purpose || "Appointment"}
+                                        </p>
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={closeDeclineModal}
+                                    disabled={declineSaving}
+                                    aria-label="Close decline dialog"
+                                    className="p-2 rounded-lg text-slate-500 hover:bg-slate-100 disabled:opacity-50"
+                                >
+                                    <X className="w-5 h-5" />
+                                </button>
+                            </div>
+
+                            {/* Body */}
+                            <div className="p-5 space-y-4">
+                                {/* Warning banner */}
+                                <div className="rounded-xl border border-red-200 bg-red-50 p-4">
+                                    <p className="font-bold text-red-800 text-sm">
+                                        The requester will see this reason
+                                    </p>
+                                    <p className="mt-1 text-xs leading-relaxed text-red-700">
+                                        The reason you enter below is shown to the resident in
+                                        their notification and on their appointment tracking
+                                        page.
+                                    </p>
+                                </div>
+
+                                {/* Inline error */}
+                                {declineError && (
+                                    <div
+                                        role="alert"
+                                        className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+                                    >
+                                        <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                                        <p>{declineError}</p>
+                                    </div>
+                                )}
+
+                                {/* Reason input */}
+                                <div>
+                                    <label
+                                        htmlFor="decline-reason"
+                                        className="block text-sm font-bold text-slate-700 mb-1"
+                                    >
+                                        Reason for declining
+                                        <span className="ml-1 text-xs font-normal text-slate-400">
+                                            (required, at least 5 characters)
+                                        </span>
+                                    </label>
+                                    <textarea
+                                        id="decline-reason"
+                                        rows={4}
+                                        maxLength={500}
+                                        value={declineReason}
+                                        onChange={(e) => setDeclineReason(e.target.value)}
+                                        placeholder="e.g. The requested date is fully booked. Please choose another available date from the calendar."
+                                        className="w-full p-3 border border-slate-300 rounded-xl focus:ring-2 focus:ring-red-500 focus:border-red-500 outline-none resize-y text-sm"
+                                        autoFocus
+                                    />
+                                    <p className="mt-1 text-xs text-slate-500">
+                                        {declineReason.length}/500 characters.
+                                    </p>
+                                </div>
+
+                                {/* Actions */}
+                                <div className="flex justify-end gap-3 border-t border-slate-200 pt-4">
+                                    <button
+                                        type="button"
+                                        onClick={closeDeclineModal}
+                                        disabled={declineSaving}
+                                        className="px-4 py-2.5 border border-slate-300 rounded-xl font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50 transition"
+                                    >
+                                        Cancel
+                                    </button>
+                                    <button
+                                        type="button"
+                                        onClick={submitDecline}
+                                        disabled={declineSaving || declineReason.trim().length < 5}
+                                        className="flex items-center gap-2 px-5 py-2.5 bg-red-600 hover:bg-red-700 disabled:bg-red-400 text-white rounded-xl font-bold transition"
+                                    >
+                                        {declineSaving ? (
+                                            <>
+                                                <Loader2 className="w-4 h-4 animate-spin" />
+                                                Declining...
+                                            </>
+                                        ) : (
+                                            <>
+                                                <XCircle className="w-4 h-4" />
+                                                Decline Appointment
+                                            </>
+                                        )}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* ============================================================= */}
+                {/* SUMMARY REPORT MODAL                                          */}
+                {/* ============================================================= */}
+                {showReportModal && (
+                    <AdminAppointmentsSummaryReportModal
+                        reportData={allAppointments}
+                        dateRange={{ startDate, endDate }}
+                        unavailableDates={unavailableDates}
+                        dateVolumeLimits={dateVolumeLimits}
+                        onClose={() => setShowReportModal(false)}
+                    />
+                )}
             </div>
         </div>
     );
 };
 
 export default AdminDashboard;
+
 // =============================================
 // APPOINTMENTS SUMMARY-ONLY REPORT
 // Adjustable coverage dates via toolbar.
 // =============================================
 const AdminAppointmentsSummaryReportModal = ({
-    reportData, dateRange, unavailableDates, dateVolumeLimits, onClose, onPrint,
+    reportData,
+    dateRange,
+    unavailableDates,
+    dateVolumeLimits,
+    onClose,
 }) => {
-    // ---- Adjustable coverage dates (initialized from the dashboard range) ----
     const [fromDate, setFromDate] = useState(dateRange?.startDate || "");
     const [toDate, setToDate] = useState(dateRange?.endDate || "");
 
@@ -1205,16 +1473,17 @@ const AdminAppointmentsSummaryReportModal = ({
         return `${y}-${m}-${day}`;
     })();
 
-    const applyPreset = (from, to) => { setFromDate(from); setToDate(to); };
+    const applyPreset = (from, to) => {
+        setFromDate(from);
+        setToDate(to);
+    };
 
-    // ---- Timezone-safe helpers (same approach as parent) ----
     const toKey = (dateStr) => (dateStr ? String(dateStr).split("T")[0] : "");
     const monthIdx = (dateStr) => {
         const m = Number(toKey(dateStr).split("-")[1]);
         return m >= 1 && m <= 12 ? m - 1 : -1;
     };
 
-    // ---- Filtered data (respects the adjustable coverage dates) ----
     const filtered = useMemo(() => {
         return (reportData || []).filter((apt) => {
             const key = toKey(apt.date);
@@ -1228,7 +1497,6 @@ const AdminAppointmentsSummaryReportModal = ({
 
     const pct = (count) => (data.length ? Math.round((count / data.length) * 100) : 0);
 
-    // ---- Status counts (from filtered data) ----
     const statusCounts = { pending: 0, approved: 0, rejected: 0, other: 0 };
     data.forEach((apt) => {
         const s = (apt.status || "pending").toLowerCase();
@@ -1237,11 +1505,17 @@ const AdminAppointmentsSummaryReportModal = ({
     });
     const approvalRate =
         statusCounts.approved + statusCounts.rejected > 0
-            ? Math.round((statusCounts.approved / (statusCounts.approved + statusCounts.rejected)) * 100)
+            ? Math.round(
+                  (statusCounts.approved /
+                      (statusCounts.approved + statusCounts.rejected)) *
+                      100,
+              )
             : 0;
 
-    // ---- Monthly totals (Jan–Dec, from filtered data) ----
-    const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+    const MONTHS = [
+        "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+        "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ];
     const monthlyTotals = MONTHS.map((name) => ({ name, count: 0 }));
     data.forEach((apt) => {
         const i = monthIdx(apt.date);
@@ -1252,7 +1526,6 @@ const AdminAppointmentsSummaryReportModal = ({
         ? activeMonths.reduce((a, b) => (b.count > a.count ? b : a))
         : null;
 
-    // ---- Purpose breakdown (from filtered data) ----
     const purposeCounts = {};
     data.forEach((apt) => {
         const p = apt.purpose || "Unspecified";
@@ -1263,28 +1536,285 @@ const AdminAppointmentsSummaryReportModal = ({
         .sort((a, b) => b.count - a.count);
     const topPurpose = purposeData[0] || null;
 
-    // ---- Chart data ----
-    const statusPieData = [
-        { name: "Pending", value: statusCounts.pending, fill: "#FBBF24" },
-        { name: "Approved", value: statusCounts.approved, fill: "#34D399" },
-        { name: "Rejected", value: statusCounts.rejected, fill: "#F87171" },
-    ].filter((d) => d.value > 0);
-
-    // ---- Date restrictions summary (from props, unaffected by coverage) ----
     const unavailable = unavailableDates || [];
     const limits = dateVolumeLimits || {};
     const limitedDates = Object.entries(limits)
-        .map(([date, limit]) => ({ date, limit, isUnavailable: unavailable.includes(date) }))
+        .map(([date, limit]) => ({
+            date,
+            limit,
+            isUnavailable: unavailable.includes(date),
+        }))
         .sort((a, b) => a.date.localeCompare(b.date));
 
-    // ---- Labels ----
     const generatedAt = new Date().toLocaleString("en-US", {
-        year: "numeric", month: "long", day: "numeric", hour: "2-digit", minute: "2-digit",
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
     });
     const rangeLabel =
         fromDate || toDate
             ? `${fromDate || "Start"} → ${toDate || "End"}`
             : "All dates";
+
+    const escapeHtml = (value) =>
+        String(value ?? "")
+            .replace(/&/g, "&amp;")
+            .replace(/</g, "&lt;")
+            .replace(/>/g, "&gt;")
+            .replace(/"/g, "&quot;")
+            .replace(/'/g, "&#39;");
+
+    const handlePrint = () => {
+        const card = (label, value, sub) => `
+      <div class="card">
+        <div class="card-label">${escapeHtml(label)}</div>
+        <div class="card-value">${escapeHtml(value)}</div>
+        ${sub ? `<div class="card-sub">${escapeHtml(sub)}</div>` : ""}
+      </div>`;
+
+        const topCards = `
+      ${card("Total Appointments", data.length, "In coverage")}
+      ${card("Approval Rate", `${approvalRate}%`, "Of processed")}
+      ${card(
+          "Peak Month",
+          peakMonth ? peakMonth.name : "—",
+          peakMonth ? `${peakMonth.count} appointments` : "No data",
+      )}
+      ${card(
+          "Top Purpose",
+          topPurpose ? topPurpose.purpose : "—",
+          topPurpose ? `${topPurpose.count} bookings` : "No data",
+      )}
+    `;
+
+        const statusCards = `
+      ${card("Pending", statusCounts.pending, `${pct(statusCounts.pending)}% of total`)}
+      ${card("Approved", statusCounts.approved, `${pct(statusCounts.approved)}% of total`)}
+      ${card("Rejected", statusCounts.rejected, `${pct(statusCounts.rejected)}% of total`)}
+      ${card("Other / Reset", statusCounts.other, `${pct(statusCounts.other)}% of total`)}
+    `;
+
+        const purposeRows =
+            purposeData.length === 0
+                ? `<tr><td colspan="3">No data in the covered range.</td></tr>`
+                : purposeData
+                      .map(
+                          (d) => `
+          <tr>
+            <td>${escapeHtml(d.purpose)}</td>
+            <td class="center">${d.count}</td>
+            <td class="center">${pct(d.count)}%</td>
+          </tr>`,
+                      )
+                      .join("");
+
+        const restrictionRows =
+            limitedDates.length === 0
+                ? `<tr><td colspan="3">No volume limits configured.</td></tr>`
+                : limitedDates
+                      .map(
+                          (d) => `
+          <tr>
+            <td>${escapeHtml(d.date)}</td>
+            <td class="center">${d.limit}</td>
+            <td class="center">${d.isUnavailable ? "Unavailable" : "Open"}</td>
+          </tr>`,
+                      )
+                      .join("");
+
+        const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Appointments Summary Report</title>
+  <style>
+    @page { size: A4 portrait; margin: 12mm; }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0;
+      background: #ffffff;
+      color: #000000;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      font-size: 12px;
+      line-height: 1.45;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    h1 { margin: 0; font-size: 20px; text-align: center; color: #000; }
+    h2, .section-title {
+      margin: 0 0 10px;
+      font-size: 14px;
+      font-weight: 800;
+      color: #000;
+      border-bottom: 1px solid #cbd5e1;
+      padding-bottom: 6px;
+    }
+    .header {
+      text-align: center;
+      border-bottom: 2px solid #000;
+      padding-bottom: 14px;
+      margin-bottom: 18px;
+    }
+    .muted { color: #334155; font-size: 11px; }
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+    .card {
+      border-radius: 10px;
+      padding: 10px 12px;
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      color: #000000;
+    }
+    .card-label { font-size: 10px; font-weight: 700; }
+    .card-value { font-size: 20px; font-weight: 800; margin-top: 2px; word-break: break-word; }
+    .card-sub { font-size: 10px; margin-top: 2px; color: #334155; }
+    .section { margin-bottom: 18px; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    th, td {
+      border: 1px solid #cbd5e1;
+      padding: 6px 7px;
+      text-align: left;
+      vertical-align: top;
+      word-wrap: break-word;
+      background: #ffffff;
+      color: #000000;
+    }
+    th { font-size: 10px; border-bottom: 2px solid #94a3b8; }
+    td.center, th.center { text-align: center; }
+    thead { display: table-header-group; }
+    tr { page-break-inside: avoid; break-inside: avoid; }
+    .avoid-break { page-break-inside: avoid; break-inside: avoid; }
+    .footer {
+      border-top: 1px solid #cbd5e1;
+      padding-top: 10px;
+      text-align: center;
+      color: #334155;
+      font-size: 10px;
+      margin-top: 16px;
+    }
+    @media print {
+      html, body {
+        height: auto !important;
+        overflow: visible !important;
+        background: #ffffff !important;
+        color: #000000 !important;
+      }
+      * {
+        background: #ffffff !important;
+        background-color: #ffffff !important;
+        box-shadow: none !important;
+        color: #000000 !important;
+      }
+      table, th, td, .card {
+        background: #ffffff !important;
+        border-color: #cbd5e1 !important;
+        color: #000000 !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="header avoid-break">
+    <h1>APPOINTMENTS SUMMARY REPORT</h1>
+    <p class="muted" style="margin-top:8px">Generated: ${escapeHtml(generatedAt)}</p>
+    <p class="muted">Coverage: ${escapeHtml(rangeLabel)}</p>
+    <p class="muted">Appointments in coverage: ${data.length}</p>
+  </div>
+
+  <div class="section avoid-break">
+    <div class="grid-4">${topCards}</div>
+  </div>
+
+  <div class="section avoid-break">
+    <h2 class="section-title">Status Overview</h2>
+    <div class="grid-4">${statusCards}</div>
+  </div>
+
+  <div class="section avoid-break">
+    <h2 class="section-title">Appointments by Purpose</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Purpose</th>
+          <th class="center">Count</th>
+          <th class="center">Share</th>
+        </tr>
+      </thead>
+      <tbody>${purposeRows}</tbody>
+    </table>
+  </div>
+
+  <div class="section avoid-break">
+    <h2 class="section-title">Date Restrictions &amp; Volume Limits</h2>
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th>
+          <th class="center">Volume Limit</th>
+          <th class="center">Availability</th>
+        </tr>
+      </thead>
+      <tbody>${restrictionRows}</tbody>
+    </table>
+    <p class="muted" style="margin-top:8px">${unavailable.length} date(s) marked unavailable</p>
+  </div>
+
+  <div class="footer avoid-break">
+    <p>This report is system-generated and reflects data at the time of generation.</p>
+    <p>© ${new Date().getFullYear()} E-MDRRMO</p>
+  </div>
+</body>
+</html>`;
+
+        const existing = document.getElementById("appointments-summary-print-frame");
+        if (existing) existing.remove();
+
+        const iframe = document.createElement("iframe");
+        iframe.id = "appointments-summary-print-frame";
+        iframe.setAttribute("title", "Appointments Summary Print");
+        iframe.style.position = "fixed";
+        iframe.style.right = "0";
+        iframe.style.bottom = "0";
+        iframe.style.width = "0";
+        iframe.style.height = "0";
+        iframe.style.border = "0";
+        iframe.style.opacity = "0";
+        iframe.style.pointerEvents = "none";
+        document.body.appendChild(iframe);
+
+        const frameDoc = iframe.contentDocument || iframe.contentWindow.document;
+        frameDoc.open();
+        frameDoc.write(html);
+        frameDoc.close();
+
+        const triggerPrint = () => {
+            try {
+                iframe.contentWindow.focus();
+                iframe.contentWindow.print();
+            } catch (err) {
+                console.error("Print failed:", err);
+            }
+            setTimeout(() => {
+                try {
+                    iframe.remove();
+                } catch {
+                    /* ignore */
+                }
+            }, 60_000);
+        };
+
+        if (iframe.contentWindow.document.readyState === "complete") {
+            setTimeout(triggerPrint, 300);
+        } else {
+            iframe.onload = () => setTimeout(triggerPrint, 300);
+        }
+    };
 
     const Card = ({ label, value, sub, color }) => (
         <div className={`p-4 rounded-xl border ${color}`}>
@@ -1295,123 +1825,162 @@ const AdminAppointmentsSummaryReportModal = ({
     );
 
     return (
-        <>
-            {/* Print CSS: only the report is visible in the PDF */}
-            <style>{`
-                @media print {
-                    body * { visibility: hidden; }
-                    .summary-report-print, .summary-report-print * { visibility: visible; }
-                    .summary-report-print { position: absolute; top: 0; left: 0; width: 100%; }
-                    .summary-report-print .print-hidden { display: none !important; }
-                    .summary-report-print .print-break-avoid { break-inside: avoid; }
-                }
-            `}</style>
+        <div className="fixed inset-0 bg-black/50 flex items-start justify-center z-50 p-4 overflow-y-auto">
+            <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-3xl my-8">
+                <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-b border-slate-200 sticky top-0 bg-white z-10 rounded-t-2xl">
+                    <h3 className="font-bold text-slate-800">Appointments Summary Report</h3>
 
-            <div className="fixed inset-0 bg-black/50 flex items-start justify-center z-50 p-4 overflow-y-auto">
-                <div className="summary-report-print bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-3xl my-8">
-                    {/* Toolbar — screen only, excluded from PDF */}
-                    <div className="print-hidden flex flex-wrap items-center justify-between gap-3 p-4 border-b border-slate-200 sticky top-0 bg-white z-10 rounded-t-2xl">
-                        <h3 className="font-bold text-slate-800">Appointments Summary Report</h3>
+                    <div className="flex flex-wrap items-center gap-2">
+                        <input
+                            type="date"
+                            value={fromDate}
+                            onChange={(e) => setFromDate(e.target.value)}
+                            className="px-2 py-2 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        />
+                        <span className="text-slate-400 text-sm">→</span>
+                        <input
+                            type="date"
+                            value={toDate}
+                            onChange={(e) => setToDate(e.target.value)}
+                            className="px-2 py-2 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                        />
+                        <button
+                            type="button"
+                            onClick={() => applyPreset("", "")}
+                            className="px-3 py-2 text-xs font-bold border border-slate-300 rounded-xl hover:bg-slate-100 transition"
+                        >
+                            All Time
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => applyPreset(`${todayKey.slice(0, 8)}01`, todayKey)}
+                            className="px-3 py-2 text-xs font-bold border border-slate-300 rounded-xl hover:bg-slate-100 transition"
+                        >
+                            This Month
+                        </button>
+                        <button
+                            type="button"
+                            onClick={() => applyPreset(todayKey, todayKey)}
+                            className="px-3 py-2 text-xs font-bold border border-slate-300 rounded-xl hover:bg-slate-100 transition"
+                        >
+                            Today
+                        </button>
+                    </div>
 
-                        {/* Adjustable dates */}
-                        <div className="flex flex-wrap items-center gap-2">
-                            <input
-                                type="date"
-                                value={fromDate}
-                                onChange={(e) => setFromDate(e.target.value)}
-                                className="px-2 py-2 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                            />
-                            <span className="text-slate-400 text-sm">→</span>
-                            <input
-                                type="date"
-                                value={toDate}
-                                onChange={(e) => setToDate(e.target.value)}
-                                className="px-2 py-2 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-                            />
-                            {/* Presets */}
-                            <button
-                                onClick={() => applyPreset("", "")}
-                                className="px-3 py-2 text-xs font-bold border border-slate-300 rounded-xl hover:bg-slate-100 transition"
-                            >
-                                All Time
-                            </button>
-                            <button
-                                onClick={() => applyPreset(`${todayKey.slice(0, 8)}01`, todayKey)}
-                                className="px-3 py-2 text-xs font-bold border border-slate-300 rounded-xl hover:bg-slate-100 transition"
-                            >
-                                This Month
-                            </button>
-                            <button
-                                onClick={() => applyPreset(todayKey, todayKey)}
-                                className="px-3 py-2 text-xs font-bold border border-slate-300 rounded-xl hover:bg-slate-100 transition"
-                            >
-                                Today
-                            </button>
-                        </div>
+                    <div className="flex gap-2">
+                        <button
+                            type="button"
+                            onClick={handlePrint}
+                            className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold text-sm"
+                        >
+                            <Download className="w-4 h-4" /> Print / Save PDF
+                        </button>
+                        <button
+                            type="button"
+                            onClick={onClose}
+                            className="px-4 py-2 border border-slate-300 rounded-xl font-bold text-slate-700 text-sm hover:bg-slate-100"
+                        >
+                            Close
+                        </button>
+                    </div>
+                </div>
 
-                        <div className="flex gap-2">
-                            <button
-                                onClick={onPrint}
-                                className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 text-white rounded-xl font-bold text-sm"
-                            >
-                                <Download className="w-4 h-4" /> Print / Save PDF
-                            </button>
-                            <button
-                                onClick={onClose}
-                                className="px-4 py-2 border border-slate-300 rounded-xl font-bold text-slate-700 text-sm hover:bg-slate-100"
-                            >
-                                Close
-                            </button>
+                <div className="p-8 text-slate-800 max-h-[70vh] overflow-y-auto">
+                    <div className="text-center border-b border-slate-200 pb-6 mb-8">
+                        <h1 className="text-2xl font-black text-slate-900">APPOINTMENTS SUMMARY REPORT</h1>
+                        <p className="text-sm text-slate-500 mt-2">Generated: {generatedAt}</p>
+                        <p className="text-xs text-slate-400 mt-1">Coverage: {rangeLabel}</p>
+                        <p className="text-xs text-slate-400 mt-1">Appointments in coverage: {data.length}</p>
+                    </div>
+
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+                        <Card label="Total Appointments" value={data.length} sub="In coverage" color="bg-blue-50 border-blue-200 text-blue-700" />
+                        <Card label="Approval Rate" value={`${approvalRate}%`} sub="Of processed" color="bg-emerald-50 border-emerald-200 text-emerald-700" />
+                        <Card
+                            label="Peak Month"
+                            value={peakMonth ? peakMonth.name : "—"}
+                            sub={peakMonth ? `${peakMonth.count} appointments` : "No data"}
+                            color="bg-violet-50 border-violet-200 text-violet-700"
+                        />
+                        <Card
+                            label="Top Purpose"
+                            value={topPurpose ? topPurpose.purpose : "—"}
+                            sub={topPurpose ? `${topPurpose.count} bookings` : "No data"}
+                            color="bg-rose-50 border-rose-200 text-rose-700"
+                        />
+                    </div>
+
+                    <div className="mb-8">
+                        <h2 className="font-bold text-slate-800 mb-3">Status Overview</h2>
+                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                            <Card label="Pending" value={statusCounts.pending} sub={`${pct(statusCounts.pending)}% of total`} color="bg-yellow-50 border-yellow-200 text-yellow-700" />
+                            <Card label="Approved" value={statusCounts.approved} sub={`${pct(statusCounts.approved)}% of total`} color="bg-green-50 border-green-200 text-green-700" />
+                            <Card label="Rejected" value={statusCounts.rejected} sub={`${pct(statusCounts.rejected)}% of total`} color="bg-red-50 border-red-200 text-red-700" />
+                            <Card label="Other / Reset" value={statusCounts.other} sub={`${pct(statusCounts.other)}% of total`} color="bg-slate-50 border-slate-200 text-slate-700" />
                         </div>
                     </div>
 
-                    <div className="p-8 text-slate-800">
-                        {/* Header */}
-                        <div className="text-center border-b border-slate-200 pb-6 mb-8">
-                            <h1 className="text-2xl font-black text-slate-900">APPOINTMENTS SUMMARY REPORT</h1>
-                            <p className="text-sm text-slate-500 mt-2">Generated: {generatedAt}</p>
-                            <p className="text-xs text-slate-400 mt-1">Coverage: {rangeLabel}</p>
-                            <p className="text-xs text-slate-400 mt-1">Appointments in coverage: {data.length}</p>
-                        </div>
+                    <div className="mb-8">
+                        <h2 className="font-bold text-slate-800 mb-3">Appointments by Purpose</h2>
+                        {purposeData.length === 0 ? (
+                            <p className="text-sm text-slate-500">No data in the covered range.</p>
+                        ) : (
+                            <table className="w-full text-sm border-collapse">
+                                <thead>
+                                    <tr className="bg-slate-100">
+                                        <th className="p-2 text-left font-bold border border-slate-200 text-slate-700">Purpose</th>
+                                        <th className="p-2 text-center font-bold border border-slate-200 text-slate-700">Count</th>
+                                        <th className="p-2 text-center font-bold border border-slate-200 text-slate-700">Share</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {purposeData.map((d) => (
+                                        <tr key={d.purpose} className="border-b border-slate-100">
+                                            <td className="p-2 border border-slate-200 font-semibold text-slate-700">{d.purpose}</td>
+                                            <td className="p-2 border border-slate-200 text-center text-slate-600">{d.count}</td>
+                                            <td className="p-2 border border-slate-200 text-center text-slate-600">{pct(d.count)}%</td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        )}
+                    </div>
 
-                        {/* Highlights */}
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8 print-break-avoid">
-                            <Card label="Total Appointments" value={data.length} sub="In coverage" color="bg-blue-50 border-blue-200 text-blue-700" />
-                            <Card label="Approval Rate" value={`${approvalRate}%`} sub="Of processed" color="bg-emerald-50 border-emerald-200 text-emerald-700" />
-                            <Card
-                                label="Peak Month"
-                                value={peakMonth ? peakMonth.name : "—"}
-                                sub={peakMonth ? `${peakMonth.count} appointments` : "No data"}
-                                color="bg-violet-50 border-violet-200 text-violet-700"
-                            />
-                            <Card
-                                label="Top Purpose"
-                                value={topPurpose ? topPurpose.purpose : "—"}
-                                sub={topPurpose ? `${topPurpose.count} bookings` : "No data"}
-                                color="bg-rose-50 border-rose-200 text-rose-700"
-                            />
-                        </div>
+                    <div className="mb-8">
+                        <h2 className="font-bold text-slate-800 mb-3">Date Restrictions &amp; Volume Limits</h2>
+                        {limitedDates.length === 0 ? (
+                            <p className="text-sm text-slate-500">No volume limits configured.</p>
+                        ) : (
+                            <table className="w-full text-sm border-collapse">
+                                <thead>
+                                    <tr className="bg-slate-100">
+                                        <th className="p-2 text-left font-bold border border-slate-200 text-slate-700">Date</th>
+                                        <th className="p-2 text-center font-bold border border-slate-200 text-slate-700">Volume Limit</th>
+                                        <th className="p-2 text-center font-bold border border-slate-200 text-slate-700">Availability</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {limitedDates.map((d) => (
+                                        <tr key={d.date} className="border-b border-slate-100">
+                                            <td className="p-2 border border-slate-200 text-slate-700">{d.date}</td>
+                                            <td className="p-2 border border-slate-200 text-center text-slate-600">{d.limit}</td>
+                                            <td className="p-2 border border-slate-200 text-center text-slate-600">
+                                                {d.isUnavailable ? "Unavailable" : "Open"}
+                                            </td>
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                        )}
+                        <p className="text-xs text-slate-400 mt-2">{unavailable.length} date(s) marked unavailable</p>
+                    </div>
 
-                        {/* Status overview */}
-                        <div className="mb-8 print-break-avoid">
-                            <h2 className="font-bold text-slate-800 mb-3">Status Overview</h2>
-                            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                                <Card label="Pending" value={statusCounts.pending} sub={`${pct(statusCounts.pending)}% of total`} color="bg-yellow-50 border-yellow-200 text-yellow-700" />
-                                <Card label="Approved" value={statusCounts.approved} sub={`${pct(statusCounts.approved)}% of total`} color="bg-green-50 border-green-200 text-green-700" />
-                                <Card label="Rejected" value={statusCounts.rejected} sub={`${pct(statusCounts.rejected)}% of total`} color="bg-red-50 border-red-200 text-red-700" />
-                                <Card label="Other / Reset" value={statusCounts.other} sub={`${pct(statusCounts.other)}% of total`} color="bg-slate-50 border-slate-200 text-slate-700" />
-                            </div>
-                        </div>
-                       
-
-                        {/* Footer */}
-                        <div className="pt-4 border-t border-slate-200 text-center text-xs text-slate-500">
-                            <p>This report is system-generated and reflects data at the time of generation.</p>
-                            <p className="mt-1">© 2023 Your Organization Name</p>
-                        </div>
+                    <div className="pt-4 border-t border-slate-200 text-center text-xs text-slate-500">
+                        <p>This report is system-generated and reflects data at the time of generation.</p>
+                        <p className="mt-1">© {new Date().getFullYear()} E-MDRRMO</p>
                     </div>
                 </div>
             </div>
-        </>
+        </div>
     );
 };

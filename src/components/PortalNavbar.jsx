@@ -17,7 +17,7 @@ import {
   UserRound,
   X,
 } from "lucide-react";
-
+import { useDialog } from "../components/AppDialog";
 import { supabase } from "../createClient";
 import logo from "../Images/logo.png";
 import Notification from "./notification";
@@ -66,6 +66,7 @@ export default function PortalNavbar({
 }) {
   const navigate = useNavigate();
   const location = useLocation();
+  const { showAlert, showConfirm } = useDialog();
 
   const [collapsed, setCollapsed] =
     useState(readSidebarPreference);
@@ -147,7 +148,7 @@ export default function PortalNavbar({
       return;
     }
 
-    const confirmed = window.confirm(
+    const confirmed = await showConfirm(
       `Sign out of the ${portalTitle.toLowerCase()}?`,
     );
 

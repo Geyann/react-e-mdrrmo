@@ -52,7 +52,7 @@ import {
   XAxis,
   YAxis,
 } from "recharts";
-
+import { useDialog } from "../components/AppDialog";
 /* =============================================================
  * CONSTANTS
  * ============================================================= */
@@ -140,6 +140,18 @@ const normalizeUsername = (value) => rawText(value).toLowerCase();
 const normalizeEmail = (value) => rawText(value).toLowerCase();
 
 const validUsername = (value) => USERNAME_PATTERN.test(normalizeUsername(value));
+
+const normalizeStatus = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ");
+
+const isPendingStatus = (value) => {
+  const status = normalizeStatus(value);
+  return status === "pending" || status === "pending approval";
+};
 
 const getIdTypeLabel = (value) => {
   const idType = rawText(value);
@@ -373,12 +385,16 @@ const mergeMissingFields = (primary, fallback) => {
  * ============================================================= */
 
 function StatusBadge({ user }) {
-  const status = String(user.status || "").toLowerCase();
+  const status = normalizeStatus(user.status);
 
-  const isActive = status === "approved" || user.is_active === true;
-  const isPending = status === "pending" || status === "pending_approval";
-  const isInactive =
-    status === "rejected" || status === "inactive" || user.is_active === false;
+  const isPending = status === "pending" || status === "pending approval";
+  const isRejected = status === "rejected";
+  const isInactive = status === "inactive" || user.is_active === false;
+  const isActive =
+    !isPending &&
+    !isRejected &&
+    !isInactive &&
+    (status === "approved" || user.is_active === true);
 
   let className =
     "border border-slate-200 bg-slate-100 text-slate-700";
@@ -392,10 +408,14 @@ function StatusBadge({ user }) {
     className =
       "border border-yellow-200 bg-yellow-100 text-yellow-700";
     label = "Pending";
+  } else if (isRejected) {
+    className =
+      "border border-red-200 bg-red-100 text-red-700";
+    label = "Rejected";
   } else if (isInactive) {
     className =
       "border border-red-200 bg-red-100 text-red-700";
-    label = status === "rejected" ? "Rejected" : "Inactive";
+    label = "Inactive";
   }
 
   return (
@@ -431,7 +451,12 @@ function SmartImage({ src, alt, className = "", fallback = null }) {
   if (!src || failed) return fallback;
 
   return (
-    <img src={src} alt={alt} className={className} onError={() => setFailed(true)} />
+    <img
+      src={src}
+      alt={alt}
+      className={className}
+      onError={() => setFailed(true)}
+    />
   );
 }
 
@@ -565,6 +590,7 @@ function ActiveToggle({ value, onToggle, disabled = false }) {
 function AdminUserManagement() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const { showAlert, showConfirmation } = useDialog();
 
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
@@ -608,7 +634,16 @@ function AdminUserManagement() {
   const [approvePassword, setApprovePassword] = useState("");
   const [approveSaving, setApproveSaving] = useState(false);
   const [approveError, setApproveError] = useState("");
-  const [approveSuccess, setApproveSuccess] = useState("");
+
+  /* ── Decline modal state ─────────────────────────────────────── */
+  const [showDeclineModal, setShowDeclineModal] = useState(false);
+  const [declineTarget, setDeclineTarget] = useState(null);
+  const [declineSaving, setDeclineSaving] = useState(false);
+  const [declineError, setDeclineError] = useState("");
+
+  /* Reason the administrator typed in the decline modal. Sent to the
+   * user the next time they try to sign in. */
+  const [declineReason, setDeclineReason] = useState("");
 
   const currentStaff = useMemo(() => readCurrentStaff(), []);
 
@@ -708,10 +743,19 @@ function AdminUserManagement() {
               ? record.is_active === false
                 ? "inactive"
                 : "approved"
-              : record.status ||
+              : rawText(record.status) ||
                 (record.is_active === false ? "inactive" : "approved"),
           is_active: isAdminRow ? true : record.is_active,
           password: null,
+          /*
+           * Track the pending_registrations row separately. When a
+           * profiles row takes precedence during merge, we still need
+           * the pending row's id so Approve/Decline can address it.
+           */
+          pending_id:
+            sourceTable === "pending_registrations" ? record.id : null,
+          profile_id:
+            sourceTable === "profiles" ? record.id : null,
         };
 
         const key = `account:${identity}`;
@@ -722,12 +766,17 @@ function AdminUserManagement() {
           return;
         }
 
+        let merged;
         if (priority > (previous.priority || 0)) {
-          accountMap.set(key, mergeMissingFields(normalized, previous));
-          return;
+          merged = mergeMissingFields(normalized, previous);
+        } else {
+          merged = mergeMissingFields(previous, normalized);
         }
-
-        accountMap.set(key, mergeMissingFields(previous, normalized));
+        merged.pending_id =
+          previous.pending_id || normalized.pending_id || null;
+        merged.profile_id =
+          previous.profile_id || normalized.profile_id || null;
+        accountMap.set(key, merged);
       };
 
       results.forEach((result, index) => {
@@ -809,8 +858,10 @@ function AdminUserManagement() {
 
       const matchesRole =
         roleFilter === "all" || user.displayRole === roleFilter;
+
       const matchesStatus =
-        statusFilter === "all" || user.status === statusFilter;
+        statusFilter === "all" ||
+        normalizeStatus(user.status) === normalizeStatus(statusFilter);
 
       return matchesSearch && matchesRole && matchesStatus;
     });
@@ -824,12 +875,11 @@ function AdminUserManagement() {
       ).length,
       staff: users.filter((user) => user.displayRole === "staff").length,
       admins: users.filter((user) => user.displayRole === "admin").length,
-      pending: users.filter(
-        (user) =>
-          user.status === "pending" || user.status === "pending_approval",
-      ).length,
+      pending: users.filter((user) => isPendingStatus(user.status)).length,
       active: users.filter(
-        (user) => user.status === "approved" || user.is_active === true,
+        (user) =>
+          normalizeStatus(user.status) === "approved" ||
+          user.is_active === true,
       ).length,
     };
   }, [users]);
@@ -940,9 +990,10 @@ function AdminUserManagement() {
         updateData.last_name = nameParts.join(" ") || "";
 
         /*
-         * Do NOT update status here. Status changes go through the
-         * Approve button, which calls the approve-registration edge
-         * function to create the auth user + profiles row.
+         * Status is NOT edited here. It changes through the Approve or
+         * Decline buttons, which call the approve-registration edge
+         * function (for approve) or update the status directly
+         * (for decline).
          */
         updateData.email = email;
         updateData.username = username || null;
@@ -993,26 +1044,19 @@ function AdminUserManagement() {
      APPROVE / DECLINE REGULAR USER ACCOUNT
   =========================================================== */
 
-  const handleApprovalAction = async (user, action) => {
-    const isRegularUser =
-      user?.displayRole === "user" || !user?.displayRole;
-
+  const handleApprovalAction = (user, action) => {
     const isPendingRegistration =
       user?.sourceTable === "pending_registrations";
+    const pending = isPendingStatus(user?.status);
 
-    const isPending =
-      user?.status === "pending" || user?.status === "pending_approval";
-
-    if (!isRegularUser || !isPendingRegistration || !isPending) {
+    if (!isPendingRegistration || !pending) {
       setError(
-        "Approve/Decline is only available for pending regular user accounts.",
+        "Approve/Decline is only available for pending resident registrations.",
       );
       return;
     }
 
-    const isApprove = action === "approved";
-
-    if (isApprove) {
+    if (action === "approved") {
       setApproveTarget(user);
       setApprovePassword("");
       setApproveError("");
@@ -1020,42 +1064,14 @@ function AdminUserManagement() {
       return;
     }
 
-    /* ── Decline: just update status directly ────────────────────── */
-
-    const userName = user.full_name || user.email || "this user account";
-
-    const confirmed = window.confirm(
-      `Decline ${userName}'s account?\n\nThe user will not be allowed to log in.`,
-    );
-
-    if (!confirmed) return;
-
-    setApprovalSavingId(user.sourceId);
-    setError("");
-
-    try {
-      const { error: updateError } = await supabase
-        .from("pending_registrations")
-        .update({
-          status: "rejected",
-          updated_at: new Date().toISOString(),
-        })
-        .eq("id", user.sourceId)
-        .eq("role", "user")
-        .eq("status", "pending");
-
-      if (updateError) throw updateError;
-
-      await fetchAllUsers(false);
-    } catch (err) {
-      console.error("Decline user account error:", err);
-      setError(err?.message || "Failed to decline the user account.");
-    } finally {
-      setApprovalSavingId(null);
-    }
+    /* Decline opens the confirmation modal. Reset the reason so a
+     * stale value from a previous decline never leaks into the new
+     * one. */
+    setDeclineTarget(user);
+    setDeclineError("");
+    setDeclineReason("");
+    setShowDeclineModal(true);
   };
-
-  /* ── Approve via edge function ─────────────────────────────── */
 
   const handleApproveConfirm = async (event) => {
     event.preventDefault();
@@ -1074,11 +1090,14 @@ function AdminUserManagement() {
         );
       }
 
+      const registrationId =
+        approveTarget.pending_id || approveTarget.sourceId;
+
       const { data, error } = await supabase.functions.invoke(
         "approve-registration",
         {
           body: {
-            registration_id: approveTarget.sourceId,
+            registration_id: registrationId,
             requester_work_id:
               currentStaffData.user_id ||
               currentStaffData.custom_id ||
@@ -1132,6 +1151,46 @@ function AdminUserManagement() {
     }
   };
 
+  const handleDeclineConfirm = async (event) => {
+    event.preventDefault();
+
+    if (!declineTarget || declineSaving) return;
+
+    setDeclineSaving(true);
+    setDeclineError("");
+    setApprovalSavingId(declineTarget.sourceId);
+
+    const trimmedReason = declineReason.trim();
+
+    try {
+      const { error: updateError } = await supabase
+        .from("pending_registrations")
+        .update({
+          status: "rejected",
+          review_notes: trimmedReason || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", declineTarget.sourceId)
+        .eq("status", "pending");
+
+      if (updateError) throw updateError;
+
+      setShowDeclineModal(false);
+      setDeclineTarget(null);
+      setDeclineReason("");
+      await fetchAllUsers(false);
+    } catch (err) {
+      console.error("Decline registration error:", err);
+      setDeclineError(
+        err?.message ||
+          "Failed to decline the account. Please try again.",
+      );
+    } finally {
+      setDeclineSaving(false);
+      setApprovalSavingId(null);
+    }
+  };
+
   /* ===========================================================
      DELETE ACCOUNT
   =========================================================== */
@@ -1146,13 +1205,13 @@ function AdminUserManagement() {
       return;
     }
 
-    const firstConfirmation = window.confirm(
+    const firstConfirmation = await showConfirmation(
       `Delete ${userName}?\n\nThis removes the record from the ${user.sourceTable} table.`,
     );
 
     if (!firstConfirmation) return;
 
-    const secondConfirmation = window.confirm(
+    const secondConfirmation = await showConfirmation(
       "FINAL CONFIRMATION\n\nThis action cannot be undone. Continue?",
     );
 
@@ -1573,6 +1632,11 @@ function AdminUserManagement() {
                 ) : (
                   filteredUsers.map((user, index) => {
                     const current = isCurrentAccount(user);
+                    const isPendingRegistration =
+                      user.sourceTable === "pending_registrations";
+                    const pending = isPendingStatus(user.status);
+                    const canApproveOrDecline =
+                      isPendingRegistration && pending;
 
                     return (
                       <tr
@@ -1666,7 +1730,7 @@ function AdminUserManagement() {
                         </td>
 
                         <td className="px-4 py-4">
-                          <div className="flex gap-2">
+                          <div className="flex flex-wrap gap-2">
                             <button
                               type="button"
                               onClick={() => handleDeleteUser(user)}
@@ -1682,43 +1746,40 @@ function AdminUserManagement() {
                               Delete
                             </button>
 
-                            {(user.displayRole === "user" || !user.displayRole) &&
-                              user.sourceTable === "pending_registrations" &&
-                              (user.status === "pending" ||
-                                user.status === "pending_approval") && (
-                                <>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      handleApprovalAction(user, "approved")
-                                    }
-                                    disabled={approvalSavingId !== null}
-                                    className="flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
-                                  >
-                                    {approvalSavingId === user.sourceId ? (
-                                      <Loader2 className="h-3 w-3 animate-spin" />
-                                    ) : (
-                                      <CheckCircle className="h-3 w-3" />
-                                    )}
-                                    Approve
-                                  </button>
-                                  <button
-                                    type="button"
-                                    onClick={() =>
-                                      handleApprovalAction(user, "rejected")
-                                    }
-                                    disabled={approvalSavingId !== null}
-                                    className="flex items-center gap-1 rounded-lg bg-red-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
-                                  >
-                                    {approvalSavingId === user.sourceId ? (
-                                      <Loader2 className="h-3 w-3 animate-spin" />
-                                    ) : (
-                                      <X className="h-3 w-3" />
-                                    )}
-                                    Decline
-                                  </button>
-                                </>
-                              )}
+                            {canApproveOrDecline && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleApprovalAction(user, "approved")
+                                  }
+                                  disabled={approvalSavingId !== null}
+                                  className="flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  {approvalSavingId === user.sourceId ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <CheckCircle className="h-3 w-3" />
+                                  )}
+                                  Approve
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleApprovalAction(user, "rejected")
+                                  }
+                                  disabled={approvalSavingId !== null}
+                                  className="flex items-center gap-1 rounded-lg bg-red-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  {approvalSavingId === user.sourceId ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <X className="h-3 w-3" />
+                                  )}
+                                  Decline
+                                </button>
+                              </>
+                            )}
                           </div>
                         </td>
                       </tr>
@@ -1836,7 +1897,8 @@ function AdminUserManagement() {
                     <Lock className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                   </div>
                   <p className="mt-1 text-xs text-slate-500">
-                    This verifies that you are authorized to approve this account.
+                    This verifies that you are authorized to approve this
+                    account.
                   </p>
                 </div>
 
@@ -1864,13 +1926,147 @@ function AdminUserManagement() {
                     ) : (
                       <CheckCircle className="h-4 w-4" />
                     )}
-                    {approveSaving
-                      ? "Approving..."
-                      : "Approve Account"}
+                    {approveSaving ? "Approving..." : "Approve Account"}
                   </button>
                 </div>
               </form>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Decline modal */}
+      {showDeclineModal && declineTarget && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black/50 p-4"
+          onClick={() => {
+            if (!declineSaving) {
+              setShowDeclineModal(false);
+              setDeclineTarget(null);
+              setDeclineReason("");
+            }
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="decline-account-title"
+            className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-slate-800"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 dark:border-slate-700">
+              <div className="flex items-center gap-3">
+                <div className="rounded-xl bg-red-100 p-2 text-red-600 dark:bg-red-900/40">
+                  <X className="h-5 w-5" />
+                </div>
+                <div>
+                  <h2
+                    id="decline-account-title"
+                    className="text-xl font-bold text-slate-800 dark:text-slate-100"
+                  >
+                    Decline Account
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {declineTarget.full_name ||
+                      declineTarget.email ||
+                      "this account"}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!declineSaving) {
+                    setShowDeclineModal(false);
+                    setDeclineTarget(null);
+                    setDeclineReason("");
+                  }
+                }}
+                disabled={declineSaving}
+                aria-label="Close"
+                className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 disabled:opacity-50 dark:hover:bg-slate-700"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleDeclineConfirm} className="space-y-5 p-6">
+              <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm dark:border-red-800 dark:bg-red-900/20">
+                <p className="font-bold text-red-800 dark:text-red-200">
+                  This will reject the registration
+                </p>
+                <p className="mt-1 text-xs leading-relaxed text-red-700 dark:text-red-300">
+                  The user will not be able to log in with this account. They
+                  will see the reason below the next time they try to sign in.
+                </p>
+              </div>
+
+              {declineError && (
+                <div
+                  role="alert"
+                  className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"
+                >
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <p>{declineError}</p>
+                </div>
+              )}
+
+              <div>
+                <label
+                  htmlFor="decline-reason"
+                  className="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-200"
+                >
+                  Reason for declining
+                  <span className="ml-1 text-xs font-normal text-slate-400">
+                    (optional, but recommended)
+                  </span>
+                </label>
+                <textarea
+                  id="decline-reason"
+                  rows={3}
+                  value={declineReason}
+                  onChange={(event) =>
+                    setDeclineReason(event.target.value)
+                  }
+                  placeholder="e.g. The submitted ID number does not match the attached photo. Please re-register with a clear image of your valid ID."
+                  maxLength={500}
+                  className="w-full resize-y rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:ring-2 focus:ring-red-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                />
+                <p className="mt-1 text-xs text-slate-500">
+                  {declineReason.length}/500 characters. This reason is shown
+                  to the user the next time they try to sign in.
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!declineSaving) {
+                      setShowDeclineModal(false);
+                      setDeclineTarget(null);
+                      setDeclineReason("");
+                    }
+                  }}
+                  disabled={declineSaving}
+                  className="rounded-lg border border-slate-300 px-4 py-2.5 font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={declineSaving}
+                  className="flex items-center gap-2 rounded-lg bg-red-600 px-5 py-2.5 font-bold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {declineSaving ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <X className="h-4 w-4" />
+                  )}
+                  {declineSaving ? "Declining..." : "Decline Account"}
+                </button>
+              </div>
+            </form>
           </div>
         </div>
       )}
@@ -2474,9 +2670,9 @@ function CreateAccountModal({
             </p>
             <p className="mt-1 text-xs leading-relaxed">
               This account is stored only in{" "}
-              <strong>{isAdmin ? "admin_users" : "staff_users"}</strong>
-              . Work ID, username, and email are checked before creating or
-              updating an account.
+              <strong>{isAdmin ? "admin_users" : "staff_users"}</strong>. Work
+              ID, username, and email are checked before creating or updating
+              an account.
             </p>
           </div>
 
@@ -2975,18 +3171,8 @@ function UserSummaryReportModal({ onClose }) {
     });
 
     const months = [
-      "Jan",
-      "Feb",
-      "Mar",
-      "Apr",
-      "May",
-      "Jun",
-      "Jul",
-      "Aug",
-      "Sep",
-      "Oct",
-      "Nov",
-      "Dec",
+      "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
     ];
 
     const monthlyData = Object.entries(monthlyCounts)
@@ -3004,8 +3190,7 @@ function UserSummaryReportModal({ onClose }) {
       (row) => row.status === "approved" || row.status === true,
     ).length;
     const pendingCount = rows.filter(
-      (row) =>
-        row.status === "pending" || row.status === "pending_approval",
+      (row) => isPendingStatus(row.status),
     ).length;
 
     const busiestMonth =
@@ -3053,357 +3238,578 @@ function UserSummaryReportModal({ onClose }) {
       ? `${fromDate || "Start"} → ${toDate || "End"}`
       : "All dates";
 
-  return (
-    <>
-      <style>{`
-        @media print {
-          @page { size: A4 portrait; margin: 12mm; }
-          html, body, #root, .app-shell, .content {
-            height: auto !important; max-height: none !important; overflow: visible !important;
-          }
-          body { background: #ffffff !important; }
-          body * { visibility: hidden; }
-          .report-overlay {
-            position: static !important; overflow: visible !important;
-            padding: 0 !important; background: none !important;
-          }
-          .report-print, .report-print * { visibility: visible; }
-          .report-print {
-            position: static !important; width: 100% !important;
-            max-width: none !important; max-height: none !important;
-            margin: 0 !important; border: none !important;
-            border-radius: 0 !important; box-shadow: none !important;
-          }
-          .report-print .print-hidden { display: none !important; }
-          .report-print .print-break-avoid, .report-print .print-section {
-            break-inside: avoid; page-break-inside: avoid;
-          }
-          * {
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
-        }
-      `}</style>
+  const escapeHtml = (value) =>
+    String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
 
+  /**
+   * Print only the summary report body (white page).
+   * Uses a hidden iframe — no popup blocker issues.
+   */
+  const handlePrint = () => {
+    if (fetching || fetchError) return;
+
+    const card = (label, value, sub) => `
+      <div class="card">
+        <div class="card-label">${escapeHtml(label)}</div>
+        <div class="card-value">${escapeHtml(value)}</div>
+        ${sub ? `<div class="card-sub">${escapeHtml(sub)}</div>` : ""}
+      </div>`;
+
+    const topCards = `
+      ${card("Total Accounts", rows.length, "In coverage")}
+      ${card("Active", stats.activeCount, `${percent(stats.activeCount)}% of total`)}
+      ${card(
+        "Pending",
+        stats.pendingCount,
+        stats.pendingCount > 0 ? "Awaiting approval" : "None pending",
+      )}
+      ${card(
+        "Busiest Month",
+        stats.busiestMonth ? stats.busiestMonth.name : "—",
+        stats.busiestMonth
+          ? `${stats.busiestMonth.count} registrations`
+          : "No data",
+      )}
+    `;
+
+    const roleCards =
+      stats.roleData.length === 0
+        ? `<p class="muted">No accounts in the covered range.</p>`
+        : `<div class="grid-4">${stats.roleData
+            .map((entry) =>
+              card(
+                prettyStatus(entry.name),
+                entry.count,
+                `${percent(entry.count)}% of total`,
+              ),
+            )
+            .join("")}</div>`;
+
+    const countTable = (title, data) => {
+      const rowsHtml =
+        data.length === 0
+          ? `<tr><td colspan="3">No accounts in the covered range.</td></tr>`
+          : data
+              .map(
+                (entry) => `
+          <tr>
+            <td>${escapeHtml(prettyStatus(entry.name))}</td>
+            <td class="center">${entry.count}</td>
+            <td class="center">${percent(entry.count)}%</td>
+          </tr>`,
+              )
+              .join("");
+
+      return `
+        <div class="section avoid-break">
+          <h2 class="section-title">${escapeHtml(title)}</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th class="center">Count</th>
+                <th class="center">Share</th>
+              </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+        </div>`;
+    };
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>User Accounts Summary Report</title>
+  <style>
+    @page { size: A4 portrait; margin: 12mm; }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0;
+      background: #ffffff;
+      color: #000000;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      font-size: 12px;
+      line-height: 1.45;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    h1 { margin: 0; font-size: 20px; text-align: center; color: #000; }
+    h2, .section-title {
+      margin: 0 0 10px;
+      font-size: 14px;
+      font-weight: 800;
+      color: #000;
+      border-bottom: 1px solid #cbd5e1;
+      padding-bottom: 6px;
+    }
+    .header {
+      text-align: center;
+      border-bottom: 2px solid #000;
+      padding-bottom: 14px;
+      margin-bottom: 18px;
+    }
+    .muted { color: #334155; font-size: 11px; }
+    .badge {
+      display: inline-block;
+      border: 1px solid #cbd5e1;
+      border-radius: 999px;
+      padding: 2px 10px;
+      font-size: 11px;
+      font-weight: 600;
+      margin: 2px;
+      background: #fff;
+    }
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+    .card {
+      border-radius: 10px;
+      padding: 10px 12px;
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      color: #000000;
+    }
+    .card-label { font-size: 10px; font-weight: 700; }
+    .card-value { font-size: 20px; font-weight: 800; margin-top: 2px; word-break: break-word; }
+    .card-sub { font-size: 10px; margin-top: 2px; color: #334155; }
+    .section { margin-bottom: 18px; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    th, td {
+      border: 1px solid #cbd5e1;
+      padding: 6px 7px;
+      text-align: left;
+      vertical-align: top;
+      word-wrap: break-word;
+      background: #ffffff;
+      color: #000000;
+    }
+    th { font-size: 10px; border-bottom: 2px solid #94a3b8; }
+    td.center, th.center { text-align: center; }
+    thead { display: table-header-group; }
+    tr { page-break-inside: avoid; break-inside: avoid; }
+    .avoid-break { page-break-inside: avoid; break-inside: avoid; }
+    .footer {
+      border-top: 1px solid #cbd5e1;
+      padding-top: 10px;
+      text-align: center;
+      color: #334155;
+      font-size: 10px;
+      margin-top: 16px;
+    }
+    @media print {
+      html, body {
+        height: auto !important;
+        overflow: visible !important;
+        background: #ffffff !important;
+        color: #000000 !important;
+      }
+      * {
+        background: #ffffff !important;
+        background-color: #ffffff !important;
+        box-shadow: none !important;
+        color: #000000 !important;
+      }
+      table, th, td, .card {
+        background: #ffffff !important;
+        border-color: #cbd5e1 !important;
+        color: #000000 !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="header avoid-break">
+    <p class="muted" style="font-weight:700;letter-spacing:0.15em;text-transform:uppercase">E-MDRRMO</p>
+    <h1>USER ACCOUNTS SUMMARY REPORT</h1>
+    <p style="margin-top:10px">
+      <span class="badge">Coverage: ${escapeHtml(rangeLabel)}</span>
+      <span class="badge">${rows.length} account${rows.length === 1 ? "" : "s"}</span>
+    </p>
+    <p class="muted" style="margin-top:8px">Generated: ${escapeHtml(generatedAt)}</p>
+  </div>
+
+  <div class="section avoid-break">
+    <div class="grid-4">${topCards}</div>
+  </div>
+
+  <div class="section avoid-break">
+    <h2 class="section-title">Role Overview</h2>
+    ${roleCards}
+  </div>
+
+  ${countTable("Accounts by Role", stats.roleData)}
+  ${countTable("Accounts by Status", stats.statusData)}
+  ${countTable("Accounts by Source Table", stats.sourceData)}
+  ${countTable("Staff by Department", stats.departmentData)}
+
+  <div class="footer avoid-break">
+    <p>This report is system-generated and reflects data at the time of generation. Account names and contact details are omitted by design.</p>
+    <p>© ${new Date().getFullYear()} E-MDRRMO</p>
+  </div>
+</body>
+</html>`;
+
+    const existing = document.getElementById("user-summary-print-frame");
+    if (existing) existing.remove();
+
+    const iframe = document.createElement("iframe");
+    iframe.id = "user-summary-print-frame";
+    iframe.setAttribute("title", "User Accounts Summary Print");
+    iframe.style.position = "fixed";
+    iframe.style.right = "0";
+    iframe.style.bottom = "0";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "0";
+    iframe.style.opacity = "0";
+    iframe.style.pointerEvents = "none";
+    document.body.appendChild(iframe);
+
+    const frameDoc = iframe.contentDocument || iframe.contentWindow.document;
+    frameDoc.open();
+    frameDoc.write(html);
+    frameDoc.close();
+
+    const triggerPrint = () => {
+      try {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+      } catch (err) {
+        console.error("Print failed:", err);
+      }
+      setTimeout(() => {
+        try {
+          iframe.remove();
+        } catch {
+          /* ignore */
+        }
+      }, 60_000);
+    };
+
+    if (iframe.contentWindow.document.readyState === "complete") {
+      setTimeout(triggerPrint, 300);
+    } else {
+      iframe.onload = () => setTimeout(triggerPrint, 300);
+    }
+  };
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4"
+      onClick={onClose}
+    >
       <div
-        className="report-overlay fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4"
-        onClick={onClose}
+        className="my-8 w-full max-w-4xl rounded-2xl border border-slate-200 bg-white shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
       >
-        <div
-          className="report-print my-8 w-full max-w-4xl rounded-2xl border border-slate-200 bg-white shadow-2xl"
-          onClick={(event) => event.stopPropagation()}
-        >
-          <div className="print-hidden sticky top-0 z-10 rounded-t-2xl border-b border-slate-200 bg-white/95 backdrop-blur">
-            <div className="flex items-center justify-between gap-3 px-6 pb-3 pt-4">
-              <div className="flex min-w-0 items-center gap-2">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-purple-100">
-                  <Users className="h-5 w-5 text-purple-600" />
-                </div>
-                <div className="min-w-0">
-                  <h3 className="truncate font-bold leading-tight text-slate-800">
-                    User Accounts Summary Report
-                  </h3>
-                  <p className="text-xs leading-tight text-slate-400">
-                    Adjust coverage, then print
-                  </p>
-                </div>
+        <div className="sticky top-0 z-10 rounded-t-2xl border-b border-slate-200 bg-white/95 backdrop-blur">
+          <div className="flex items-center justify-between gap-3 px-6 pb-3 pt-4">
+            <div className="flex min-w-0 items-center gap-2">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-purple-100">
+                <Users className="h-5 w-5 text-purple-600" />
               </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => window.print()}
-                  disabled={fetching}
-                  className="flex items-center gap-2 rounded-xl bg-purple-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-purple-700 disabled:opacity-50"
-                >
-                  <Download className="h-4 w-4" />
-                  {fetching ? "Loading..." : "Print / Save PDF"}
-                </button>
-                <button
-                  type="button"
-                  onClick={onClose}
-                  aria-label="Close report"
-                  className="rounded-xl p-2 text-slate-500 transition hover:bg-slate-200"
-                >
-                  <X className="h-5 w-5" />
-                </button>
+              <div className="min-w-0">
+                <h3 className="truncate font-bold leading-tight text-slate-800">
+                  User Accounts Summary Report
+                </h3>
+                <p className="text-xs leading-tight text-slate-400">
+                  Adjust coverage, then print
+                </p>
               </div>
             </div>
-
-            <div className="flex flex-wrap items-center gap-2 px-6 pb-4">
-              <span className="text-xs font-bold uppercase tracking-wide text-slate-400">
-                Coverage
-              </span>
-              <input
-                type="date"
-                max={todayKey}
-                value={fromDate}
-                onChange={(event) => setFromDate(event.target.value)}
-                className="rounded-xl border border-slate-300 px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-500"
-              />
-              <span className="text-sm text-slate-400">→</span>
-              <input
-                type="date"
-                max={todayKey}
-                value={toDate}
-                onChange={(event) => setToDate(event.target.value)}
-                className="rounded-xl border border-slate-300 px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-500"
-              />
-              <div className="ml-1 flex items-center gap-1 rounded-xl bg-slate-100 p-1">
-                {[
-                  { label: "All Time", from: "", to: "" },
-                  {
-                    label: "This Month",
-                    from: `${todayKey.slice(0, 8)}01`,
-                    to: todayKey,
-                  },
-                  { label: "Today", from: todayKey, to: todayKey },
-                ].map((preset) => {
-                  const active =
-                    fromDate === preset.from && toDate === preset.to;
-                  return (
-                    <button
-                      key={preset.label}
-                      type="button"
-                      onClick={() => applyPreset(preset.from, preset.to)}
-                      className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
-                        active
-                          ? "bg-purple-600 text-white shadow-sm"
-                          : "text-slate-600 hover:bg-white"
-                      }`}
-                    >
-                      {preset.label}
-                    </button>
-                  );
-                })}
-              </div>
-              <span className="ml-auto rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-500">
-                {rows.length} account{rows.length === 1 ? "" : "s"} loaded
-              </span>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={handlePrint}
+                disabled={fetching || Boolean(fetchError)}
+                className="flex items-center gap-2 rounded-xl bg-purple-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-purple-700 disabled:opacity-50"
+              >
+                <Download className="h-4 w-4" />
+                {fetching ? "Loading..." : "Print / Save PDF"}
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close report"
+                className="rounded-xl p-2 text-slate-500 transition hover:bg-slate-200"
+              >
+                <X className="h-5 w-5" />
+              </button>
             </div>
           </div>
 
-          <div className="p-8 text-slate-800">
-            <div className="print-section mb-6 border-b-2 border-slate-800 pb-5 text-center">
-              <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">
-                E-MDRRMO
-              </p>
-              <h1 className="mt-1 text-2xl font-black text-slate-900">
-                USER ACCOUNTS SUMMARY REPORT
-              </h1>
-              <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-                  Coverage: {rangeLabel}
-                </span>
-                <span className="rounded-full bg-purple-50 px-3 py-1 text-xs font-semibold text-purple-700">
-                  {rows.length} account{rows.length === 1 ? "" : "s"}
-                </span>
-              </div>
-              <p className="mt-2 text-xs text-slate-400">
-                Generated: {generatedAt}
-              </p>
+          <div className="flex flex-wrap items-center gap-2 px-6 pb-4">
+            <span className="text-xs font-bold uppercase tracking-wide text-slate-400">
+              Coverage
+            </span>
+            <input
+              type="date"
+              max={todayKey}
+              value={fromDate}
+              onChange={(event) => setFromDate(event.target.value)}
+              className="rounded-xl border border-slate-300 px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-500"
+            />
+            <span className="text-sm text-slate-400">→</span>
+            <input
+              type="date"
+              max={todayKey}
+              value={toDate}
+              onChange={(event) => setToDate(event.target.value)}
+              className="rounded-xl border border-slate-300 px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-500"
+            />
+            <div className="ml-1 flex items-center gap-1 rounded-xl bg-slate-100 p-1">
+              {[
+                { label: "All Time", from: "", to: "" },
+                {
+                  label: "This Month",
+                  from: `${todayKey.slice(0, 8)}01`,
+                  to: todayKey,
+                },
+                { label: "Today", from: todayKey, to: todayKey },
+              ].map((preset) => {
+                const active =
+                  fromDate === preset.from && toDate === preset.to;
+                return (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    onClick={() => applyPreset(preset.from, preset.to)}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+                      active
+                        ? "bg-purple-600 text-white shadow-sm"
+                        : "text-slate-600 hover:bg-white"
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                );
+              })}
             </div>
-
-            {fetchError ? (
-              <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-                Failed to load report data: {fetchError}
-              </div>
-            ) : fetching ? (
-              <div className="py-16 text-center font-semibold text-slate-500">
-                Loading report data...
-              </div>
-            ) : (
-              <>
-                <div className="print-break-avoid mb-8 grid grid-cols-2 gap-3 md:grid-cols-4">
-                  <ReportCard
-                    label="Total Accounts"
-                    value={rows.length}
-                    sub="In coverage"
-                    color="border-blue-200 bg-blue-50 text-blue-700"
-                  />
-                  <ReportCard
-                    label="Active"
-                    value={stats.activeCount}
-                    sub={`${percent(stats.activeCount)}% of total`}
-                    color="border-emerald-200 bg-emerald-50 text-emerald-700"
-                  />
-                  <ReportCard
-                    label="Pending"
-                    value={stats.pendingCount}
-                    sub={
-                      stats.pendingCount > 0
-                        ? "Awaiting approval"
-                        : "None pending"
-                    }
-                    color="border-yellow-200 bg-yellow-50 text-yellow-700"
-                  />
-                  <ReportCard
-                    label="Busiest Month"
-                    value={stats.busiestMonth ? stats.busiestMonth.name : "—"}
-                    sub={
-                      stats.busiestMonth
-                        ? `${stats.busiestMonth.count} registrations`
-                        : "No data"
-                    }
-                    color="border-violet-200 bg-violet-50 text-violet-700"
-                  />
-                </div>
-
-                <div className="print-section mb-8">
-                  <h2 className="mb-3 font-bold text-slate-800">
-                    Role Overview
-                  </h2>
-                  {stats.roleData.length === 0 ? (
-                    <p className="text-sm text-slate-500">
-                      No accounts in the covered range.
-                    </p>
-                  ) : (
-                    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                      {stats.roleData.map((entry) => (
-                        <ReportCard
-                          key={entry.name}
-                          label={prettyStatus(entry.name)}
-                          value={entry.count}
-                          sub={`${percent(entry.count)}% of total`}
-                          color={
-                            entry.name === "admin"
-                              ? "border-purple-200 bg-purple-50 text-purple-700"
-                              : entry.name === "staff"
-                                ? "border-indigo-200 bg-indigo-50 text-indigo-700"
-                                : "border-emerald-200 bg-emerald-50 text-emerald-700"
-                          }
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {stats.roleData.length > 0 && (
-                  <div className="print-section mb-8">
-                    <h2 className="mb-3 font-bold text-slate-800">
-                      Role Distribution
-                    </h2>
-                    <div className="h-[260px] w-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={stats.roleData.map((entry) => ({
-                              ...entry,
-                              value: entry.count,
-                            }))}
-                            innerRadius={60}
-                            outerRadius={95}
-                            paddingAngle={5}
-                            dataKey="value"
-                            nameKey="name"
-                          >
-                            {stats.roleData.map((_, index) => (
-                              <Cell
-                                key={index}
-                                fill={pieColors[index % pieColors.length]}
-                              />
-                            ))}
-                          </Pie>
-                          <Tooltip />
-                          <Legend
-                            wrapperStyle={{ paddingTop: "10px" }}
-                          />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-                )}
-
-                {stats.monthlyData.length > 0 && (
-                  <div className="print-section mb-8">
-                    <h2 className="mb-3 font-bold text-slate-800">
-                      Registrations per Month
-                    </h2>
-                    <div className="h-[240px] w-full">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={stats.monthlyData}>
-                          <CartesianGrid
-                            strokeDasharray="3 3"
-                            vertical={false}
-                            stroke="#e0e0e0"
-                          />
-                          <XAxis
-                            dataKey="name"
-                            fontSize={10}
-                            tickLine={false}
-                            axisLine={false}
-                          />
-                          <YAxis
-                            allowDecimals={false}
-                            fontSize={10}
-                            tickLine={false}
-                            axisLine={false}
-                          />
-                          <Tooltip
-                            cursor={{ fill: "rgba(0,0,0,0.05)" }}
-                          />
-                          <Bar
-                            dataKey="count"
-                            fill="#6366f1"
-                            radius={[10, 10, 0, 0]}
-                            barSize={40}
-                          />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-                )}
-
-                <div className="mb-8 space-y-8">
-                  <div className="print-section">
-                    <ReportCountTable
-                      title="Accounts by Role"
-                      data={stats.roleData}
-                      total={rows.length}
-                      percent={percent}
-                    />
-                  </div>
-                  <div className="print-section">
-                    <ReportCountTable
-                      title="Accounts by Status"
-                      data={stats.statusData}
-                      total={rows.length}
-                      percent={percent}
-                    />
-                  </div>
-                  <div className="print-section">
-                    <ReportCountTable
-                      title="Accounts by Source Table"
-                      data={stats.sourceData}
-                      total={rows.length}
-                      percent={percent}
-                    />
-                  </div>
-                  <div className="print-section">
-                    <ReportCountTable
-                      title="Staff by Department"
-                      data={stats.departmentData}
-                      percent={percent}
-                    />
-                  </div>
-                </div>
-
-                <div className="print-break-avoid border-t border-slate-200 pt-4 text-center text-xs text-slate-500">
-                  <p>
-                    This report is system-generated and reflects data at the
-                    time of generation. Account names and contact details are
-                    omitted by design.
-                  </p>
-                  <p className="mt-1">
-                    © {new Date().getFullYear()} E-MDRRMO
-                  </p>
-                </div>
-              </>
-            )}
+            <span className="ml-auto rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-500">
+              {rows.length} account{rows.length === 1 ? "" : "s"} loaded
+            </span>
           </div>
         </div>
+
+        <div className="p-8 text-slate-800 max-h-[70vh] overflow-y-auto">
+          <div className="mb-6 border-b-2 border-slate-800 pb-5 text-center">
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">
+              E-MDRRMO
+            </p>
+            <h1 className="mt-1 text-2xl font-black text-slate-900">
+              USER ACCOUNTS SUMMARY REPORT
+            </h1>
+            <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                Coverage: {rangeLabel}
+              </span>
+              <span className="rounded-full bg-purple-50 px-3 py-1 text-xs font-semibold text-purple-700">
+                {rows.length} account{rows.length === 1 ? "" : "s"}
+              </span>
+            </div>
+            <p className="mt-2 text-xs text-slate-400">
+              Generated: {generatedAt}
+            </p>
+          </div>
+
+          {fetchError ? (
+            <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+              Failed to load report data: {fetchError}
+            </div>
+          ) : fetching ? (
+            <div className="py-16 text-center font-semibold text-slate-500">
+              Loading report data...
+            </div>
+          ) : (
+            <>
+              <div className="mb-8 grid grid-cols-2 gap-3 md:grid-cols-4">
+                <ReportCard
+                  label="Total Accounts"
+                  value={rows.length}
+                  sub="In coverage"
+                  color="border-blue-200 bg-blue-50 text-blue-700"
+                />
+                <ReportCard
+                  label="Active"
+                  value={stats.activeCount}
+                  sub={`${percent(stats.activeCount)}% of total`}
+                  color="border-emerald-200 bg-emerald-50 text-emerald-700"
+                />
+                <ReportCard
+                  label="Pending"
+                  value={stats.pendingCount}
+                  sub={
+                    stats.pendingCount > 0
+                      ? "Awaiting approval"
+                      : "None pending"
+                  }
+                  color="border-yellow-200 bg-yellow-50 text-yellow-700"
+                />
+                <ReportCard
+                  label="Busiest Month"
+                  value={stats.busiestMonth ? stats.busiestMonth.name : "—"}
+                  sub={
+                    stats.busiestMonth
+                      ? `${stats.busiestMonth.count} registrations`
+                      : "No data"
+                  }
+                  color="border-violet-200 bg-violet-50 text-violet-700"
+                />
+              </div>
+
+              <div className="mb-8">
+                <h2 className="mb-3 font-bold text-slate-800">
+                  Role Overview
+                </h2>
+                {stats.roleData.length === 0 ? (
+                  <p className="text-sm text-slate-500">
+                    No accounts in the covered range.
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                    {stats.roleData.map((entry) => (
+                      <ReportCard
+                        key={entry.name}
+                        label={prettyStatus(entry.name)}
+                        value={entry.count}
+                        sub={`${percent(entry.count)}% of total`}
+                        color={
+                          entry.name === "admin"
+                            ? "border-purple-200 bg-purple-50 text-purple-700"
+                            : entry.name === "staff"
+                              ? "border-indigo-200 bg-indigo-50 text-indigo-700"
+                              : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                        }
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {stats.roleData.length > 0 && (
+                <div className="mb-8">
+                  <h2 className="mb-3 font-bold text-slate-800">
+                    Role Distribution
+                  </h2>
+                  <div className="h-[260px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={stats.roleData.map((entry) => ({
+                            ...entry,
+                            value: entry.count,
+                          }))}
+                          innerRadius={60}
+                          outerRadius={95}
+                          paddingAngle={5}
+                          dataKey="value"
+                          nameKey="name"
+                        >
+                          {stats.roleData.map((_, index) => (
+                            <Cell
+                              key={index}
+                              fill={pieColors[index % pieColors.length]}
+                            />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                        <Legend wrapperStyle={{ paddingTop: "10px" }} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
+
+              {stats.monthlyData.length > 0 && (
+                <div className="mb-8">
+                  <h2 className="mb-3 font-bold text-slate-800">
+                    Registrations per Month
+                  </h2>
+                  <div className="h-[240px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={stats.monthlyData}>
+                        <CartesianGrid
+                          strokeDasharray="3 3"
+                          vertical={false}
+                          stroke="#e0e0e0"
+                        />
+                        <XAxis
+                          dataKey="name"
+                          fontSize={10}
+                          tickLine={false}
+                          axisLine={false}
+                        />
+                        <YAxis
+                          allowDecimals={false}
+                          fontSize={10}
+                          tickLine={false}
+                          axisLine={false}
+                        />
+                        <Tooltip cursor={{ fill: "rgba(0,0,0,0.05)" }} />
+                        <Bar
+                          dataKey="count"
+                          fill="#6366f1"
+                          radius={[10, 10, 0, 0]}
+                          barSize={40}
+                        />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
+
+              <div className="mb-8 space-y-8">
+                <ReportCountTable
+                  title="Accounts by Role"
+                  data={stats.roleData}
+                  total={rows.length}
+                  percent={percent}
+                />
+                <ReportCountTable
+                  title="Accounts by Status"
+                  data={stats.statusData}
+                  total={rows.length}
+                  percent={percent}
+                />
+                <ReportCountTable
+                  title="Accounts by Source Table"
+                  data={stats.sourceData}
+                  total={rows.length}
+                  percent={percent}
+                />
+                <ReportCountTable
+                  title="Staff by Department"
+                  data={stats.departmentData}
+                  percent={percent}
+                />
+              </div>
+
+              <div className="border-t border-slate-200 pt-4 text-center text-xs text-slate-500">
+                <p>
+                  This report is system-generated and reflects data at the
+                  time of generation. Account names and contact details are
+                  omitted by design.
+                </p>
+                <p className="mt-1">
+                  © {new Date().getFullYear()} E-MDRRMO
+                </p>
+              </div>
+            </>
+          )}
+        </div>
       </div>
-    </>
+    </div>
   );
 }
+
 
 export default AdminUserManagement;

@@ -28,7 +28,7 @@ const MAX_READ_ENTRIES = 1000;
 const DISMISS_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 const MAX_DISMISS_ENTRIES = 1000;
 const QUERY_TIMEOUT_MS = 8000;
-const DEBUG = true;
+const DEBUG = import.meta.env?.DEV ?? false;
 
 const dbg = (...a) => {
   if (DEBUG) console.log("[Notif]", ...a);
@@ -55,21 +55,57 @@ const withTimeout = (promise, ms, label) =>
 const safeQuery = async (builder, fallback, label, ms = QUERY_TIMEOUT_MS) => {
   try {
     const res = await withTimeout(builder, ms, label);
-    if (res?.error) {
-      return fallback;
-    }
+    if (res?.error) return fallback;
     return res?.data ?? fallback;
-  } catch (e) {
+  } catch {
     return fallback;
   }
 };
 
 /* ══════════════════════════════════════════════════════════════════
+   TEXT HELPERS
+   ══════════════════════════════════════════════════════════════════ */
+
+const trimReason = (value) => {
+  if (value === null || value === undefined) return null;
+  const s = String(value).trim();
+  return s.length > 0 ? s : null;
+};
+
+const DECLINED_STATUSES = new Set([
+  "declined",
+  "rejected",
+  "cancelled",
+  "canceled",
+  "reject",
+]);
+
+const APPROVED_STATUSES = new Set([
+  "approved",
+  "confirmed",
+  "active",
+  "in progress",
+  "dispatched",
+  "ongoing",
+  "resolved",
+  "completed",
+]);
+
+const isDeclinedStatus = (value) =>
+  DECLINED_STATUSES.has(String(value || "").trim().toLowerCase());
+
+const isApprovedStatus = (value) =>
+  APPROVED_STATUSES.has(String(value || "").trim().toLowerCase());
+
+const withReason = (parts, { declined, reason, prefix = "Reason" }) => {
+  if (!declined) return parts;
+  const cleaned = trimReason(reason);
+  if (!cleaned) return parts;
+  return [...parts, `${prefix}: ${cleaned}`];
+};
+
+/* ══════════════════════════════════════════════════════════════════
    STORAGE
-     list    — notification records
-     read    — { id → timestamp }
-     dismiss — { id → timestamp }  ← prevents deleted items re-pushing
-     cache   — { table::id → last known status }
    ══════════════════════════════════════════════════════════════════ */
 
 const readJSON = (k, fb) => {
@@ -126,18 +162,48 @@ const SOURCES = [
     actionable: ["pending"],
     selfKeys: ["email", "mobile_number", "username"],
     selfTones: {
-      approved: "success", confirmed: "success",
-      rejected: "error", cancelled: "info",
+      approved: "success",
+      confirmed: "success",
+      rejected: "error",
+      declined: "error",
+      cancelled: "info",
+      canceled: "info",
     },
     queueTones: { approved: "info" },
     link: { user: "/track", staff: "/track", admin: "/admin/appointment" },
-    describe: (r) => ({
-      title: "Appointment",
-      message: [
-        r.purpose || "General visit",
-        [r.date, r.time].filter(Boolean).join(" at "),
-      ].filter(Boolean).join(" — "),
-    }),
+    describe: (r) => {
+      const status = String(r.status || "").toLowerCase();
+      const declined = isDeclinedStatus(status);
+      const approved = isApprovedStatus(status);
+      const reason = r.decline_reason || r.review_notes;
+
+      const parts = withReason(
+        [
+          r.purpose || "General visit",
+          [r.date, r.time].filter(Boolean).join(" at "),
+        ].filter(Boolean),
+        { declined, reason }
+      );
+
+      if (approved && !declined) {
+        return {
+          title: "Appointment Approved",
+          message: `Your appointment for "${r.purpose || "appointment"}" on ${r.date || ""} at ${r.time || ""} has been approved.`,
+        };
+      }
+
+      if (declined) {
+        return {
+          title: "Appointment Declined",
+          message: `Your appointment for "${r.purpose || "appointment"}" on ${r.date || ""} at ${r.time || ""} has been declined.\n\n${withReason([], { declined, reason }).join("\n") || "Reason: No reason provided."}`,
+        };
+      }
+
+      return {
+        title: "Appointment",
+        message: parts.join(" — "),
+      };
+    },
   },
   {
     table: "reportIncident",
@@ -149,20 +215,49 @@ const SOURCES = [
     actionable: ["pending"],
     selfKeys: ["reporterContact"],
     selfTones: {
-      "in progress": "info", dispatched: "info",
-      resolved: "success", rejected: "error",
+      "in progress": "info",
+      dispatched: "info",
+      resolved: "success",
+      rejected: "error",
+      declined: "error",
     },
     queueTones: {},
     link: { user: "/track", staff: "/track", admin: "/admin/report" },
-    describe: (r) => ({
-      title: "Incident Report",
-      message: [
-        r.incidentType,
-        r.priorityLevel ? `${r.priorityLevel} priority` : null,
-        r.address,
-        r.adminResponse ? `Response: ${r.adminResponse}` : null,
-      ].filter(Boolean).join(" — "),
-    }),
+    describe: (r) => {
+      const status = String(r.status || "").toLowerCase();
+      const declined = isDeclinedStatus(status);
+      const approved = isApprovedStatus(status);
+      const reason = r.review_notes || r.adminResponse;
+
+      if (approved && !declined) {
+        return {
+          title: "Incident Report Approved",
+          message: `${r.incidentType || "Incident"} has been processed. ${r.adminResponse ? `Response: ${r.adminResponse}` : ""}`.trim(),
+        };
+      }
+
+      if (declined) {
+        return {
+          title: "Incident Report Declined",
+          message: `${r.incidentType || "Incident"} was declined.\n\n${withReason([], { declined, reason }).join("\n") || "Reason: No reason provided."}`,
+        };
+      }
+
+      const parts = withReason(
+        [
+          r.incidentType,
+          r.priorityLevel ? `${r.priorityLevel} priority` : null,
+          r.address,
+          r.adminResponse ? `Response: ${r.adminResponse}` : null,
+        ].filter(Boolean),
+        { declined, reason }
+      );
+
+      return {
+        title: "Incident Report",
+        message: parts.join(" — "),
+      };
+    },
   },
   {
     table: "borrow-vehicle",
@@ -174,20 +269,51 @@ const SOURCES = [
     actionable: ["pending"],
     selfKeys: ["contactNum"],
     selfTones: {
-      approved: "success", declined: "error",
-      completed: "success", cancelled: "info",
+      approved: "success",
+      declined: "error",
+      rejected: "error",
+      completed: "success",
+      cancelled: "info",
+      canceled: "info",
+      ongoing: "info",
     },
     queueTones: { ongoing: "info", completed: "info" },
     link: { user: "/track", staff: "/staff/borrow", admin: "/admin/borrow" },
-    describe: (r) => ({
-      title: "Vehicle Dispatch",
-      message: [
-        r.vehicle ? String(r.vehicle).replace(/-/g, " ") : null,
-        r.destination,
-        r.requestedBy ? `by ${r.requestedBy}` : null,
-        r.adminNotes ? `Note: ${r.adminNotes}` : null,
-      ].filter(Boolean).join(" — "),
-    }),
+    describe: (r) => {
+      const status = String(r.status || "").toLowerCase();
+      const declined = isDeclinedStatus(status);
+      const approved = isApprovedStatus(status);
+      const reason = r.review_notes || r.adminNotes;
+
+      if (approved && !declined) {
+        return {
+          title: "Vehicle Dispatch Approved",
+          message: `Your dispatch request for ${r.vehicle ? String(r.vehicle).replace(/-/g, " ") : "a vehicle"} to ${r.destination || "your destination"} has been approved.`,
+        };
+      }
+
+      if (declined) {
+        return {
+          title: "Vehicle Dispatch Declined",
+          message: `Your dispatch request for ${r.vehicle ? String(r.vehicle).replace(/-/g, " ") : "a vehicle"} to ${r.destination || "your destination"} was declined.\n\n${withReason([], { declined, reason }).join("\n") || "Reason: No reason provided."}`,
+        };
+      }
+
+      const parts = withReason(
+        [
+          r.vehicle ? String(r.vehicle).replace(/-/g, " ") : null,
+          r.destination,
+          r.requestedBy ? `by ${r.requestedBy}` : null,
+          r.adminNotes ? `Note: ${r.adminNotes}` : null,
+        ].filter(Boolean),
+        { declined, reason }
+      );
+
+      return {
+        title: "Vehicle Dispatch",
+        message: parts.join(" — "),
+      };
+    },
   },
   {
     table: "outPatientCheckUp",
@@ -199,20 +325,51 @@ const SOURCES = [
     actionable: ["pending"],
     selfKeys: ["contactDetails"],
     selfTones: {
-      approved: "success", confirmed: "success", completed: "success",
-      declined: "error", cancelled: "info",
+      approved: "success",
+      confirmed: "success",
+      completed: "success",
+      declined: "error",
+      rejected: "error",
+      cancelled: "info",
+      canceled: "info",
     },
     queueTones: { approved: "warning", confirmed: "info" },
     link: { user: "/track", staff: "/staff/checkupqueue", admin: "/admin/checkup" },
-    describe: (r) => ({
-      title: "Check-Up Request",
-      message: [
-        r.patientName ? `Patient: ${r.patientName}` : null,
-        r.hospitalName,
-        [r.preferredDate, r.preferredTime].filter(Boolean).join(" at "),
-        r.staffNote ? `Staff note: ${r.staffNote}` : null,
-      ].filter(Boolean).join(" — "),
-    }),
+    describe: (r) => {
+      const status = String(r.status || "").toLowerCase();
+      const declined = isDeclinedStatus(status);
+      const approved = isApprovedStatus(status);
+      const reason = r.review_notes || r.staffNote;
+
+      if (approved && !declined) {
+        return {
+          title: "Check-Up Request Approved",
+          message: `Check-up request for ${r.patientName || "your patient"} at ${r.hospitalName || "the hospital"} on ${r.preferredDate || ""} at ${r.preferredTime || ""} has been approved.`,
+        };
+      }
+
+      if (declined) {
+        return {
+          title: "Check-Up Request Declined",
+          message: `Check-up request for ${r.patientName || "your patient"} at ${r.hospitalName || "the hospital"} on ${r.preferredDate || ""} at ${r.preferredTime || ""} was declined.\n\n${withReason([], { declined, reason }).join("\n") || "Reason: No reason provided."}`,
+        };
+      }
+
+      const parts = withReason(
+        [
+          r.patientName ? `Patient: ${r.patientName}` : null,
+          r.hospitalName,
+          [r.preferredDate, r.preferredTime].filter(Boolean).join(" at "),
+          r.staffNote ? `Staff note: ${r.staffNote}` : null,
+        ].filter(Boolean),
+        { declined, reason }
+      );
+
+      return {
+        title: "Check-Up Request",
+        message: parts.join(" — "),
+      };
+    },
   },
   {
     table: "hazard_reports",
@@ -222,21 +379,129 @@ const SOURCES = [
     scopes: ["self", "queue"],
     queueRoles: ["admin", "staff"],
     actionable: ["pending"],
-    selfKeys: ["reporter_contact"],
-    statusOf: (r) =>
-      String(r.report_status || r.status || "pending").toLowerCase(),
-    selfTones: { approved: "success", rejected: "error" },
-    queueTones: {},
-    link: { user: "/track", staff: "/staff/dashboard", admin: "/admin/hazard-map" },
-    describe: (r) => ({
-      title: "Hazard Report",
-      message: [
-        r.hazard_category,
-        r.risk_level ? `${r.risk_level} risk` : null,
-        r.address,
-        r.admin_remarks ? `Remarks: ${r.admin_remarks}` : null,
-      ].filter(Boolean).join(" — "),
-    }),
+    selfKeys: ["reporter_contact", "reporterContact", "contact", "phone", "email", "reporter_email"],
+    statusOf: (r) => {
+      /*
+       * Prefer explicit review workflow when past pending.
+       * Otherwise treat as approved/rejected if EITHER status
+       * column says so — do NOT let a leftover "pending"
+       * report_status hide an approved status (that blocked notifs).
+       */
+      const review = String(r.review_status || "").trim().toLowerCase();
+      const s = String(r.status || "").trim().toLowerCase();
+      const rs = String(r.report_status || "").trim().toLowerCase();
+
+      if (review && review !== "pending") return review;
+
+      if (rs === "approved" || s === "approved") return "approved";
+      if (
+        rs === "rejected" ||
+        s === "rejected" ||
+        rs === "declined" ||
+        s === "declined"
+      ) {
+        return "rejected";
+      }
+
+      return s || rs || "pending";
+    },
+    selfTones: {
+      approved: "success",
+      under_review: "info",
+      resolved: "success",
+      rejected: "error",
+      declined: "error",
+      pending: "info",
+    },
+    queueTones: {
+      under_review: "info",
+      resolved: "success",
+      approved: "info",
+      rejected: "error",
+      declined: "error",
+      pending: "warning",
+    },
+    link: {
+      user: "/track",
+      staff: "/staff/hazard-reports",
+      admin: "/admin/hazard-map",
+    },
+    describe: (r) => {
+      const status = String(
+        r.review_status || r.report_status || r.status || "",
+      ).toLowerCase();
+      const declined = isDeclinedStatus(status);
+      const approved =
+        isApprovedStatus(status) ||
+        status === "resolved" ||
+        status === "under_review";
+
+      const reason = r.admin_remarks || r.review_notes;
+      const category = r.hazard_category || "hazard";
+      const address = r.address || "your location";
+      const assigned =
+        r.assigned_to_name ||
+        (r.assigned_to_staff_id ? `Staff #${r.assigned_to_staff_id}` : null);
+
+      if (status === "under_review") {
+        return {
+          title: "Hazard Report Under Review",
+          message: [
+            `Your ${category} report at ${address} is now under review.`,
+            assigned ? `Assigned to: ${assigned}` : null,
+            reason ? `Remarks: ${reason}` : null,
+          ]
+            .filter(Boolean)
+            .join("\n"),
+        };
+      }
+
+      if (status === "resolved" || (approved && !declined && status !== "under_review")) {
+        return {
+          title:
+            status === "resolved"
+              ? "Hazard Report Resolved"
+              : "Hazard Report Approved",
+          message: [
+            `Your ${category} report at ${address} has been ${
+              status === "resolved" ? "resolved" : "approved"
+            }.`,
+            status !== "resolved"
+              ? "It may appear on the public hazard map."
+              : null,
+            assigned ? `Handled by: ${assigned}` : null,
+            reason ? `Remarks: ${reason}` : null,
+          ]
+            .filter(Boolean)
+            .join("\n"),
+        };
+      }
+
+      if (declined) {
+        return {
+          title: "Hazard Report Declined",
+          message: `Your ${category} report at ${address} was declined.\n\n${
+            withReason([], { declined, reason, prefix: "Remarks" }).join("\n") ||
+            "Remarks: No reason provided."
+          }`,
+        };
+      }
+
+      const parts = withReason(
+        [
+          category,
+          r.risk_level ? `${r.risk_level} risk` : null,
+          address,
+          assigned ? `Assigned: ${assigned}` : null,
+        ].filter(Boolean),
+        { declined, reason, prefix: "Remarks" },
+      );
+
+      return {
+        title: "Hazard Report",
+        message: parts.join(" — "),
+      };
+    },
   },
   {
     table: "pending_registrations",
@@ -247,17 +512,45 @@ const SOURCES = [
     queueRoles: ["admin"],
     actionable: ["pending"],
     selfKeys: ["email"],
-    selfTones: { approved: "success", rejected: "error" },
+    selfTones: {
+      approved: "success",
+      rejected: "error",
+      declined: "error",
+    },
     queueTones: {},
     link: { user: "/settings", staff: "/staff/settings", admin: "/admin/pending-account" },
-    describe: (r) => ({
-      title: "Account Registration",
-      message: [
-        [r.first_name, r.last_name].filter(Boolean).join(" ") || r.username,
-        r.status === "approved" ? "You can now sign in." : null,
-        r.status === "rejected" ? "Contact the MDRRMO office." : null,
-      ].filter(Boolean).join(" — "),
-    }),
+    describe: (r) => {
+      const declined = isDeclinedStatus(r.status);
+      const approved = r.status === "approved";
+      const reason = r.review_notes;
+
+      if (approved) {
+        return {
+          title: "Account Approved",
+          message: `${[r.first_name, r.last_name].filter(Boolean).join(" ") || r.username || "Your account"} has been approved. You can now sign in.`,
+        };
+      }
+
+      if (declined) {
+        return {
+          title: "Account Declined",
+          message: `${[r.first_name, r.last_name].filter(Boolean).join(" ") || r.username || "Your account"} was declined.\n\n${withReason([], { declined, reason }).join("\n") || "Reason: No reason provided."}`,
+        };
+      }
+
+      const parts = withReason(
+        [
+          [r.first_name, r.last_name].filter(Boolean).join(" ") || r.username,
+          r.status === "approved" ? "You can now sign in." : null,
+        ].filter(Boolean),
+        { declined, reason }
+      );
+
+      return {
+        title: "Account Registration",
+        message: parts.join(" — "),
+      };
+    },
   },
   {
     table: "inventory_reports",
@@ -270,13 +563,23 @@ const SOURCES = [
     selfTones: {},
     queueTones: {},
     link: { user: "/settings", staff: "/staff/inventory", admin: "/admin/inventory" },
-    describe: (r) => ({
-      title: "Inventory Report",
-      message: [
-        r.title,
-        r.generated_by_name ? `by ${r.generated_by_name}` : null,
-      ].filter(Boolean).join(" — "),
-    }),
+    describe: (r) => {
+      const declined = isDeclinedStatus(r.status);
+      const reason = r.admin_notes || r.review_notes;
+
+      const parts = withReason(
+        [
+          r.title,
+          r.generated_by_name ? `by ${r.generated_by_name}` : null,
+        ].filter(Boolean),
+        { declined, reason, prefix: "Notes" }
+      );
+
+      return {
+        title: "Inventory Report",
+        message: parts.join(" — "),
+      };
+    },
   },
   {
     table: "borrower_slip",
@@ -366,6 +669,129 @@ const statusOf = (src, row) =>
   src.statusOf ? src.statusOf(row) : String(row.status || "").trim().toLowerCase();
 
 const idOf = (src, row) => row[src.idKey] ?? "unknown";
+
+/* ══════════════════════════════════════════════════════════════════
+   NOTIFICATIONS TABLE MAPPING
+   ══════════════════════════════════════════════════════════════════ */
+
+const NOTIF_TONE_MAP = {
+  success: "success",
+  error: "error",
+  warning: "warning",
+  info: "info",
+};
+
+const guessFromNotification = (row, w) => {
+  const title = String(row.title || "").toLowerCase();
+
+  if (title.includes("appointment")) {
+    return {
+      iconKey: "appointments",
+      label: "Appointment",
+      link: w.isAdminRole
+        ? "/admin/appointment"
+        : w.isStaffRole
+          ? "/track"
+          : "/track",
+      tone: NOTIF_TONE_MAP[row.type] || "info",
+    };
+  }
+
+  if (title.includes("incident")) {
+    return {
+      iconKey: "reportIncident",
+      label: "Incident Report",
+      link: w.isAdminRole ? "/admin/report" : "/track",
+      tone: NOTIF_TONE_MAP[row.type] || "info",
+    };
+  }
+
+  if (title.includes("vehicle") || title.includes("dispatch")) {
+    return {
+      iconKey: "borrow-vehicle",
+      label: "Vehicle Dispatch",
+      link: w.isAdminRole
+        ? "/admin/borrow"
+        : w.isStaffRole
+          ? "/staff/borrow"
+          : "/track",
+      tone: NOTIF_TONE_MAP[row.type] || "info",
+    };
+  }
+
+  if (title.includes("check")) {
+    return {
+      iconKey: "outPatientCheckUp",
+      label: "Check-Up Request",
+      link: w.isAdminRole
+        ? "/admin/checkup"
+        : w.isStaffRole
+          ? "/staff/checkupqueue"
+          : "/track",
+      tone: NOTIF_TONE_MAP[row.type] || "info",
+    };
+  }
+
+  if (title.includes("hazard")) {
+    return {
+      iconKey: "hazard_reports",
+      label: "Hazard Report",
+      link: w.isAdminRole ? "/admin/hazard-map" : "/track",
+      tone: NOTIF_TONE_MAP[row.type] || "info",
+    };
+  }
+
+  if (title.includes("account") || title.includes("registration")) {
+    return {
+      iconKey: "pending_registrations",
+      label: "Account",
+      link: w.isAdminRole
+        ? "/admin/pending-account"
+        : "/settings",
+      tone: NOTIF_TONE_MAP[row.type] || "info",
+    };
+  }
+
+  if (title.includes("inventory")) {
+    return {
+      iconKey: "inventory_reports",
+      label: "Inventory Report",
+      link: w.isAdminRole
+        ? "/admin/inventory"
+        : "/staff/inventory",
+      tone: NOTIF_TONE_MAP[row.type] || "info",
+    };
+  }
+
+  return {
+    iconKey: null,
+    label: "Notification",
+    link: "/home",
+    tone: NOTIF_TONE_MAP[row.type] || "info",
+  };
+};
+
+const notifRowToItem = (row, w) => {
+  if (!row || !row.id) return null;
+
+  const meta = guessFromNotification(row, w);
+
+  return {
+    id: `notification::${row.id}`,
+    table: "notifications",
+    recordId: String(row.id),
+    scope: "self",
+    kind: "status",
+    tone: meta.tone,
+    label: meta.label,
+    iconKey: meta.iconKey,
+    title: row.title || meta.label,
+    message: row.message || "",
+    link: meta.link,
+    createdAt: row.created_at || new Date().toISOString(),
+    dbRead: row.is_read === true,
+  };
+};
 
 /* ══════════════════════════════════════════════════════════════════
    TONES
@@ -533,7 +959,6 @@ const resolveIdentity = async () => {
   const firstId = [...ids][0] || "anon";
   const storageKey = `${role}-${authId || profileId || staffRowId || firstId}`;
 
-
   return {
     idSet: ids, authId, profileId, staffRowId,
     email, phone, name, role, isHandler, exists, storageKey,
@@ -543,7 +968,7 @@ const resolveIdentity = async () => {
 };
 
 /* ══════════════════════════════════════════════════════════════════
-   MATCHING — scoped to known ownership columns only
+   MATCHING
    ══════════════════════════════════════════════════════════════════ */
 
 const OWNERSHIP_ID_COLUMNS = [
@@ -552,6 +977,14 @@ const OWNERSHIP_ID_COLUMNS = [
   "user_id_from_auth",
   "staffId",
   "staff_id",
+  "created_by",
+  "reporter_id",
+];
+
+const HAZARD_ASSIGN_COLUMNS = [
+  "assigned_to_staff_id",
+  "reviewed_by_staff_id",
+  "reviewed_by",
 ];
 
 const matchRow = (src, row, w) => {
@@ -563,13 +996,21 @@ const matchRow = (src, row, w) => {
     if (w.idSet.has(String(v))) return { ok: true, via: col };
   }
 
+  if (src.table === "hazard_reports") {
+    for (const col of HAZARD_ASSIGN_COLUMNS) {
+      const v = row[col];
+      if (v === null || v === undefined || v === "") continue;
+      if (w.idSet.has(String(v))) return { ok: true, via: col };
+    }
+  }
+
   const myEmail = (w.email || "").trim().toLowerCase();
   const myPhone = digits(w.phone);
 
   for (const col of src.selfKeys || []) {
-    const raw = row[col];
-    if (!raw) continue;
-    const v = String(raw).trim();
+    const rawVal = row[col];
+    if (!rawVal) continue;
+    const v = String(rawVal).trim();
     if (myEmail && v.toLowerCase() === myEmail) return { ok: true, via: col };
     if (myPhone && myPhone.length >= 10 &&
       digits(v).slice(-10) === myPhone.slice(-10)) {
@@ -612,8 +1053,6 @@ export default function Notification() {
   const scanPromiseRef = useRef(null);
   const bootRef = useRef(null);
 
-  /* ── persistence ─────────────────────────────────────────────── */
-
   const persistAll = useCallback(() => {
     const w = whoRef.current;
     if (!w) return;
@@ -627,8 +1066,6 @@ export default function Notification() {
     if (!w) return;
     writeJSON(cacheKey(w.storageKey), cacheRef.current);
   }, []);
-
-  /* ── push: list-only, no toasts ──────────────────────────────── */
 
   const push = useCallback((p, { silent = false } = {}) => {
     if (dismissRef.current[p.id] !== undefined) return;
@@ -651,8 +1088,6 @@ export default function Notification() {
       ] || "/home",
     []
   );
-
-  /* ── create event ────────────────────────────────────────────── */
 
   const onCreated = useCallback((src, row, scope) => {
     const w = whoRef.current;
@@ -679,14 +1114,23 @@ export default function Notification() {
     });
   }, [push, linkFor]);
 
-  /* ── status event ────────────────────────────────────────────── */
-
   const onStatus = useCallback((src, row, scope, status, previous) => {
     if (!status) return;
     const w = whoRef.current;
     if (!w) return;
 
-    const tone = (scope === "queue" ? src.queueTones : src.selfTones)[status];
+    const mapped = (scope === "queue" ? src.queueTones : src.selfTones)[status];
+    // Always notify on terminal / important hazard statuses even if
+    // the tone map was incomplete for a given label.
+    const fallbackTone =
+      status === "approved" || status === "resolved" || status === "confirmed"
+        ? "success"
+        : status === "rejected" || status === "declined" || status === "cancelled" || status === "canceled"
+          ? "error"
+          : status === "under_review" || status === "in progress" || status === "dispatched"
+            ? "info"
+            : null;
+    const tone = mapped || fallbackTone;
     if (!tone) return;
 
     const { title, message } = src.describe(row || {});
@@ -702,15 +1146,82 @@ export default function Notification() {
       tone,
       label: src.label,
       iconKey: src.table,
-      title: `${title} ${pretty}`,
+      title: title || `${src.label} ${pretty}`,
       message: message || `Status changed to ${pretty}.`,
       link: linkFor(src, w),
       previousStatus: previous,
-      createdAt: row?.updated_at || row?.respondedAt || new Date().toISOString(),
+      createdAt: row?.updated_at || row?.respondedAt || row?.reviewed_at || new Date().toISOString(),
     });
   }, [push, linkFor]);
 
-  /* ── scan one source ──────────────────────────────────────────── */
+  const scanNotificationsTable = useCallback(async (w) => {
+    if (!w || !w.authId) {
+      setDiag((d) => ({
+        ...d,
+        notifications: { mine: 0, total: 0, note: "no auth id" },
+      }));
+      return;
+    }
+
+    const rows = await safeQuery(
+      supabase
+        .from("notifications")
+        .select("*")
+        .eq("user_id", w.authId)
+        .order("created_at", { ascending: false })
+        .limit(SCAN_LIMIT),
+      null,
+      "scan notifications",
+      10000
+    );
+
+    if (rows === null) {
+      setBlocked((p) =>
+        p.includes("notifications") ? p : [...p, "notifications"]
+      );
+      setDiag((d) => ({
+        ...d,
+        notifications: { error: "unreadable or timed out", mine: 0 },
+      }));
+      return;
+    }
+
+    setBlocked((p) => p.filter((t) => t !== "notifications"));
+
+    let added = 0;
+    let skippedRead = 0;
+
+    for (const row of rows) {
+      const item = notifRowToItem(row, w);
+      if (!item) continue;
+
+      if (dismissRef.current[item.id] !== undefined) continue;
+      if (notifRef.current.some((x) => x.id === item.id)) continue;
+
+      if (item.dbRead && readRef.current[item.id] === undefined) {
+        readRef.current = {
+          ...readRef.current,
+          [item.id]: new Date(row.created_at || Date.now()).getTime(),
+        };
+        skippedRead += 1;
+      }
+
+      const n = { read: item.dbRead === true, ...item };
+      notifRef.current = [n, ...notifRef.current].slice(0, MAX_NOTIFICATIONS);
+      added += 1;
+    }
+
+    if (added > 0 || skippedRead > 0) {
+      setNotifications([...notifRef.current]);
+      setReadMap({ ...readRef.current });
+      persistAll();
+    }
+
+    setDiag((d) => ({
+      ...d,
+      notifications: { mine: rows.length, total: rows.length },
+    }));
+  }, [persistAll]);
 
   const scanSource = useCallback(async (src, w) => {
     const rows = await safeQuery(
@@ -765,8 +1276,11 @@ export default function Notification() {
       }
 
       if (!w.isHandler && m.ok) {
-        if (prev === undefined) onCreated(src, row, "self");
-        else if (prev !== status) onStatus(src, row, "self", status, prev);
+        if (prev === undefined) {
+          onCreated(src, row, "self");
+        } else if (prev !== status) {
+          onStatus(src, row, "self", status, prev);
+        }
       }
     }
 
@@ -782,7 +1296,6 @@ export default function Notification() {
       },
     }));
 
-    // Backfill is always silent.
     if (w.isHandler && queueBackfill.length) {
       queueBackfill.slice(0, QUEUE_BACKFILL).forEach((row) => {
         const { title, message } = src.describe(row);
@@ -829,7 +1342,6 @@ export default function Notification() {
     }
   }, [onCreated, onStatus, push, linkFor]);
 
-  /* scanAll — single in-flight promise, no overlapping scans */
   const scanAll = useCallback(async () => {
     const w = whoRef.current;
     if (!w) return;
@@ -840,7 +1352,12 @@ export default function Notification() {
 
     const run = (async () => {
       try {
-        await Promise.allSettled(sourcesFor(w).map((s) => scanSource(s, w)));
+        await scanNotificationsTable(w);
+
+        await Promise.allSettled(
+          sourcesFor(w).map((s) => scanSource(s, w))
+        );
+
         persistCache();
       } finally {
         scanPromiseRef.current = null;
@@ -849,9 +1366,7 @@ export default function Notification() {
 
     scanPromiseRef.current = run;
     return run;
-  }, [scanSource, persistCache]);
-
-  /* ── boot (StrictMode-safe) ───────────────────────────────────── */
+  }, [scanNotificationsTable, scanSource, persistCache]);
 
   useEffect(() => {
     if (!bootRef.current) {
@@ -888,17 +1403,13 @@ export default function Notification() {
         setDismissMap(dismissRef.current);
         if (w) setWho(w);
         setBooting(false);
-       
       })
-      .catch((e) => {
-      
+      .catch(() => {
         if (alive) setBooting(false);
       });
 
     return () => { alive = false; };
   }, [scanAll]);
-
-  /* ── poll ────────────────────────────────────────────────────── */
 
   useEffect(() => {
     if (!who || booting) return undefined;
@@ -914,8 +1425,6 @@ export default function Notification() {
     };
   }, [who, booting, scanAll]);
 
-  /* ── refresh signal ──────────────────────────────────────────── */
-
   useEffect(() => {
     if (!who || booting) return undefined;
     const onRefresh = () => scanAll();
@@ -923,13 +1432,31 @@ export default function Notification() {
     return () => window.removeEventListener(REFRESH_EVENT, onRefresh);
   }, [who, booting, scanAll]);
 
-  /* ── realtime ────────────────────────────────────────────────── */
-
   useEffect(() => {
     if (!who || booting) return undefined;
 
     const ch = supabase
-      .channel("mdrrmo-notif-v4")
+      .channel("mdrrmo-notif-v6")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "notifications" },
+        (pl) => {
+          const w = whoRef.current;
+          if (!w || !w.authId) return;
+          const row = pl.new;
+          if (!row || String(row.user_id) !== String(w.authId)) return;
+
+          const item = notifRowToItem(row, w);
+          if (!item) return;
+          if (dismissRef.current[item.id] !== undefined) return;
+          if (notifRef.current.some((x) => x.id === item.id)) return;
+
+          const n = { read: false, ...item };
+          notifRef.current = [n, ...notifRef.current].slice(0, MAX_NOTIFICATIONS);
+          setNotifications([...notifRef.current]);
+          persistAll();
+        }
+      )
       .on("postgres_changes", { event: "*", schema: "public" }, (pl) => {
         const w = whoRef.current;
         if (!w) return;
@@ -970,9 +1497,7 @@ export default function Notification() {
       .subscribe();
 
     return () => { supabase.removeChannel(ch); };
-  }, [who, booting, onCreated, onStatus, persistCache]);
-
-  /* ── dropdown placement ──────────────────────────────────────── */
+  }, [who, booting, onCreated, onStatus, persistAll, persistCache]);
 
   const place = useCallback(() => {
     if (!open || !btnRef.current) {
@@ -1025,8 +1550,6 @@ export default function Notification() {
     return () => window.removeEventListener("keydown", onKey);
   }, [open, selected]);
 
-  /* ── read / dismiss state ────────────────────────────────────── */
-
   const isRead = useCallback(
     (n) => readMap[n.id] !== undefined,
     [readMap]
@@ -1043,15 +1566,45 @@ export default function Notification() {
     readRef.current = next;
     setReadMap(next);
     persistAll();
+
+    if (id.startsWith("notification::")) {
+      const dbId = id.split("::")[1];
+      if (dbId) {
+        void supabase
+          .from("notifications")
+          .update({ is_read: true })
+          .eq("id", dbId)
+          .then(({ error }) => {
+            if (error) dbg("mark read sync failed:", error.message);
+          });
+      }
+    }
   }, [persistAll]);
 
   const markAllRead = useCallback(() => {
     const now = Date.now();
     const next = { ...readRef.current };
-    notifRef.current.forEach((n) => { next[n.id] = now; });
+    const dbIds = [];
+    notifRef.current.forEach((n) => {
+      next[n.id] = now;
+      if (n.id.startsWith("notification::")) {
+        const dbId = n.id.split("::")[1];
+        if (dbId) dbIds.push(dbId);
+      }
+    });
     readRef.current = next;
     setReadMap(next);
     persistAll();
+
+    if (dbIds.length > 0) {
+      void supabase
+        .from("notifications")
+        .update({ is_read: true })
+        .in("id", dbIds)
+        .then(({ error }) => {
+          if (error) dbg("mark all read sync failed:", error.message);
+        });
+    }
   }, [persistAll]);
 
   const markUnread = useCallback((id) => {
@@ -1061,6 +1614,19 @@ export default function Notification() {
     readRef.current = next;
     setReadMap(next);
     persistAll();
+
+    if (id.startsWith("notification::")) {
+      const dbId = id.split("::")[1];
+      if (dbId) {
+        void supabase
+          .from("notifications")
+          .update({ is_read: false })
+          .eq("id", dbId)
+          .then(({ error }) => {
+            if (error) dbg("mark unread sync failed:", error.message);
+          });
+      }
+    }
   }, [persistAll]);
 
   const dismissOne = useCallback((id) => {
@@ -1096,8 +1662,6 @@ export default function Notification() {
     setSelected(n);
   }, [markRead]);
 
-  /* Opening the panel no longer auto-marks everything read.
-     The user can mark all as read from the toolbar. */
   const handleToggleOpen = useCallback(() => {
     setOpen((prev) => !prev);
   }, []);
@@ -1135,23 +1699,62 @@ export default function Notification() {
     });
   }, []);
 
-  /* ── Separate New vs Older ───────────────────────────────────── */
+  /* New = unread; Earlier = read within 7 days; Old = read older than 7 days */
+  const EARLIER_MS = 7 * 24 * 60 * 60 * 1000;
 
-  const { newList, olderList } = useMemo(() => {
+  const { newList, earlierList, oldList } = useMemo(() => {
+    const now = Date.now();
     const unreadItems = [];
-    const readItems = [];
+    const earlierItems = [];
+    const oldItems = [];
 
     notifications.forEach((n) => {
-      if (readMap[n.id] === undefined) unreadItems.push(n);
-      else readItems.push(n);
+      if (readMap[n.id] === undefined) {
+        unreadItems.push(n);
+        return;
+      }
+      const ts = new Date(n.createdAt).getTime();
+      const age = Number.isNaN(ts) ? 0 : now - ts;
+      if (age <= EARLIER_MS) earlierItems.push(n);
+      else oldItems.push(n);
     });
 
-    if (filter === "unread") {
-      return { newList: unreadItems, olderList: [] };
+    if (filter === "unread" || filter === "new") {
+      return { newList: unreadItems, earlierList: [], oldList: [] };
+    }
+    if (filter === "earlier") {
+      return { newList: [], earlierList: earlierItems, oldList: [] };
+    }
+    if (filter === "old") {
+      return { newList: [], earlierList: [], oldList: oldItems };
     }
 
-    return { newList: unreadItems, olderList: readItems };
+    return {
+      newList: unreadItems,
+      earlierList: earlierItems,
+      oldList: oldItems,
+    };
   }, [notifications, filter, readMap]);
+
+  const earlierCount = useMemo(() => {
+    const now = Date.now();
+    return notifications.filter((n) => {
+      if (readMap[n.id] === undefined) return false;
+      const ts = new Date(n.createdAt).getTime();
+      const age = Number.isNaN(ts) ? 0 : now - ts;
+      return age <= EARLIER_MS;
+    }).length;
+  }, [notifications, readMap]);
+
+  const oldCount = useMemo(() => {
+    const now = Date.now();
+    return notifications.filter((n) => {
+      if (readMap[n.id] === undefined) return false;
+      const ts = new Date(n.createdAt).getTime();
+      const age = Number.isNaN(ts) ? 0 : now - ts;
+      return age > EARLIER_MS;
+    }).length;
+  }, [notifications, readMap]);
 
   if (booting) {
     return (
@@ -1165,8 +1768,12 @@ export default function Notification() {
 
   const filters = [
     { id: "all", label: "All", count: notifications.length },
-    ...(unread > 0
-      ? [{ id: "unread", label: "Unread", count: unread }]
+    ...(unread > 0 ? [{ id: "new", label: "New", count: unread }] : []),
+    ...(earlierCount > 0
+      ? [{ id: "earlier", label: "Earlier", count: earlierCount }]
+      : []),
+    ...(oldCount > 0
+      ? [{ id: "old", label: "Old", count: oldCount }]
       : []),
   ];
 
@@ -1210,7 +1817,7 @@ export default function Notification() {
                 {timeAgo(n.createdAt)}
               </span>
             </span>
-            <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400 line-clamp-2">
+            <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400 line-clamp-2 whitespace-pre-line">
               {n.message}
             </span>
             <span className="mt-1 flex items-center gap-1.5">
@@ -1239,7 +1846,6 @@ export default function Notification() {
 
   return (
     <div className="relative inline-block">
-      {/* ── Bell ── */}
       <button
         ref={btnRef}
         type="button"
@@ -1267,7 +1873,6 @@ export default function Notification() {
             />
           )}
 
-          {/* ── Dropdown ── */}
           {open && pos && (
             <div
               style={{ left: pos.left, top: pos.top, width: pos.width }}
@@ -1343,15 +1948,23 @@ export default function Notification() {
               )}
 
               <div className="overflow-y-auto" style={{ maxHeight: pos.listMax || 360 }}>
-                {newList.length === 0 && olderList.length === 0 ? (
+                {newList.length === 0 && earlierList.length === 0 && oldList.length === 0 ? (
                   <div className="flex flex-col items-center gap-2 px-4 py-12 text-center">
                     <Bell className="h-10 w-10 text-slate-300 dark:text-slate-600" />
                     <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">
-                      {filter === "all" ? "No notifications yet" : "Nothing unread"}
+                      {filter === "all"
+                        ? "No notifications yet"
+                        : filter === "new" || filter === "unread"
+                          ? "Nothing new"
+                          : filter === "earlier"
+                            ? "Nothing earlier"
+                            : filter === "old"
+                              ? "Nothing old"
+                              : "No notifications"}
                     </p>
                     <p className="text-xs text-slate-400 dark:text-slate-500 max-w-[16rem]">
                       {who.isHandler
-                        ? "You'll be alerted when residents submit requests and when staff update the queues you handle."
+                        ? "You'll be alerted when residents submit requests and when staff update the queues you handle — including hazard reports."
                         : "Submit an appointment, incident, vehicle request, check-up, or hazard report — you'll be alerted here whenever its status changes."}
                     </p>
                   </div>
@@ -1361,28 +1974,38 @@ export default function Notification() {
                       <>
                         <div className="px-3 py-1.5 bg-blue-50/80 dark:bg-blue-950/30 border-b border-blue-100 dark:border-blue-900 sticky top-0 z-10">
                           <p className="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">
-                            Unread · {newList.length}
+                            New · {newList.length}
                           </p>
                         </div>
                         {newList.map(renderItem)}
                       </>
                     )}
 
-                    {olderList.length > 0 && (
+                    {earlierList.length > 0 && (
                       <>
                         <div className="px-3 py-1.5 bg-slate-50 dark:bg-slate-900/60 border-b border-slate-100 dark:border-slate-700 sticky top-0 z-10">
                           <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
-                            Earlier · {olderList.length}
+                            Earlier · {earlierList.length}
                           </p>
                         </div>
-                        {olderList.map(renderItem)}
+                        {earlierList.map(renderItem)}
+                      </>
+                    )}
+
+                    {oldList.length > 0 && (
+                      <>
+                        <div className="px-3 py-1.5 bg-slate-100/80 dark:bg-slate-950/50 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-10">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                            Old · {oldList.length}
+                          </p>
+                        </div>
+                        {oldList.map(renderItem)}
                       </>
                     )}
                   </>
                 )}
               </div>
 
-              {/* Diagnostics footer */}
               <div className="border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900">
                 {blocked.length > 0 && (
                   <p className="px-4 pt-2 text-[10px] text-amber-600 dark:text-amber-400 text-center">
@@ -1438,7 +2061,6 @@ export default function Notification() {
             </div>
           )}
 
-          {/* ── Detail modal ── */}
           {selected && (() => {
             const ToneIcon = TONE_ICON[selected.tone] || Info;
             const wasRead = isRead(selected);
@@ -1484,7 +2106,7 @@ export default function Notification() {
                   </div>
 
                   <div className="p-6">
-                    <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed mb-4">
+                    <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-line mb-4">
                       {selected.message}
                     </p>
 

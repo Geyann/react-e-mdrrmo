@@ -75,11 +75,239 @@ export default function InventoryReportPreview({
       ? content.summary
       : {};
 
+  const escapeHtml = (value) =>
+    String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+
   const handlePrint = () => {
-    if (onPrint) {
-      onPrint();
+    const toolsRows = tools
+      .map(
+        (item) => `
+      <tr>
+        <td>${escapeHtml(item.name || "—")}</td>
+        <td>${escapeHtml(item.category || "—")}</td>
+        <td class="center">${escapeHtml(item.quantity ?? "—")}</td>
+        <td class="center">${escapeHtml(item.min_quantity ?? "—")}</td>
+        <td>${escapeHtml(item.unit || "—")}</td>
+        <td>${escapeHtml(item.location || "—")}</td>
+        <td>${escapeHtml(item.expiry_date ? String(item.expiry_date).slice(0, 10) : "—")}</td>
+      </tr>`,
+      )
+      .join("");
+
+    const suppliesRows = supplies
+      .map(
+        (item) => `
+      <tr>
+        <td>${escapeHtml(item.name || "—")}</td>
+        <td>${escapeHtml(item.category || "—")}</td>
+        <td class="center">${escapeHtml(item.quantity ?? "—")}</td>
+        <td class="center">${escapeHtml(item.min_quantity ?? "—")}</td>
+        <td>${escapeHtml(item.unit || "—")}</td>
+        <td>${escapeHtml(item.location || "—")}</td>
+        <td>${escapeHtml(item.expiry_date ? String(item.expiry_date).slice(0, 10) : "—")}</td>
+      </tr>`,
+      )
+      .join("");
+
+    const toolsTable = tools.length
+      ? `
+      <div class="section avoid-break">
+        <h2 class="section-title">Tools (${tools.length})</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th><th>Category</th><th class="center">Qty</th>
+              <th class="center">Min</th><th>Unit</th><th>Location</th><th>Expiry</th>
+            </tr>
+          </thead>
+          <tbody>${toolsRows}</tbody>
+        </table>
+      </div>`
+      : "";
+
+    const suppliesTable = supplies.length
+      ? `
+      <div class="section avoid-break">
+        <h2 class="section-title">Supplies (${supplies.length})</h2>
+        <table>
+          <thead>
+            <tr>
+              <th>Name</th><th>Category</th><th class="center">Qty</th>
+              <th class="center">Min</th><th>Unit</th><th>Location</th><th>Expiry</th>
+            </tr>
+          </thead>
+          <tbody>${suppliesRows}</tbody>
+        </table>
+      </div>`
+      : "";
+
+    const summaryCards = `
+      <div class="grid-4">
+        <div class="card"><div class="card-label">Tools</div><div class="card-value">${summary.tools_count ?? tools.length}</div></div>
+        <div class="card"><div class="card-label">Supplies</div><div class="card-value">${summary.supplies_count ?? supplies.length}</div></div>
+        <div class="card"><div class="card-label">Low Stock</div><div class="card-value">${summary.low_stock_count ?? "—"}</div></div>
+        <div class="card"><div class="card-label">Expired</div><div class="card-value">${summary.expired_count ?? "—"}</div></div>
+      </div>`;
+
+    const generated = formatDate(report.created_at);
+    const statusLabel = prettyStatus(report.status);
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>${escapeHtml(report.title || "Inventory Report")}</title>
+  <style>
+    @page { size: A4 portrait; margin: 12mm; }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0 !important; padding: 0 !important;
+      background: #ffffff; color: #000000;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      font-size: 12px; line-height: 1.45;
+      height: auto !important; min-height: 0 !important;
+      -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    }
+    h1 { margin: 0; font-size: 18px; text-align: center; color: #000; }
+    h2, .section-title {
+      margin: 0 0 10px; font-size: 13px; font-weight: 800; color: #000;
+      border-bottom: 1px solid #cbd5e1; padding-bottom: 6px;
+    }
+    .header {
+      text-align: center; border-bottom: 2px solid #000;
+      padding-bottom: 12px; margin-bottom: 16px;
+    }
+    .muted { color: #334155; font-size: 11px; }
+    .grid-4 {
+      display: grid; grid-template-columns: repeat(4, 1fr);
+      gap: 8px; margin-bottom: 16px;
+    }
+    .card {
+      border: 1px solid #cbd5e1; border-radius: 10px;
+      padding: 10px 12px; background: #fff; color: #000;
+    }
+    .card-label { font-size: 10px; font-weight: 700; }
+    .card-value { font-size: 18px; font-weight: 800; margin-top: 2px; }
+    .section { margin-bottom: 16px; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    th, td {
+      border: 1px solid #cbd5e1; padding: 5px 6px; text-align: left;
+      vertical-align: top; word-wrap: break-word;
+      background: #fff; color: #000; font-size: 11px;
+    }
+    th { font-size: 10px; border-bottom: 2px solid #94a3b8; }
+    td.center, th.center { text-align: center; }
+    thead { display: table-header-group; }
+    tr { page-break-inside: avoid; break-inside: avoid; }
+    .avoid-break { page-break-inside: avoid; break-inside: avoid; }
+    .footer {
+      border-top: 1px solid #cbd5e1; padding-top: 10px;
+      text-align: center; color: #334155; font-size: 10px; margin-top: 14px;
+    }
+    @media print {
+      html, body {
+        height: auto !important; min-height: 0 !important;
+        overflow: visible !important; background: #ffffff !important;
+        color: #000000 !important; margin: 0 !important; padding: 0 !important;
+      }
+      * {
+        background: #ffffff !important; background-color: #ffffff !important;
+        box-shadow: none !important; color: #000000 !important;
+      }
+      table, th, td, .card {
+        background: #ffffff !important; border-color: #cbd5e1 !important;
+        color: #000000 !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="header avoid-break">
+    <p class="muted" style="font-weight:700;letter-spacing:0.12em;text-transform:uppercase">E-MDRRMO</p>
+    <h1>${escapeHtml(report.title || "Inventory Report")}</h1>
+    <p class="muted" style="margin-top:8px">Type: ${escapeHtml(String(report.report_type || "").replace(/_/g, " "))}</p>
+    <p class="muted">Status: ${escapeHtml(statusLabel)}</p>
+    <p class="muted">Generated: ${escapeHtml(generated)}</p>
+    <p class="muted">By: ${escapeHtml(report.generated_by_name || "Staff")}</p>
+  </div>
+
+  <div class="section avoid-break">
+    <h2 class="section-title">Summary</h2>
+    ${summaryCards}
+  </div>
+
+  ${toolsTable}
+  ${suppliesTable}
+
+  ${
+    !tools.length && !supplies.length
+      ? `<p class="muted" style="text-align:center;margin:24px 0">This report does not contain inventory details.</p>`
+      : ""
+  }
+
+  <div class="footer avoid-break">
+    <p>This report is system-generated and reflects the inventory snapshot taken when it was created.</p>
+    <p>© ${new Date().getFullYear()} E-MDRRMO</p>
+  </div>
+</body>
+</html>`;
+
+    const existing = document.getElementById("inventory-report-print-frame");
+    if (existing) existing.remove();
+
+    const iframe = document.createElement("iframe");
+    iframe.id = "inventory-report-print-frame";
+    iframe.setAttribute("title", "Inventory Report Print");
+    iframe.style.cssText =
+      "position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none;";
+    document.body.appendChild(iframe);
+
+    const frameDoc = iframe.contentDocument || iframe.contentWindow.document;
+    frameDoc.open();
+    frameDoc.write(html);
+    frameDoc.close();
+
+    const triggerPrint = () => {
+      try {
+        const win = iframe.contentWindow;
+        void win.document.body.offsetHeight;
+        win.focus();
+        win.print();
+      } catch (err) {
+        console.error("Print failed:", err);
+      }
+      const cleanup = () => {
+        try {
+          iframe.remove();
+        } catch {
+          /* ignore */
+        }
+      };
+      try {
+        iframe.contentWindow.onafterprint = cleanup;
+      } catch {
+        /* ignore */
+      }
+      setTimeout(cleanup, 120000);
+    };
+
+    const schedulePrint = () => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setTimeout(triggerPrint, 400);
+        });
+      });
+    };
+
+    if (iframe.contentWindow.document.readyState === "complete") {
+      schedulePrint();
     } else {
-      window.print();
+      iframe.onload = schedulePrint;
     }
   };
 
@@ -181,81 +409,6 @@ export default function InventoryReportPreview({
 
   return (
     <>
-      <style>{`
-        @media print {
-          @page {
-            size: A4 portrait;
-            margin: 12mm;
-          }
-
-          html,
-          body,
-          #root,
-          .app-shell,
-          .content {
-            height: auto !important;
-            max-height: none !important;
-            overflow: visible !important;
-          }
-
-          body {
-            background: white !important;
-            color: black !important;
-          }
-
-          body * {
-            visibility: hidden !important;
-          }
-
-          .inventory-report-overlay {
-            position: static !important;
-            display: block !important;
-            overflow: visible !important;
-            padding: 0 !important;
-            background: none !important;
-          }
-
-          .inventory-report-print,
-          .inventory-report-print * {
-            visibility: visible !important;
-          }
-
-          .inventory-report-print {
-            position: static !important;
-            width: 100% !important;
-            max-width: none !important;
-            max-height: none !important;
-            margin: 0 !important;
-            border: 0 !important;
-            border-radius: 0 !important;
-            box-shadow: none !important;
-          }
-
-          .inventory-report-print .print-hidden {
-            display: none !important;
-          }
-
-          .inventory-print-flow {
-            break-inside: auto !important;
-            page-break-inside: auto !important;
-          }
-
-          .inventory-print-table-head {
-            display: table-header-group !important;
-          }
-
-          .inventory-print-row {
-            break-inside: avoid !important;
-            page-break-inside: avoid !important;
-          }
-
-          * {
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
-        }
-      `}</style>
-
       <div
         className="inventory-report-overlay fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-black/50 p-4"
         onClick={onClose}

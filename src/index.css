@@ -43,7 +43,7 @@ html {
 
 html.dark {
   color-scheme: dark;
-  background: #020617;
+  background: #010409;
 }
 
 body {
@@ -59,6 +59,12 @@ body {
       #9333ea 100%
     );
   color: #0f172a;
+}
+
+/* Dim outer frame in dark mode — no bright blue/purple wash */
+html.dark body {
+  background: #010409;
+  color: #e2e8f0;
 }
 
 body,
@@ -104,6 +110,15 @@ button:disabled {
   isolation: isolate;
 }
 
+/*
+ * Kill the bright Tailwind gradient on the outer shell in dark mode.
+ * Matches App.jsx: bg-gradient-to-r from-blue-600 via-blue-600 to-purple-600
+ */
+html.dark .app-gradient-frame {
+  background-image: none !important;
+  background-color: #010409 !important;
+}
+
 .app-gradient-frame::before {
   position: fixed;
   z-index: -1;
@@ -132,6 +147,19 @@ button:disabled {
   filter: blur(110px);
 }
 
+/* Soften glow orbs in dark mode so the frame is not bright */
+html.dark .app-gradient-frame::before {
+  background: rgb(88 28 135 / 8%);
+  filter: blur(140px);
+  opacity: 0.6;
+}
+
+html.dark .app-gradient-frame::after {
+  background: rgb(30 58 138 / 6%);
+  filter: blur(150px);
+  opacity: 0.5;
+}
+
 .app-surface {
   position: relative;
   isolation: isolate;
@@ -153,15 +181,33 @@ html.dark .app-surface {
   background:
     radial-gradient(
       circle at 95% 0%,
-      rgb(147 51 234 / 17%),
+      rgb(88 28 135 / 5%),
       transparent 25rem
     ),
     radial-gradient(
       circle at 0% 20%,
-      rgb(37 99 235 / 16%),
+      rgb(30 58 138 / 4%),
       transparent 24rem
     ),
-    #020617;
+    #0a0f1a;
+}
+
+/*
+ * All portal navbars (header + sidebar) stay near-black in dark mode.
+ * Covers Resident / Admin / Staff (PortalNavbar) and GuestNavbar.
+ */
+html.dark header.fixed.top-0 {
+  background-image: none !important;
+  background-color: #05070d !important;
+  border-color: rgb(30 41 59 / 0.85) !important;
+  box-shadow: 0 8px 24px rgb(0 0 0 / 0.55) !important;
+}
+
+html.dark aside#portal-navigation-sidebar {
+  background-image: none !important;
+  background-color: #05070d !important;
+  border-color: rgb(30 41 59 / 0.85) !important;
+  box-shadow: 8px 0 24px rgb(0 0 0 / 0.5) !important;
 }
 
 /* ============================================================
@@ -241,12 +287,17 @@ html.dark textarea::placeholder {
   border-radius: 9999px;
 }
 
+html.dark * {
+  scrollbar-color: #475569 #0a0f1a;
+}
+
 html.dark *::-webkit-scrollbar-track {
-  background: #1e293b;
+  background: #0a0f1a;
 }
 
 html.dark *::-webkit-scrollbar-thumb {
-  border-color: #1e293b;
+  background: linear-gradient(180deg, #334155, #475569);
+  border-color: #0a0f1a;
 }
 
 /* Hide scrollbar for Chrome, Safari, and Opera */
@@ -266,6 +317,10 @@ html.dark *::-webkit-scrollbar-thumb {
 .leaflet-container {
   font-family: var(--font-sans);
   background: #e2e8f0;
+}
+
+html.dark .leaflet-container {
+  background: #0f172a;
 }
 
 .leaflet-control-container {
@@ -369,4 +424,169 @@ html.dark *::-webkit-scrollbar-thumb {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
   }
+}
+
+/* ============================================================
+   GLOBAL DARK MODE — force common bright utilities darker
+   Applies across all pages without editing every component.
+============================================================ */
+
+/* Page / section backgrounds */
+html.dark .bg-slate-50,
+html.dark .bg-gray-50,
+html.dark .bg-zinc-50,
+html.dark .bg-neutral-50,
+html.dark .bg-stone-50 {
+  background-color: #0a0f1a !important;
+}
+
+html.dark .bg-slate-100,
+html.dark .bg-gray-100,
+html.dark .bg-zinc-100 {
+  background-color: #111827 !important;
+}
+
+html.dark .bg-white {
+  background-color: #0f172a !important;
+}
+
+html.dark .bg-white\/10 {
+  background-color: rgb(255 255 255 / 0.06) !important;
+}
+
+html.dark .bg-white\/15 {
+  background-color: rgb(255 255 255 / 0.08) !important;
+}
+
+html.dark .bg-white\/20 {
+  background-color: rgb(255 255 255 / 0.1) !important;
+}
+
+/* Soft colored tints that read as “bright” on dark pages */
+html.dark .bg-red-50 {
+  background-color: rgb(127 29 29 / 0.35) !important;
+}
+html.dark .bg-orange-50,
+html.dark .bg-amber-50,
+html.dark .bg-yellow-50 {
+  background-color: rgb(120 53 15 / 0.35) !important;
+}
+html.dark .bg-green-50,
+html.dark .bg-emerald-50 {
+  background-color: rgb(6 78 59 / 0.35) !important;
+}
+html.dark .bg-blue-50,
+html.dark .bg-sky-50,
+html.dark .bg-indigo-50 {
+  background-color: rgb(30 58 138 / 0.35) !important;
+}
+html.dark .bg-purple-50,
+html.dark .bg-violet-50,
+html.dark .bg-fuchsia-50 {
+  background-color: rgb(76 29 149 / 0.35) !important;
+}
+html.dark .bg-pink-50,
+html.dark .bg-rose-50 {
+  background-color: rgb(136 19 55 / 0.35) !important;
+}
+
+/* Borders */
+html.dark .border-slate-100,
+html.dark .border-slate-200,
+html.dark .border-gray-100,
+html.dark .border-gray-200 {
+  border-color: #1e293b !important;
+}
+
+html.dark .border-slate-300,
+html.dark .border-gray-300 {
+  border-color: #334155 !important;
+}
+
+/* Text that stays dark-on-light in many components */
+html.dark .text-slate-800,
+html.dark .text-slate-900,
+html.dark .text-gray-800,
+html.dark .text-gray-900,
+html.dark .text-black {
+  color: #e2e8f0 !important;
+}
+
+html.dark .text-slate-700,
+html.dark .text-gray-700 {
+  color: #cbd5e1 !important;
+}
+
+html.dark .text-slate-600,
+html.dark .text-gray-600 {
+  color: #94a3b8 !important;
+}
+
+html.dark .text-slate-500,
+html.dark .text-gray-500 {
+  color: #64748b !important;
+}
+
+html.dark .text-slate-400,
+html.dark .text-gray-400 {
+  color: #64748b !important;
+}
+
+/* Table / list hover rows */
+html.dark .hover\:bg-slate-50:hover,
+html.dark .hover\:bg-gray-50:hover {
+  background-color: #111827 !important;
+}
+
+html.dark .hover\:bg-slate-100:hover,
+html.dark .hover\:bg-gray-100:hover {
+  background-color: #1e293b !important;
+}
+
+/* Inputs / selects that use light fills */
+html.dark input:not([type="checkbox"]):not([type="radio"]),
+html.dark textarea,
+html.dark select {
+  background-color: #0f172a;
+  color: #e2e8f0;
+  border-color: #334155;
+}
+
+html.dark input:not([type="checkbox"]):not([type="radio"]):focus,
+html.dark textarea:focus,
+html.dark select:focus {
+  border-color: #7c3aed;
+}
+
+/* Modals / overlays already dark; keep content panels dim */
+html.dark .shadow-sm,
+html.dark .shadow-lg,
+html.dark .shadow-xl,
+html.dark .shadow-2xl {
+  --tw-shadow-color: rgb(0 0 0 / 0.45);
+}
+
+/* React-calendar (appointments) — tone down if present */
+html.dark .react-calendar {
+  background: #0f172a !important;
+  border-color: #1e293b !important;
+  color: #e2e8f0 !important;
+}
+
+html.dark .react-calendar__tile:enabled:hover,
+html.dark .react-calendar__tile:enabled:focus {
+  background-color: #1e293b !important;
+}
+
+html.dark .react-calendar__month-view__days__day--weekend {
+  color: #f87171 !important;
+}
+
+html.dark .react-calendar__navigation button {
+  color: #e2e8f0 !important;
+}
+
+html.dark .react-calendar__navigation button:enabled:hover,
+html.dark .react-calendar__navigation button:enabled:focus {
+  background-color: #1e293b !important;
 }

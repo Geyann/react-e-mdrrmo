@@ -1,14 +1,10 @@
 "use client";
 
 import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
+  useCallback, useEffect, useMemo, useRef, useState,
 } from "react";
 import { Link, useNavigate } from "react-router-dom";
-
+import {useDialog} from "../components/AppDialog";
 import {
   Activity,
   Ambulance,
@@ -501,7 +497,6 @@ const resolveIdentity = async () => {
   let isStaff = false;
   let exists = false;
 
-  /* 1. Supabase Auth */
   try {
     const {
       data: { user },
@@ -556,7 +551,6 @@ const resolveIdentity = async () => {
     // Continue with local session.
   }
 
-  /* 2. Resident session */
   const storedUser = readLocalSession(
     "currentUser",
   );
@@ -574,10 +568,7 @@ const resolveIdentity = async () => {
       storedUser.mobile_number ||
       "";
 
-    if (
-      !name ||
-      name === email
-    ) {
+    if (!name || name === email) {
       name =
         storedUser.full_name ||
         [
@@ -629,7 +620,6 @@ const resolveIdentity = async () => {
     }
   }
 
-  /* 3. Staff/admin session */
   const storedStaff = readLocalSession(
     "currentStaff",
   );
@@ -639,8 +629,7 @@ const resolveIdentity = async () => {
     isStaff = true;
 
     staffId = storedStaff.id ?? null;
-    workId =
-      storedStaff.user_id || workId;
+    workId = storedStaff.user_id || workId;
 
     addId(storedStaff.id);
     addId(storedStaff.user_id);
@@ -653,8 +642,7 @@ const resolveIdentity = async () => {
       storedStaff.mobile_number ||
       "";
 
-    role =
-      storedStaff.role || "staff";
+    role = storedStaff.role || "staff";
 
     name =
       storedStaff.full_name ||
@@ -670,10 +658,7 @@ const resolveIdentity = async () => {
             .select(
               "id, full_name, email, mobile_number, role, department, user_id",
             )
-            .eq(
-              "user_id",
-              storedStaff.user_id,
-            )
+            .eq("user_id", storedStaff.user_id)
             .maybeSingle(),
 
           supabase
@@ -681,10 +666,7 @@ const resolveIdentity = async () => {
             .select(
               "id, full_name, mobile_number, user_id",
             )
-            .eq(
-              "user_id",
-              storedStaff.user_id,
-            )
+            .eq("user_id", storedStaff.user_id)
             .maybeSingle(),
         ]);
 
@@ -696,22 +678,10 @@ const resolveIdentity = async () => {
         addId(staff.id);
         addId(staff.user_id);
 
-        name =
-          staff.full_name ||
-          name;
-
-        email =
-          email ||
-          staff.email ||
-          "";
-
-        phone =
-          phone ||
-          staff.mobile_number ||
-          "";
-
-        role =
-          staff.role || role;
+        name = staff.full_name || name;
+        email = email || staff.email || "";
+        phone = phone || staff.mobile_number || "";
+        role = staff.role || role;
       }
 
       if (profile) {
@@ -719,13 +689,8 @@ const resolveIdentity = async () => {
         addId(profile.id);
         addId(profile.user_id);
 
-        name =
-          profile.full_name ||
-          name;
-
-        phone =
-          profile.mobile_number ||
-          phone;
+        name = profile.full_name || name;
+        phone = profile.mobile_number || phone;
       }
     }
   }
@@ -816,15 +781,11 @@ const rowBelongsTo = (row, who) => {
     }
   }
 
-  const myEmail = cleanText(
-    who.email,
-  ).toLowerCase();
+  const myEmail = cleanText(who.email).toLowerCase();
 
   if (myEmail) {
     for (const field of OWNER_EMAIL_FIELDS) {
-      const value = cleanText(
-        row[field],
-      ).toLowerCase();
+      const value = cleanText(row[field]).toLowerCase();
 
       if (value && value === myEmail) {
         return true;
@@ -832,35 +793,26 @@ const rowBelongsTo = (row, who) => {
     }
   }
 
-  const myPhone = phoneDigits(
-    who.phone,
-  );
+  const myPhone = phoneDigits(who.phone);
 
   if (myPhone.length >= 10) {
     for (const field of OWNER_PHONE_FIELDS) {
-      const value = phoneDigits(
-        row[field],
-      );
+      const value = phoneDigits(row[field]);
 
       if (
         value.length >= 10 &&
-        value.slice(-10) ===
-          myPhone.slice(-10)
+        value.slice(-10) === myPhone.slice(-10)
       ) {
         return true;
       }
     }
   }
 
-  const myName = cleanText(
-    who.name,
-  ).toLowerCase();
+  const myName = cleanText(who.name).toLowerCase();
 
   if (myName) {
     for (const field of OWNER_NAME_FIELDS) {
-      const value = cleanText(
-        row[field],
-      ).toLowerCase();
+      const value = cleanText(row[field]).toLowerCase();
 
       if (value && value === myName) {
         return true;
@@ -876,26 +828,29 @@ const rowBelongsTo = (row, who) => {
    ══════════════════════════════════════════════════════════════════ */
 
 const normalizeAppointment = (row) => {
-  const status = normalizeStatus(
-    row.status || "pending",
+  const status = normalizeStatus(row.status || "pending");
+
+  // Read the admin-authored decline reason. Falls back to review_notes
+  // for forward compatibility with tables that use a different name.
+  const declineReason = cleanText(
+    row.decline_reason || row.review_notes || "",
   );
 
   return {
     key: `appointment-${row.appointmentId}`,
     kind: "appointment",
     id: row.appointmentId,
-    title:
-      row.purpose ||
-      "General Appointment",
-    subject:
-      row.fullName ||
-      "Resident request",
+    title: row.purpose || "General Appointment",
+    subject: row.fullName || "Resident request",
     status,
     dateText: row.date,
     timeText: row.time,
     summary: row.reason || "",
     detail: row.reason || "",
     detailLabel: "Your Request Notes",
+
+    declineReason,
+
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     photo: null,
@@ -915,9 +870,12 @@ const normalizeAppointment = (row) => {
 
       row.account_status && {
         label: "Account Status",
-        value: sentenceCase(
-          row.account_status,
-        ),
+        value: sentenceCase(row.account_status),
+      },
+
+      declineReason && {
+        label: "Reason for Declining",
+        value: declineReason,
       },
     ].filter(Boolean),
     cancellable: status === "pending",
@@ -925,104 +883,78 @@ const normalizeAppointment = (row) => {
   };
 };
 
-const normalizeIncident = (row) => ({
-  key: `incident-${row.reportIncidentId}`,
-  kind: "incident",
-  id: row.reportIncidentId,
-  title:
-    row.incidentType ||
-    "Incident Report",
-  subject:
-    row.patientName ||
-    "Resident report",
-  status: normalizeStatus(
-    row.status || "pending",
-  ),
-  dateText: row.date,
-  timeText: row.time,
-  summary:
-    row.address ||
-    row.specialNeeds ||
-    "",
-  detail: row.adminResponse || "",
-  detailLabel: "MDRRMO Response",
-  createdAt: row.created_at,
-  updatedAt: row.updated_at,
-  photo:
-    typeof row.pictureOfIncident ===
-      "string" &&
-    /^https?:\/\//i.test(
-      row.pictureOfIncident,
-    )
-      ? row.pictureOfIncident
-      : null,
-  photoCount: row.pictureOfIncident
-    ? 1
-    : 0,
-  risk: "",
-  onMap: false,
-  fields: [
-    row.address && {
-      label: "Address",
-      value: row.address,
-    },
+const normalizeIncident = (row) => {
+  const declineReason = cleanText(
+    row.review_notes || row.adminResponse || "",
+  );
 
-    row.landMark && {
-      label: "Landmark",
-      value: row.landMark,
-    },
+  return {
+    key: `incident-${row.reportIncidentId}`,
+    kind: "incident",
+    id: row.reportIncidentId,
+    title: row.incidentType || "Incident Report",
+    subject: row.patientName || "Resident report",
+    status: normalizeStatus(row.status || "pending"),
+    dateText: row.date,
+    timeText: row.time,
+    summary: row.address || row.specialNeeds || "",
+    detail: row.adminResponse || "",
+    detailLabel: "MDRRMO Response",
 
-    row.priorityLevel && {
-      label: "Priority",
-      value: row.priorityLevel,
-    },
+    declineReason,
 
-    row.specialNeeds && {
-      label: "Special Needs",
-      value: row.specialNeeds,
-    },
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    photo:
+      typeof row.pictureOfIncident === "string" &&
+      /^https?:\/\//i.test(row.pictureOfIncident)
+        ? row.pictureOfIncident
+        : null,
+    photoCount: row.pictureOfIncident ? 1 : 0,
+    risk: "",
+    onMap: false,
+    fields: [
+      row.address && { label: "Address", value: row.address },
+      row.landMark && { label: "Landmark", value: row.landMark },
+      row.priorityLevel && { label: "Priority", value: row.priorityLevel },
+      row.specialNeeds && { label: "Special Needs", value: row.specialNeeds },
+      row.requiredTools && { label: "Required Tools", value: row.requiredTools },
 
-    row.requiredTools && {
-      label: "Required Tools",
-      value: row.requiredTools,
-    },
-  ].filter(Boolean),
-  cancellable: false,
-  cancelLabel: "",
-});
+      declineReason && {
+        label: "Reason for Declining",
+        value: declineReason,
+      },
+    ].filter(Boolean),
+    cancellable: false,
+    cancelLabel: "",
+  };
+};
 
 const normalizeBorrow = (row) => {
-  const status = normalizeStatus(
-    row.status || "pending",
-  );
+  const status = normalizeStatus(row.status || "pending");
 
-  const hasDeparture = Boolean(
-    row.departure,
-  );
+  const hasDeparture = Boolean(row.departure);
+  const hasArrival = Boolean(row.arrival);
 
-  const hasArrival = Boolean(
-    row.arrival,
+  const declineReason = cleanText(
+    row.review_notes || row.adminNotes || "",
   );
 
   return {
     key: `vehicle-${row.borrowerId}`,
     kind: "borrow",
     id: row.borrowerId,
-    title:
-      row.purpose ||
-      "Vehicle Dispatch Request",
-    subject:
-      row.requestedBy ||
-      "Resident request",
+    title: row.purpose || "Vehicle Dispatch Request",
+    subject: row.requestedBy || "Resident request",
     status,
     dateText: row.date,
     timeText: row.time,
-    summary:
-      row.destination ||
-      row.purpose ||
-      "",
+    summary: row.destination || row.purpose || "",
     detail: row.adminNotes || "",
     detailLabel: "Dispatch Update",
+
+    declineReason,
+
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     photo: null,
@@ -1030,30 +962,18 @@ const normalizeBorrow = (row) => {
     risk: "",
     onMap: false,
     fields: [
-      row.dispatchNum && {
-        label: "Dispatch Number",
-        value: row.dispatchNum,
-      },
-
+      row.dispatchNum && { label: "Dispatch Number", value: row.dispatchNum },
       row.vehicle && {
         label: "Vehicle",
-        value: String(row.vehicle)
-          .replace(/-/g, " "),
+        value: String(row.vehicle).replace(/-/g, " "),
       },
+      row.destination && { label: "Destination", value: row.destination },
+      hasDeparture && { label: "Starting Odometer", value: row.departure },
+      hasArrival && { label: "Ending Odometer", value: row.arrival },
 
-      row.destination && {
-        label: "Destination",
-        value: row.destination,
-      },
-
-      hasDeparture && {
-        label: "Starting Odometer",
-        value: row.departure,
-      },
-
-      hasArrival && {
-        label: "Ending Odometer",
-        value: row.arrival,
+      declineReason && {
+        label: "Reason for Declining",
+        value: declineReason,
       },
     ].filter(Boolean),
     cancellable: status === "pending",
@@ -1062,8 +982,10 @@ const normalizeBorrow = (row) => {
 };
 
 const normalizeCheckup = (row) => {
-  const status = normalizeStatus(
-    row.status || "pending",
+  const status = normalizeStatus(row.status || "pending");
+
+  const declineReason = cleanText(
+    row.review_notes || row.staffNote || "",
   );
 
   return {
@@ -1071,22 +993,18 @@ const normalizeCheckup = (row) => {
     kind: "checkup",
     id: row.id,
     title: row.patientFor
-      ? `Check-Up — ${sentenceCase(
-          row.patientFor,
-        )}`
+      ? `Check-Up — ${sentenceCase(row.patientFor)}`
       : "Outpatient Check-Up Request",
-    subject:
-      row.patientName ||
-      "Patient request",
+    subject: row.patientName || "Patient request",
     status,
     dateText: row.preferredDate,
     timeText: row.preferredTime,
-    summary:
-      row.hospitalName ||
-      row.location ||
-      "",
+    summary: row.hospitalName || row.location || "",
     detail: row.staffNote || "",
     detailLabel: "MDRRMO Staff Note",
+
+    declineReason,
+
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     respondedAt: row.respondedAt,
@@ -1095,30 +1013,20 @@ const normalizeCheckup = (row) => {
     risk: "",
     onMap: false,
     fields: [
-      row.hospitalName && {
-        label: "Hospital",
-        value: row.hospitalName,
-      },
-
-      row.location && {
-        label: "Location",
-        value: row.location,
-      },
-
+      row.hospitalName && { label: "Hospital", value: row.hospitalName },
+      row.location && { label: "Location", value: row.location },
       row.mobility && {
         label: "Mobility",
-        value: String(row.mobility)
-          .replace(/-/g, " "),
+        value: String(row.mobility).replace(/-/g, " "),
       },
+      row.escort && { label: "Escort", value: row.escort },
 
-      row.escort && {
-        label: "Escort",
-        value: row.escort,
+      declineReason && {
+        label: "Reason for Declining",
+        value: declineReason,
       },
     ].filter(Boolean),
-    cancellable: ["pending", "approved"].includes(
-      status,
-    ),
+    cancellable: ["pending", "approved"].includes(status),
     cancelLabel: "Cancel Check-Up Request",
   };
 };
@@ -1128,65 +1036,56 @@ const normalizeHazard = (row) => {
     row.report_status || row.status || "pending",
   );
 
-  const photos = Array.isArray(
-    row.hazard_photos,
-  )
+  const photos = Array.isArray(row.hazard_photos)
     ? row.hazard_photos
     : [];
+
+  const declineReason = cleanText(
+    row.admin_remarks || row.review_notes || "",
+  );
 
   return {
     key: `hazard-${row.id}`,
     kind: "hazard",
     id: row.id,
     title: row.hazard_category
-      ? `${sentenceCase(
-          row.hazard_category,
-        )} Hazard`
+      ? `${sentenceCase(row.hazard_category)} Hazard`
       : "Hazard Report",
-    subject:
-      row.reporter_name ||
-      "Anonymous",
+    subject: row.reporter_name || "Anonymous",
     status,
     dateText: row.date_observed,
     timeText: row.time_observed,
-    summary:
-      row.hazard_description || "",
+    summary: row.hazard_description || "",
     detail: row.admin_remarks || "",
     detailLabel: "Administrator Response",
+
+    declineReason,
+
     createdAt: row.created_at,
     updatedAt: row.reviewed_at,
     photo: null,
     photoCount: photos.length,
     risk: row.risk_level || "",
-    onMap:
-      status === "approved" &&
-      row.show_on_heatmap === true,
+    onMap: status === "approved" && row.show_on_heatmap === true,
     fields: [
       row.hazard_description && {
         label: "Hazard Description",
         value: row.hazard_description,
       },
-
-      row.address && {
-        label: "Address",
-        value: row.address,
-      },
-
-      row.landmark && {
-        label: "Landmark",
-        value: row.landmark,
-      },
-
+      row.address && { label: "Address", value: row.address },
+      row.landmark && { label: "Landmark", value: row.landmark },
       row.risk_level && {
         label: "Risk Level",
-        value: sentenceCase(
-          row.risk_level,
-        ),
+        value: sentenceCase(row.risk_level),
       },
-
       row.recommended_action && {
         label: "Recommended Action",
         value: row.recommended_action,
+      },
+
+      declineReason && {
+        label: "Administrator Remarks",
+        value: declineReason,
       },
     ].filter(Boolean),
     cancellable: status === "pending",
@@ -1248,9 +1147,7 @@ function StatCard({
   iconClass,
 }) {
   return (
-    <div
-      className={`rounded-2xl border p-4 shadow-sm sm:p-5 ${wrapperClass}`}
-    >
+    <div className={`rounded-2xl border p-4 shadow-sm sm:p-5 ${wrapperClass}`}>
       <div className="flex items-start justify-between gap-3">
         <div className="min-w-0">
           <p className="text-[10px] font-black uppercase tracking-[0.14em] opacity-75 sm:text-xs">
@@ -1291,16 +1188,14 @@ function RequestCard({
   const meta = statusMeta(record.status);
   const StatusIcon = meta.icon;
 
-  const status = normalizeStatus(
-    record.status,
-  );
+  const status = normalizeStatus(record.status);
 
-  const needsAttention =
-    ATTENTION_STATUSES.has(status);
+  const needsAttention = ATTENTION_STATUSES.has(status);
+  const isDone = DONE_STATUSES.has(status);
 
-  const isDone = DONE_STATUSES.has(
-    status,
-  );
+  // Does this record have a decline reason worth surfacing?
+  const hasDeclineReason =
+    Boolean(record.declineReason) && needsAttention;
 
   const noteTone = needsAttention
     ? "border-rose-200 bg-rose-50 text-rose-800 dark:border-rose-800 dark:bg-rose-950/40 dark:text-rose-200"
@@ -1341,9 +1236,7 @@ function RequestCard({
 
               <span
                 className={`inline-flex items-center gap-1 rounded-full border px-2.5 py-1 text-[10px] font-black sm:text-xs ${
-                  TONE_CLASSES[
-                    meta.tone
-                  ] || TONE_CLASSES.slate
+                  TONE_CLASSES[meta.tone] || TONE_CLASSES.slate
                 }`}
               >
                 <StatusIcon className="h-3 w-3" />
@@ -1379,9 +1272,7 @@ function RequestCard({
               {record.dateText && (
                 <span className="flex items-center gap-1.5">
                   <CalendarDays className="h-3.5 w-3.5 text-blue-500" />
-                  {formatDateLong(
-                    record.dateText,
-                  )}
+                  {formatDateLong(record.dateText)}
                 </span>
               )}
 
@@ -1395,9 +1286,7 @@ function RequestCard({
               {record.createdAt && (
                 <span className="flex items-center gap-1.5">
                   <Activity className="h-3.5 w-3.5" />
-                  Submitted {timeAgo(
-                    record.createdAt,
-                  )}
+                  Submitted {timeAgo(record.createdAt)}
                 </span>
               )}
 
@@ -1405,9 +1294,7 @@ function RequestCard({
                 <span className="flex items-center gap-1.5">
                   <ImageIcon className="h-3.5 w-3.5" />
                   {record.photoCount} photo
-                  {record.photoCount === 1
-                    ? ""
-                    : "s"}
+                  {record.photoCount === 1 ? "" : "s"}
                 </span>
               )}
             </div>
@@ -1426,19 +1313,36 @@ function RequestCard({
           >
             <ChevronDown
               className={`h-5 w-5 transition-transform duration-200 ${
-                expanded
-                  ? "rotate-180"
-                  : ""
+                expanded ? "rotate-180" : ""
               }`}
             />
           </button>
         </div>
 
-        {/* Note */}
+        {/* PROMINENT DECLINE REASON BANNER */}
+        {hasDeclineReason && (
+          <div className="mt-4 rounded-2xl border border-rose-300 bg-rose-50 p-4 dark:border-rose-800 dark:bg-rose-950/40">
+            <div className="flex items-start gap-3">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-rose-600 text-white shadow-sm">
+                <XCircle className="h-4 w-4" />
+              </div>
+
+              <div className="min-w-0">
+                <p className="text-[10px] font-black uppercase tracking-[0.16em] text-rose-700 dark:text-rose-300">
+                  Reason for Declining
+                </p>
+
+                <p className="mt-1.5 whitespace-pre-line text-sm font-semibold leading-6 text-rose-900 dark:text-rose-100">
+                  {record.declineReason}
+                </p>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Existing note */}
         {record.detail && (
-          <div
-            className={`mt-4 rounded-2xl border p-4 ${noteTone}`}
-          >
+          <div className={`mt-4 rounded-2xl border p-4 ${noteTone}`}>
             <p className="text-[10px] font-black uppercase tracking-[0.16em] opacity-75">
               {record.detailLabel}
             </p>
@@ -1473,22 +1377,20 @@ function RequestCard({
 
             {record.fields.length > 0 && (
               <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                {record.fields.map(
-                  (field, index) => (
-                    <div
-                      key={`${field.label}-${index}`}
-                      className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950/50"
-                    >
-                      <dt className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
-                        {field.label}
-                      </dt>
+                {record.fields.map((field, index) => (
+                  <div
+                    key={`${field.label}-${index}`}
+                    className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950/50"
+                  >
+                    <dt className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400 dark:text-slate-500">
+                      {field.label}
+                    </dt>
 
-                      <dd className="mt-1.5 break-words text-sm font-semibold leading-6 text-slate-700 dark:text-slate-200">
-                        {field.value}
-                      </dd>
-                    </div>
-                  ),
-                )}
+                    <dd className="mt-1.5 break-words text-sm font-semibold leading-6 text-slate-700 dark:text-slate-200">
+                      {field.value}
+                    </dd>
+                  </div>
+                ))}
               </dl>
             )}
 
@@ -1506,9 +1408,7 @@ function RequestCard({
                     <XCircle className="h-4 w-4" />
                   )}
 
-                  {cancelling
-                    ? "Updating..."
-                    : record.cancelLabel}
+                  {cancelling ? "Updating..." : record.cancelLabel}
                 </button>
               )}
 
@@ -1533,9 +1433,7 @@ function RequestCard({
   );
 }
 
-function QuickActionCard({
-  kind,
-}) {
+function QuickActionCard({ kind }) {
   const Icon = kind.icon;
 
   return (
@@ -1572,39 +1470,19 @@ function QuickActionCard({
 
 export default function MyRequests() {
   const navigate = useNavigate();
+  const { showConfirm } = useDialog();
 
-  const [identity, setIdentity] =
-    useState(null);
-
-  const [records, setRecords] =
-    useState([]);
-
-  const [loading, setLoading] =
-    useState(true);
-
-  const [refreshing, setRefreshing] =
-    useState(false);
-
-  const [error, setError] =
-    useState("");
-
-  const [notice, setNotice] =
-    useState("");
-
-  const [tab, setTab] =
-    useState("all");
-
-  const [query, setQuery] =
-    useState("");
-
-  const [statusFilter, setStatusFilter] =
-    useState("all");
-
-  const [expanded, setExpanded] =
-    useState({});
-
-  const [cancellingId, setCancellingId] =
-    useState(null);
+  const [identity, setIdentity] = useState(null);
+  const [records, setRecords] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
+  const [tab, setTab] = useState("all");
+  const [query, setQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [expanded, setExpanded] = useState({});
+  const [cancellingId, setCancellingId] = useState(null);
 
   const loadSequenceRef = useRef(0);
 
@@ -1617,25 +1495,20 @@ export default function MyRequests() {
       return;
     }
 
-    const requestId =
-      ++loadSequenceRef.current;
+    const requestId = ++loadSequenceRef.current;
 
     setRefreshing(true);
     setError("");
 
-    const results =
-      await Promise.allSettled(
-        REQUEST_SOURCES.map(
-          (source) =>
-            supabase
-              .from(source.table)
-              .select("*")
-              .order("created_at", {
-                ascending: false,
-              })
-              .limit(1000),
-        ),
-      );
+    const results = await Promise.allSettled(
+      REQUEST_SOURCES.map((source) =>
+        supabase
+          .from(source.table)
+          .select("*")
+          .order("created_at", { ascending: false })
+          .limit(1000),
+      ),
+    );
 
     if (requestId !== loadSequenceRef.current) {
       return;
@@ -1644,75 +1517,49 @@ export default function MyRequests() {
     const failed = [];
     const allRecords = [];
 
-    results.forEach(
-      (result, index) => {
-        const source =
-          REQUEST_SOURCES[index];
+    results.forEach((result, index) => {
+      const source = REQUEST_SOURCES[index];
 
-        if (
-          result.status ===
-          "rejected"
-        ) {
-          failed.push(source.label);
-
-          console.error(
-            `Failed to load ${source.table}:`,
-            result.reason,
-          );
-
-          return;
-        }
-
-        const response = result.value;
-
-        if (response?.error) {
-          failed.push(source.label);
-
-          console.error(
-            `Failed to load ${source.table}:`,
-            response.error,
-          );
-
-          return;
-        }
-
-        const rows = response?.data || [];
-
-        const ownedRows = rows.filter(
-          (row) => rowBelongsTo(row, who),
+      if (result.status === "rejected") {
+        failed.push(source.label);
+        console.error(
+          `Failed to load ${source.table}:`,
+          result.reason,
         );
+        return;
+      }
 
-        allRecords.push(
-          ...ownedRows.map(
-            source.normalize,
-          ),
+      const response = result.value;
+
+      if (response?.error) {
+        failed.push(source.label);
+        console.error(
+          `Failed to load ${source.table}:`,
+          response.error,
         );
-      },
-    );
+        return;
+      }
 
-    allRecords.sort(
-      (first, second) => {
-        const firstTime =
-          timestampOf(
-            first.updatedAt ||
-              first.createdAt,
-          ) ||
-          localDateTimestamp(
-            first.dateText,
-          );
+      const rows = response?.data || [];
 
-        const secondTime =
-          timestampOf(
-            second.updatedAt ||
-              second.createdAt,
-          ) ||
-          localDateTimestamp(
-            second.dateText,
-          );
+      const ownedRows = rows.filter((row) =>
+        rowBelongsTo(row, who),
+      );
 
-        return secondTime - firstTime;
-      },
-    );
+      allRecords.push(...ownedRows.map(source.normalize));
+    });
+
+    allRecords.sort((first, second) => {
+      const firstTime =
+        timestampOf(first.updatedAt || first.createdAt) ||
+        localDateTimestamp(first.dateText);
+
+      const secondTime =
+        timestampOf(second.updatedAt || second.createdAt) ||
+        localDateTimestamp(second.dateText);
+
+      return secondTime - firstTime;
+    });
 
     setRecords(allRecords);
 
@@ -1747,8 +1594,7 @@ export default function MyRequests() {
         navigate("/login", {
           replace: true,
           state: {
-            error:
-              "Please log in to view your requests.",
+            error: "Please log in to view your requests.",
           },
         });
 
@@ -1785,15 +1631,12 @@ export default function MyRequests() {
 
     const scheduleRefresh = () => {
       if (refreshTimer) {
-        window.clearTimeout(
-          refreshTimer,
-        );
+        window.clearTimeout(refreshTimer);
       }
 
-      refreshTimer =
-        window.setTimeout(() => {
-          load(identity);
-        }, 350);
+      refreshTimer = window.setTimeout(() => {
+        load(identity);
+      }, 350);
     };
 
     const channel = REQUEST_SOURCES.reduce(
@@ -1807,33 +1650,23 @@ export default function MyRequests() {
           },
           scheduleRefresh,
         ),
-      supabase.channel(
-        "my-requests-watch-v3",
-      ),
+      supabase.channel("my-requests-watch-v3"),
     );
 
     channel.subscribe();
 
-    const pollingTimer =
-      window.setInterval(() => {
-        if (
-          document.visibilityState ===
-          "visible"
-        ) {
-          load(identity);
-        }
-      }, 30000);
+    const pollingTimer = window.setInterval(() => {
+      if (document.visibilityState === "visible") {
+        load(identity);
+      }
+    }, 30000);
 
     return () => {
       if (refreshTimer) {
-        window.clearTimeout(
-          refreshTimer,
-        );
+        window.clearTimeout(refreshTimer);
       }
 
-      window.clearInterval(
-        pollingTimer,
-      );
+      window.clearInterval(pollingTimer);
 
       supabase.removeChannel(channel);
     };
@@ -1848,10 +1681,9 @@ export default function MyRequests() {
       return undefined;
     }
 
-    const timeout =
-      window.setTimeout(() => {
-        setNotice("");
-      }, 6000);
+    const timeout = window.setTimeout(() => {
+      setNotice("");
+    }, 6000);
 
     return () => {
       window.clearTimeout(timeout);
@@ -1878,9 +1710,7 @@ export default function MyRequests() {
     records.forEach((record) => {
       nextCounts[record.kind] += 1;
 
-      const status = normalizeStatus(
-        record.status,
-      );
+      const status = normalizeStatus(record.status);
 
       if (OPEN_STATUSES.has(status)) {
         nextCounts.open += 1;
@@ -1890,9 +1720,7 @@ export default function MyRequests() {
         nextCounts.done += 1;
       }
 
-      if (
-        ATTENTION_STATUSES.has(status)
-      ) {
+      if (ATTENTION_STATUSES.has(status)) {
         nextCounts.attention += 1;
       }
     });
@@ -1905,43 +1733,29 @@ export default function MyRequests() {
   ------------------------------------------------------------ */
 
   const filtered = useMemo(() => {
-    const search = query
-      .trim()
-      .toLowerCase();
+    const search = query.trim().toLowerCase();
 
     return records
       .filter((record) =>
-        tab === "all"
-          ? true
-          : record.kind === tab,
+        tab === "all" ? true : record.kind === tab,
       )
       .filter((record) => {
-        const status = normalizeStatus(
-          record.status,
-        );
+        const status = normalizeStatus(record.status);
 
         if (statusFilter === "all") {
           return true;
         }
 
         if (statusFilter === "open") {
-          return OPEN_STATUSES.has(
-            status,
-          );
+          return OPEN_STATUSES.has(status);
         }
 
         if (statusFilter === "done") {
-          return DONE_STATUSES.has(
-            status,
-          );
+          return DONE_STATUSES.has(status);
         }
 
-        if (
-          statusFilter === "attention"
-        ) {
-          return ATTENTION_STATUSES.has(
-            status,
-          );
+        if (statusFilter === "attention") {
+          return ATTENTION_STATUSES.has(status);
         }
 
         return status === statusFilter;
@@ -1956,12 +1770,12 @@ export default function MyRequests() {
           record.subject,
           record.summary,
           record.detail,
+          record.declineReason,
           record.status,
           record.dateText,
           KIND_META[record.kind].label,
           ...record.fields.map(
-            (field) =>
-              `${field.label} ${field.value}`,
+            (field) => `${field.label} ${field.value}`,
           ),
         ]
           .filter(Boolean)
@@ -1987,9 +1801,7 @@ export default function MyRequests() {
      CANCEL / DISMISS REQUEST
   ------------------------------------------------------------ */
 
-  const handleCancel = async (
-    record,
-  ) => {
+  const handleCancel = async (record) => {
     if (cancellingId) {
       return;
     }
@@ -2003,11 +1815,9 @@ export default function MyRequests() {
     }
 
     const action =
-      record.kind === "hazard"
-        ? "dismiss"
-        : "cancel";
+      record.kind === "hazard" ? "dismiss" : "cancel";
 
-    const confirmed = window.confirm(
+    const confirmed = await showConfirm(
       `Are you sure you want to ${action} this ${KIND_META[
         record.kind
       ].label.toLowerCase()}? This action cannot be undone.`,
@@ -2029,41 +1839,26 @@ export default function MyRequests() {
           .from("appointments")
           .update({
             status: "cancelled",
-            updated_at:
-              new Date().toISOString(),
+            updated_at: new Date().toISOString(),
           })
-          .eq(
-            "appointmentId",
-            record.id,
-          );
-      } else if (
-        record.kind === "borrow"
-      ) {
+          .eq("appointmentId", record.id);
+      } else if (record.kind === "borrow") {
         updateResult = await supabase
           .from("borrow-vehicle")
           .update({
             status: "Cancelled",
-            updated_at:
-              new Date().toISOString(),
+            updated_at: new Date().toISOString(),
           })
-          .eq(
-            "borrowerId",
-            record.id,
-          );
-      } else if (
-        record.kind === "checkup"
-      ) {
+          .eq("borrowerId", record.id);
+      } else if (record.kind === "checkup") {
         updateResult = await supabase
           .from("outPatientCheckUp")
           .update({
             status: "Cancelled",
-            updated_at:
-              new Date().toISOString(),
+            updated_at: new Date().toISOString(),
           })
           .eq("id", record.id);
-      } else if (
-        record.kind === "hazard"
-      ) {
+      } else if (record.kind === "hazard") {
         updateResult = await supabase
           .from("hazard_reports")
           .update({
@@ -2087,11 +1882,7 @@ export default function MyRequests() {
           : "Request cancelled successfully.",
       );
 
-      window.dispatchEvent(
-        new Event(
-          "mdrrmo:notif-refresh",
-        ),
-      );
+      window.dispatchEvent(new Event("mdrrmo:notif-refresh"));
 
       await load(identity);
     } catch (operationError) {
@@ -2128,8 +1919,7 @@ export default function MyRequests() {
           </h1>
 
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Checking the latest status of your
-            submitted requests.
+            Checking the latest status of your submitted requests.
           </p>
         </div>
       </div>
@@ -2150,8 +1940,7 @@ export default function MyRequests() {
 
     {
       id: "appointment",
-      label:
-        KIND_META.appointment.plural,
+      label: KIND_META.appointment.plural,
       icon: CalendarDays,
       count: counts.appointment,
     },
@@ -2194,9 +1983,7 @@ export default function MyRequests() {
     "Verified SafeResponse account";
 
   const accountBadge = identity?.isStaff
-    ? String(
-        identity?.role || "staff",
-      )
+    ? String(identity?.role || "staff")
         .replace(/_/g, " ")
         .replace(/\b\w/g, (letter) =>
           letter.toUpperCase(),
@@ -2214,7 +2001,6 @@ export default function MyRequests() {
 
   return (
     <div className="relative isolate min-h-screen overflow-hidden bg-slate-50 px-4 py-8 sm:px-6 sm:py-10 dark:bg-slate-950">
-      {/* Background decoration */}
       <div
         aria-hidden="true"
         className="pointer-events-none absolute -left-24 top-32 -z-10 h-80 w-80 rounded-full bg-blue-500/10 blur-3xl"
@@ -2279,7 +2065,6 @@ export default function MyRequests() {
             </div>
           </div>
 
-          {/* Account card */}
           <div className="relative mt-6 flex items-center gap-3 rounded-2xl border border-white/15 bg-white/10 p-4 backdrop-blur-sm">
             <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-white/20 font-black text-white ring-1 ring-white/20">
               <UserRound className="h-5 w-5" />
@@ -2388,9 +2173,7 @@ export default function MyRequests() {
 
                   <button
                     type="button"
-                    onClick={() =>
-                      setNotice("")
-                    }
+                    onClick={() => setNotice("")}
                     aria-label="Dismiss notification"
                     className="rounded-lg p-1 transition hover:bg-emerald-100 dark:hover:bg-emerald-900/50"
                   >
@@ -2436,81 +2219,38 @@ export default function MyRequests() {
                       id="request-status-filter"
                       value={statusFilter}
                       onChange={(event) =>
-                        setStatusFilter(
-                          event.target.value,
-                        )
+                        setStatusFilter(event.target.value)
                       }
                       className="min-h-12 w-full rounded-xl border border-slate-300 bg-white px-4 py-3 text-sm font-bold text-slate-700 shadow-sm outline-none transition hover:border-indigo-300 focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
                     >
-                      <option value="all">
-                        All Statuses
-                      </option>
-
-                      <option value="open">
-                        Active / Pending
-                      </option>
-
-                      <option value="done">
-                        Completed
-                      </option>
-
-                      <option value="attention">
-                        Needs Attention
-                      </option>
-
-                      <option value="pending">
-                        Pending Review
-                      </option>
-
-                      <option value="approved">
-                        Approved
-                      </option>
-
-                      <option value="confirmed">
-                        Confirmed
-                      </option>
-
-                      <option value="completed">
-                        Completed
-                      </option>
-
-                      <option value="resolved">
-                        Resolved
-                      </option>
-
-                      <option value="rejected">
-                        Rejected
-                      </option>
-
-                      <option value="declined">
-                        Declined
-                      </option>
-
-                      <option value="cancelled">
-                        Cancelled
-                      </option>
+                      <option value="all">All Statuses</option>
+                      <option value="open">Active / Pending</option>
+                      <option value="done">Completed</option>
+                      <option value="attention">Needs Attention</option>
+                      <option value="pending">Pending Review</option>
+                      <option value="approved">Approved</option>
+                      <option value="confirmed">Confirmed</option>
+                      <option value="completed">Completed</option>
+                      <option value="resolved">Resolved</option>
+                      <option value="rejected">Rejected</option>
+                      <option value="declined">Declined</option>
+                      <option value="cancelled">Cancelled</option>
                     </select>
                   </div>
 
                   <button
                     type="button"
-                    onClick={() =>
-                      load(identity)
-                    }
+                    onClick={() => load(identity)}
                     disabled={refreshing}
                     className={`${REQUEST_GRADIENT} inline-flex min-h-12 items-center justify-center gap-2 rounded-xl px-5 py-3 text-sm font-black text-white shadow-lg shadow-blue-600/20 transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50`}
                   >
                     <RefreshCw
                       className={`h-4 w-4 ${
-                        refreshing
-                          ? "animate-spin"
-                          : ""
+                        refreshing ? "animate-spin" : ""
                       }`}
                     />
 
-                    {refreshing
-                      ? "Refreshing..."
-                      : "Refresh"}
+                    {refreshing ? "Refreshing..." : "Refresh"}
                   </button>
                 </div>
               </section>
@@ -2532,9 +2272,7 @@ export default function MyRequests() {
                         type="button"
                         role="tab"
                         aria-selected={active}
-                        onClick={() =>
-                          setTab(item.id)
-                        }
+                        onClick={() => setTab(item.id)}
                         className={`flex min-h-11 shrink-0 items-center gap-2 rounded-xl border px-3.5 py-2.5 text-sm font-black transition ${
                           active
                             ? `${REQUEST_GRADIENT} border-transparent text-white shadow-lg shadow-blue-600/20`
@@ -2543,9 +2281,7 @@ export default function MyRequests() {
                       >
                         <Icon className="h-4 w-4" />
 
-                        <span>
-                          {item.label}
-                        </span>
+                        <span>{item.label}</span>
 
                         <span
                           className={`rounded-full px-2 py-0.5 text-[10px] font-black ${
@@ -2619,23 +2355,10 @@ export default function MyRequests() {
                     <RequestCard
                       key={record.key}
                       record={record}
-                      expanded={
-                        Boolean(
-                          expanded[record.key],
-                        )
-                      }
-                      onToggle={() =>
-                        toggleExpanded(
-                          record.key,
-                        )
-                      }
-                      onCancel={() =>
-                        handleCancel(record)
-                      }
-                      cancelling={
-                        cancellingId ===
-                        record.key
-                      }
+                      expanded={Boolean(expanded[record.key])}
+                      onToggle={() => toggleExpanded(record.key)}
+                      onCancel={() => handleCancel(record)}
+                      cancelling={cancellingId === record.key}
                     />
                   ))}
                 </div>
@@ -2662,14 +2385,9 @@ export default function MyRequests() {
                 </div>
 
                 <div className="grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-5">
-                  {Object.entries(KIND_META).map(
-                    ([, kind]) => (
-                      <QuickActionCard
-                        key={kind.route}
-                        kind={kind}
-                      />
-                    ),
-                  )}
+                  {Object.entries(KIND_META).map(([, kind]) => (
+                    <QuickActionCard key={kind.route} kind={kind} />
+                  ))}
                 </div>
               </section>
 

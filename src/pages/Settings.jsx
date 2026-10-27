@@ -8,7 +8,7 @@ import {
   useState,
 } from "react";
 import { Link, useNavigate } from "react-router-dom";
-
+import { useDialog } from "../components/AppDialog";
 import {
   AlertCircle,
   Check,
@@ -713,7 +713,7 @@ export default function Settings() {
 
   const [prefs, setPrefs] =
     useState(readLocalPrefs);
-
+  const {showAlert, showConfirm} = useDialog();
   const [account, setAccount] =
     useState(null);
 
@@ -1055,7 +1055,7 @@ export default function Settings() {
   ------------------------------------------------------------ */
 
   const handleSignOut = useCallback(async () => {
-    const confirmed = window.confirm(
+    const confirmed = await showConfirm(
       "Sign out of SafeResponse on this device?",
     );
 
@@ -1092,8 +1092,8 @@ export default function Settings() {
      RESET PREFERENCES
   ------------------------------------------------------------ */
 
-  const handleReset = useCallback(() => {
-    const confirmed = window.confirm(
+  const handleReset = useCallback(async () => {
+    const confirmed = await showConfirmonfirm(
       "Reset every preference to its default value?\n\nThis does not delete your account, reports, or requests.",
     );
 

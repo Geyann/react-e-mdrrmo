@@ -1,9 +1,51 @@
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-/**
- * Generate a random password of the given length.
- */
-function generateRandomPassword(length = 16): string {
+/* ══════════════════════════════════════════════════════════════════
+   CONFIG
+   ══════════════════════════════════════════════════════════════════ */
+
+const PASSWORD_SALT = "hackerai-salt-2024";
+
+const DEFAULT_ORIGINS = [
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+];
+
+const allowedOrigins = (
+  Deno.env.get("ALLOWED_ORIGIN") || DEFAULT_ORIGINS.join(",")
+)
+  .split(",")
+  .map((origin) => origin.trim().replace(/\/+$/, ""))
+  .filter(Boolean);
+
+/* ══════════════════════════════════════════════════════════════════
+   TYPES
+   ══════════════════════════════════════════════════════════════════ */
+
+type JsonBody = Record<string, unknown>;
+
+/* ══════════════════════════════════════════════════════════════════
+   HELPERS
+   ══════════════════════════════════════════════════════════════════ */
+
+const rawText = (value: unknown) => String(value ?? "").trim();
+
+const cleanLower = (value: unknown) =>
+  String(value ?? "").trim().toLowerCase();
+
+const errorCode = (error: unknown) => {
+  if (typeof error === "object" && error !== null && "code" in error) {
+    return String((error as { code?: unknown }).code || "");
+  }
+  return "";
+};
+
+const errorMessage = (error: unknown) => {
+  if (error instanceof Error) return error.message;
+  return String(error || "Unknown error");
+};
+
+const generateRandomPassword = (length = 16) => {
   const chars =
     "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789!@#$%";
   let password = "";
@@ -12,187 +54,344 @@ function generateRandomPassword(length = 16): string {
     password += chars[randomValues[i] % chars.length];
   }
   return password;
-}
-
-/* ─────────────────────────────────────────────────────────────
-   CORS headers — MUST be on every response
-───────────────────────────────────────────────────────────── */
-
-const corsHeaders = {
-  "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Methods": "POST, OPTIONS",
-  "Access-Control-Allow-Headers":
-    "Content-Type, apikey, Authorization",
 };
 
-Deno.serve(async (req) => {
-  /* ── Handle preflight OPTIONS request ────────────────────── */
+const hashSalted = async (password: string) => {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(`${password}${PASSWORD_SALT}`);
+  const buffer = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(buffer))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+};
 
-  if (req.method === "OPTIONS") {
-    return new Response(null, {
-      status: 204,
-      headers: corsHeaders,
-    });
+const hashUnsalted = async (password: string) => {
+  const encoder = new TextEncoder();
+  const data = encoder.encode(password);
+  const buffer = await crypto.subtle.digest("SHA-256", data);
+  return Array.from(new Uint8Array(buffer))
+    .map((b) => b.toString(16).padStart(2, "0"))
+    .join("");
+};
+
+/* ══════════════════════════════════════════════════════════════════
+   CORS
+   ══════════════════════════════════════════════════════════════════ */
+
+const getCorsHeaders = (request: Request) => {
+  const requestOrigin = rawText(request.headers.get("origin")).replace(
+    /\/+$/,
+    "",
+  );
+
+  let allowOrigin = "*";
+
+  if (requestOrigin) {
+    allowOrigin = allowedOrigins.includes(requestOrigin) ? requestOrigin : "";
   }
 
-  if (req.method !== "POST") {
-    return new Response(
-      JSON.stringify({ success: false, error: "Method not allowed." }),
+  return {
+    "Access-Control-Allow-Origin": allowOrigin,
+    "Access-Control-Allow-Methods": "POST, OPTIONS",
+    "Access-Control-Allow-Headers":
+      "authorization, x-client-info, apikey, content-type, accept, x-supabase-api-version, x-request-id",
+    "Access-Control-Max-Age": "86400",
+    "Access-Control-Expose-Headers": "content-type",
+    "Content-Type": "application/json",
+    Vary: "Origin",
+  };
+};
+
+const jsonResponse = (
+  body: JsonBody,
+  status: number,
+  corsHeaders: Record<string, string>,
+) =>
+  new Response(JSON.stringify(body), {
+    status,
+    headers: corsHeaders,
+  });
+
+/* ══════════════════════════════════════════════════════════════════
+   ADMIN LOOKUP
+   ══════════════════════════════════════════════════════════════════ */
+
+const findAdmin = async (
+  supabase: ReturnType<typeof createClient>,
+  {
+    workId,
+    username,
+    email,
+  }: { workId: string; username: string; email: string },
+) => {
+  const lookups: Array<{ column: string; value: string; ilike?: boolean }> = [];
+
+  if (workId) {
+    lookups.push({ column: "custom_id", value: workId });
+  }
+  if (username) {
+    lookups.push({ column: "username", value: username });
+  }
+  if (email) {
+    lookups.push({ column: "email", value: email, ilike: true });
+  }
+
+  for (const lookup of lookups) {
+    const query = supabase
+      .from("admin_users")
+      .select("id, user_id, email, custom_id, username, password, role")
+      .limit(1);
+
+    const filtered = lookup.ilike
+      ? query.ilike(lookup.column, lookup.value)
+      : query.eq(lookup.column, lookup.value);
+
+    const { data, error } = await filtered;
+
+    if (error) {
+      console.error("[approve-registration] admin lookup error", {
+        column: lookup.column,
+        value: lookup.value,
+        message: error.message,
+      });
+      continue;
+    }
+
+    if (data && data[0]) {
+      return data[0];
+    }
+  }
+
+  return null;
+};
+
+/* ══════════════════════════════════════════════════════════════════
+   EDGE FUNCTION
+   ══════════════════════════════════════════════════════════════════ */
+
+Deno.serve(async (request) => {
+  const corsHeaders = getCorsHeaders(request);
+  const requestId =
+    rawText(request.headers.get("x-request-id")) ||
+    crypto.randomUUID().slice(0, 8);
+
+  /* ── Preflight ────────────────────────────────────────────── */
+
+  if (request.method === "OPTIONS") {
+    if (!corsHeaders["Access-Control-Allow-Origin"]) {
+      return new Response(null, { status: 403, headers: corsHeaders });
+    }
+    return new Response(null, { status: 204, headers: corsHeaders });
+  }
+
+  if (request.method !== "POST") {
+    return jsonResponse(
+      { success: false, error: "Method not allowed." },
+      405,
+      corsHeaders,
+    );
+  }
+
+  if (!corsHeaders["Access-Control-Allow-Origin"]) {
+    console.warn(
+      `[approve-registration][${requestId}] origin not allowed:`,
+      request.headers.get("origin"),
+    );
+    return jsonResponse(
       {
-        headers: { "Content-Type": "application/json", ...corsHeaders },
-        status: 405,
+        success: false,
+        error:
+          "Origin is not allowed. Add this origin to ALLOWED_ORIGIN and redeploy.",
       },
+      403,
+      corsHeaders,
+    );
+  }
+
+  /* ── Parse body ───────────────────────────────────────────── */
+
+  let body: JsonBody;
+  try {
+    const parsed = await request.json();
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return jsonResponse(
+        { success: false, error: "Invalid JSON body." },
+        400,
+        corsHeaders,
+      );
+    }
+    body = parsed as JsonBody;
+  } catch {
+    return jsonResponse(
+      { success: false, error: "Invalid JSON body." },
+      400,
+      corsHeaders,
+    );
+  }
+
+  const registrationId = rawText(body.registration_id);
+  const requesterWorkId = rawText(body.requester_work_id);
+  const requesterUsername = rawText(body.requester_username);
+  const requesterEmail = cleanLower(body.requester_email);
+  const requesterPassword = String(body.requester_password || "");
+
+  if (!registrationId) {
+    return jsonResponse(
+      { success: false, error: "registration_id is required." },
+      400,
+      corsHeaders,
+    );
+  }
+
+  if (!requesterPassword) {
+    return jsonResponse(
+      { success: false, error: "requester_password is required." },
+      400,
+      corsHeaders,
+    );
+  }
+
+  const supabaseUrl = Deno.env.get("SUPABASE_URL");
+  const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
+
+  if (!supabaseUrl || !serviceRoleKey) {
+    console.error(
+      `[approve-registration][${requestId}] server configuration missing`,
+    );
+    return jsonResponse(
+      { success: false, error: "Server configuration missing." },
+      500,
+      corsHeaders,
     );
   }
 
   try {
-    const {
-      registration_id,
-      requester_work_id,
-      requester_username,
-      requester_email,
-      requester_password,
-    } = await req.json();
+    const supabase = createClient(supabaseUrl, serviceRoleKey, {
+      auth: { autoRefreshToken: false, persistSession: false },
+    });
 
-    if (!registration_id) {
-      return new Response(
-        JSON.stringify({ success: false, error: "registration_id is required." }),
-        { headers: { "Content-Type": "application/json", ...corsHeaders }, status: 400 },
+    /* ── 1. Locate the admin ──────────────────────────────── */
+
+    const admin = await findAdmin(supabase, {
+      workId: requesterWorkId,
+      username: requesterUsername,
+      email: requesterEmail,
+    });
+
+    if (!admin) {
+      console.warn(
+        `[approve-registration][${requestId}] admin not found`,
+        { requesterWorkId, requesterUsername, requesterEmail },
+      );
+      return jsonResponse(
+        {
+          success: false,
+          error: "Unauthorized: administrator account not found.",
+        },
+        401,
+        corsHeaders,
       );
     }
 
-    if (!requester_password) {
-      return new Response(
-        JSON.stringify({ success: false, error: "requester_password is required." }),
-        { headers: { "Content-Type": "application/json", ...corsHeaders }, status: 400 },
+    /* ── 2. Verify the admin password ─────────────────────── */
+
+    const salted = await hashSalted(requesterPassword);
+    const unsalted = await hashUnsalted(requesterPassword);
+    const stored = rawText(admin.password);
+
+    if (stored !== salted && stored !== unsalted) {
+      console.warn(
+        `[approve-registration][${requestId}] invalid admin password`,
+      );
+      return jsonResponse(
+        { success: false, error: "Invalid administrator password." },
+        401,
+        corsHeaders,
       );
     }
 
-    const supabaseUrl = Deno.env.get("SUPABASE_URL")!;
-    const serviceRoleKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
-
-    if (!supabaseUrl || !serviceRoleKey) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Server configuration missing." }),
-        { headers: { "Content-Type": "application/json", ...corsHeaders }, status: 500 },
-      );
-    }
-
-    const supabase = createClient(supabaseUrl, serviceRoleKey);
-
-    /* ── 1. Find the admin ───────────────────────────────────── */
-
-    const lookups = [
-      requester_work_id
-        ? { column: "custom_id", value: requester_work_id }
-        : null,
-      requester_username
-        ? { column: "username", value: requester_username }
-        : null,
-      requester_email
-        ? { column: "email", value: requester_email.toLowerCase() }
-        : null,
-    ].filter(Boolean) as { column: string; value: string }[];
-
-    let adminRow = null;
-
-    for (const lookup of lookups) {
-      const { data, error } = await supabase
-        .from("admin_users")
-        .select("id, user_id, email, custom_id, username, password")
-        .eq(lookup.column, lookup.value)
-        .maybeSingle();
-
-      if (!error && data) {
-        adminRow = data;
-        break;
-      }
-    }
-
-    if (!adminRow) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Unauthorized: administrator account not found." }),
-        { headers: { "Content-Type": "application/json", ...corsHeaders }, status: 401 },
-      );
-    }
-
-    /* ── 2. Verify admin password ────────────────────────────── */
-
-    const encoder = new TextEncoder();
-    const salt = "hackerai-salt-2024";
-    const hashBuffer = await crypto.subtle.digest(
-      "SHA-256",
-      encoder.encode(`${requester_password}${salt}`),
-    );
-    const hash = Array.from(new Uint8Array(hashBuffer))
-      .map((b) => b.toString(16).padStart(2, "0"))
-      .join("");
-
-    if (adminRow.password !== hash) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Invalid administrator password." }),
-        { headers: { "Content-Type": "application/json", ...corsHeaders }, status: 401 },
-      );
-    }
-
-    /* ── 3. Find pending registration ────────────────────────── */
+    /* ── 3. Locate the pending registration ───────────────── */
 
     const { data: reg, error: regError } = await supabase
       .from("pending_registrations")
       .select("*")
-      .eq("id", registration_id)
+      .eq("id", registrationId)
       .maybeSingle();
 
-    if (regError || !reg) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Registration not found." }),
-        { headers: { "Content-Type": "application/json", ...corsHeaders }, status: 404 },
+    if (regError) {
+      console.error(
+        `[approve-registration][${requestId}] registration lookup error`,
+        regError.message,
+      );
+      return jsonResponse(
+        { success: false, error: "Registration lookup failed." },
+        500,
+        corsHeaders,
+      );
+    }
+
+    if (!reg) {
+      return jsonResponse(
+        { success: false, error: "Registration not found." },
+        404,
+        corsHeaders,
       );
     }
 
     if (reg.status === "approved") {
-      return new Response(
-        JSON.stringify({ success: true, created: false, message: "Account is already approved." }),
-        { headers: { "Content-Type": "application/json", ...corsHeaders } },
+      return jsonResponse(
+        {
+          success: true,
+          created: false,
+          message: "Account is already approved.",
+        },
+        200,
+        corsHeaders,
       );
     }
 
     const fullName =
       reg.full_name ||
-      [reg.first_name, reg.middle_name, reg.last_name].filter(Boolean).join(" ") ||
+      [reg.first_name, reg.middle_name, reg.last_name]
+        .filter(Boolean)
+        .join(" ") ||
       "";
 
-    const email = reg.email || "";
-    const username = reg.username || email.split("@")[0] || "";
+    const email = rawText(reg.email);
+    const username = rawText(reg.username) || email.split("@")[0] || "";
 
-    /* ── 4. Find or create Supabase Auth user ─────────────────── */
+    /* ── 4. Find or create the Supabase Auth user ─────────── */
 
     let authUserId = "";
     let authUserCreated = false;
 
-    // Try by registration id (OAuth flow)
+    // 4a. Try by registration id (OAuth flow).
     try {
       const { data: authData } = await supabase.auth.admin.getUserById(reg.id);
       if (authData?.user) authUserId = authData.user.id;
     } catch {
-      /* ignored */
+      /* ignore */
     }
 
-    // Try by email
+    // 4b. Try by email.
     if (!authUserId && email) {
       try {
-        const { data: byEmail } = await supabase.auth.admin.getUserByEmail(email);
+        const { data: byEmail } = await supabase.auth.admin.getUserByEmail(
+          email,
+        );
         if (byEmail?.user) authUserId = byEmail.user.id;
       } catch {
-        /* ignored */
+        /* ignore */
       }
     }
 
-    // Create new auth user if none exists
-    if (!authUserId) {
-      let authPassword = reg.password || "";
+    // 4c. Create a new Auth user if none exists.
+    if (!authUserId && email) {
+      let authPassword = rawText(reg.password);
 
-      if (authPassword.length === 64 && /^[0-9a-f]+$/.test(authPassword)) {
+      // A 64-char hex string is the legacy SHA-256 hash — not a valid
+      // Supabase Auth password. Replace it with a random one.
+      if (authPassword.length === 64 && /^[0-9a-f]+$/i.test(authPassword)) {
         authPassword = generateRandomPassword(16);
       }
 
@@ -217,13 +416,19 @@ Deno.serve(async (req) => {
           });
 
         if (authError) {
-          console.error("Auth creation error:", authError);
+          console.error(
+            `[approve-registration][${requestId}] auth user creation error`,
+            authError.message,
+          );
         } else if (authData?.user) {
           authUserId = authData.user.id;
           authUserCreated = true;
         }
       } catch (e) {
-        console.error("Auth creation exception:", e);
+        console.error(
+          `[approve-registration][${requestId}] auth user creation exception`,
+          errorMessage(e),
+        );
       }
     }
 
@@ -231,13 +436,7 @@ Deno.serve(async (req) => {
       authUserId = reg.id;
     }
 
-    /* ── 5. Create or update profiles record ────────────────── */
-
-    const { data: existingProfile } = await supabase
-      .from("profiles")
-      .select("id")
-      .eq("id", authUserId)
-      .maybeSingle();
+    /* ── 5. Upsert the profile row ────────────────────────── */
 
     const profileData = {
       id: authUserId,
@@ -256,11 +455,17 @@ Deno.serve(async (req) => {
       username,
       profile_picture: reg.profile_picture || null,
       id_type: reg.id_type || null,
-      id_front_image_url: reg.id_front_image_url || reg.id_image_url || null,
+      id_front_image_url:
+        reg.id_front_image_url || reg.id_image_url || null,
       id_back_image_url: reg.id_back_image_url || null,
       id_holder_image_url: reg.id_holder_image_url || null,
-      created_at: new Date().toISOString(),
     };
+
+    const { data: existingProfile } = await supabase
+      .from("profiles")
+      .select("id")
+      .eq("id", authUserId)
+      .maybeSingle();
 
     if (existingProfile) {
       const { error: upErr } = await supabase
@@ -268,16 +473,26 @@ Deno.serve(async (req) => {
         .update(profileData)
         .eq("id", authUserId);
 
-      if (upErr) console.error("Profile update error:", upErr);
+      if (upErr) {
+        console.error(
+          `[approve-registration][${requestId}] profile update error`,
+          upErr.message,
+        );
+      }
     } else {
       const { error: insErr } = await supabase
         .from("profiles")
         .insert(profileData);
 
-      if (insErr) console.error("Profile insert error:", insErr);
+      if (insErr) {
+        console.error(
+          `[approve-registration][${requestId}] profile insert error`,
+          insErr.message,
+        );
+      }
     }
 
-    /* ── 6. Mark registration as approved ───────────────────── */
+    /* ── 6. Mark the registration as approved ─────────────── */
 
     const { error: statusErr } = await supabase
       .from("pending_registrations")
@@ -285,36 +500,55 @@ Deno.serve(async (req) => {
         status: "approved",
         updated_at: new Date().toISOString(),
       })
-      .eq("id", registration_id);
+      .eq("id", registrationId);
 
     if (statusErr) {
-      return new Response(
-        JSON.stringify({ success: false, error: "Failed to update registration status." }),
-        { headers: { "Content-Type": "application/json", ...corsHeaders }, status: 500 },
+      console.error(
+        `[approve-registration][${requestId}] status update error`,
+        statusErr.message,
+      );
+      return jsonResponse(
+        {
+          success: false,
+          error: "Failed to update registration status.",
+        },
+        500,
+        corsHeaders,
       );
     }
 
-    /* ── 7. Return success ────────────────────────────────────── */
+    /* ── 7. Return success ────────────────────────────────── */
 
     const isOAuthUser = !authUserCreated && authUserId === reg.id;
 
-    return new Response(
-      JSON.stringify({
+    console.log(
+      `[approve-registration][${requestId}] approved registration ${registrationId}`,
+      { isOAuthUser, authUserCreated },
+    );
+
+    return jsonResponse(
+      {
         success: true,
         created: authUserCreated,
         isOAuthUser,
         message: isOAuthUser
           ? "Account approved. The user can now sign in with Google/Facebook."
           : "Account approved successfully.",
-      }),
-      { headers: { "Content-Type": "application/json", ...corsHeaders } },
+      },
+      200,
+      corsHeaders,
     );
-  } catch (e) {
-    console.error("approve-registration error:", e);
+  } catch (error) {
+    console.error(
+      `[approve-registration][${requestId}] unhandled error`,
+      errorMessage(error),
+      { code: errorCode(error) },
+    );
 
-    return new Response(
-      JSON.stringify({ success: false, error: "Internal server error." }),
-      { headers: { "Content-Type": "application/json", ...corsHeaders }, status: 500 },
+    return jsonResponse(
+      { success: false, error: "Internal server error." },
+      500,
+      corsHeaders,
     );
   }
 });

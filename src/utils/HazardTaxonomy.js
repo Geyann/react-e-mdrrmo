@@ -8,7 +8,6 @@ export const HAZARD_CATEGORIES = [
   {
     id: "Flood",
     label: "Flood",
-    icon: "🌊",
     color: "#0ea5e9",
     types: [
       "Flooding",
@@ -22,7 +21,6 @@ export const HAZARD_CATEGORIES = [
   {
     id: "Weather",
     label: "Weather",
-    icon: "🌪️",
     color: "#6366f1",
     types: [
       "Typhoon",
@@ -38,7 +36,6 @@ export const HAZARD_CATEGORIES = [
   {
     id: "Geological",
     label: "Geological",
-    icon: "🌋",
     color: "#b45309",
     types: [
       "Landslide",
@@ -54,7 +51,6 @@ export const HAZARD_CATEGORIES = [
   {
     id: "Other Natural",
     label: "Other Natural Disaster",
-    icon: "📋",
     color: "#475569",
     types: ["Other natural disaster / does not fit above"],
   },
@@ -62,17 +58,17 @@ export const HAZARD_CATEGORIES = [
 
 /** Legacy values from older forms — still filterable on the map */
 export const LEGACY_HAZARD_CATEGORIES = [
-  { id: "physical", label: "Physical (legacy)", icon: "🏗️" },
-  { id: "chemical/biological", label: "Chemical / Biological (legacy)", icon: "☣️" },
-  { id: "electrical", label: "Electrical (legacy)", icon: "⚡" },
-  { id: "procedural/safety practices", label: "Procedural / Safety (legacy)", icon: "📋" },
-  { id: "natural disaster", label: "Natural Disaster (legacy)", icon: "🌊" },
-  { id: "fire", label: "Fire (legacy)", icon: "🔥" },
-  { id: "road and transport", label: "Road and Transport (legacy)", icon: "🚗" },
-  { id: "medical emergency", label: "Medical Emergency (legacy)", icon: "🚑" },
-  { id: "infrastructure", label: "Infrastructure (legacy)", icon: "🏗️" },
-  { id: "environmental", label: "Environmental (legacy)", icon: "🌿" },
-  { id: "public safety", label: "Public Safety (legacy)", icon: "🛡️" },
+  { id: "physical", label: "Physical (legacy)" },
+  { id: "chemical/biological", label: "Chemical / Biological (legacy)" },
+  { id: "electrical", label: "Electrical (legacy)"},
+  { id: "procedural/safety practices", label: "Procedural / Safety (legacy)" },
+  { id: "natural disaster", label: "Natural Disaster (legacy)" },
+  { id: "fire", label: "Fire (legacy)" },
+  { id: "road and transport", label: "Road and Transport (legacy)" },
+  { id: "medical emergency", label: "Medical Emergency (legacy)" },
+  { id: "infrastructure", label: "Infrastructure (legacy)" },
+  { id: "environmental", label: "Environmental (legacy)" },
+  { id: "public safety", label: "Public Safety (legacy)" },
   { id: "other", label: "Other (legacy)", icon: "📋" },
 ];
 
@@ -136,7 +132,6 @@ export const EMERGENCY_INCIDENT_TYPES = [
   {
     id: "Medical Emergency",
     label: "Medical Emergency",
-    icon: "🚑",
     types: [
       "Cardiac emergency",
       "Difficulty breathing",
@@ -152,7 +147,6 @@ export const EMERGENCY_INCIDENT_TYPES = [
   {
     id: "Fire",
     label: "Fire / Explosion",
-    icon: "🔥",
     types: [
       "Residential fire",
       "Commercial building fire",
@@ -166,7 +160,6 @@ export const EMERGENCY_INCIDENT_TYPES = [
   {
     id: "Road and Transport Accident",
     label: "Road and Transport Accident",
-    icon: "🚗",
     types: [
       "Road collision",
       "Motorcycle collision",
@@ -180,7 +173,6 @@ export const EMERGENCY_INCIDENT_TYPES = [
   {
     id: "Chemical and Industrial Emergency",
     label: "Chemical and Industrial Emergency",
-    icon: "☣️",
     types: [
       "Chemical spill",
       "Toxic gas leak",
@@ -194,7 +186,6 @@ export const EMERGENCY_INCIDENT_TYPES = [
   {
     id: "Structural / Collapse Emergency",
     label: "Structural / Collapse Emergency",
-    icon: "🏗️",
     types: [
       "Collapsed building",
       "Trapped persons",
@@ -207,7 +198,6 @@ export const EMERGENCY_INCIDENT_TYPES = [
   {
     id: "Utility Emergency",
     label: "Utility Emergency",
-    icon: "⚡",
     types: [
       "Live fallen electrical wires",
       "Major power hazard",
@@ -219,7 +209,6 @@ export const EMERGENCY_INCIDENT_TYPES = [
   {
     id: "Public Safety Emergency",
     label: "Public Safety Emergency",
-    icon: "🛡️",
     types: [
       "Violence or physical assault",
       "Civil disturbance",
@@ -233,7 +222,6 @@ export const EMERGENCY_INCIDENT_TYPES = [
   {
     id: "Other Emergency",
     label: "Other Emergency",
-    icon: "⚠️",
     types: [], // free-text input in the form
   },
 ];

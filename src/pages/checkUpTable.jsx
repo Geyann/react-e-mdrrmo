@@ -5,6 +5,7 @@ import {
   useState,
 } from "react";
 import { supabase } from "../createClient";
+import { useDialog } from "../components/AppDialog";
 import {
   Stethoscope,
   Search,
@@ -258,7 +259,7 @@ export default function CheckUpTable() {
   const [statusFilter, setStatusFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
   const [checkups, setCheckups] = useState([]);
-
+  const {showConfirm} = useDialog();
   const [selectedId, setSelectedId] = useState(null);
   const [savingId, setSavingId] = useState(null);
 
@@ -266,6 +267,11 @@ export default function CheckUpTable() {
   const [success, setSuccess] = useState("");
 
   const [showReport, setShowReport] = useState(false);
+
+  /* Reason shown to the requester when a check-up is declined. */
+  const [declineReason, setDeclineReason] = useState("");
+  /* Row pending a decline confirmation. Null when the modal is closed. */
+  const [pendingDecline, setPendingDecline] = useState(null);
 
   const selectedCheckup = useMemo(() => {
     if (!hasValue(selectedId)) return null;
@@ -527,6 +533,66 @@ export default function CheckUpTable() {
 
   /* ── Update status ────────────────────────────────────────────── */
 
+  /* Decline routes through the reason modal; approve stays direct. */
+  const requestDecline = useCallback((row) => {
+    setPendingDecline(row);
+    setDeclineReason(row.review_notes || "");
+    setError("");
+    setSuccess("");
+  }, []);
+
+  const confirmDecline = useCallback(async () => {
+    if (!pendingDecline) return;
+    if (savingId !== null) return;
+
+    const row = pendingDecline;
+    const trimmedReason = declineReason.trim();
+
+    setSavingId(row.id);
+    setError("");
+    setSuccess("");
+
+    try {
+      const { error: updateError } = await supabase
+        .from(CHECKUP_TABLE)
+        .update({
+          status: "Declined",
+          review_notes: trimmedReason || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", row.id);
+
+      if (updateError) throw updateError;
+
+      setPendingDecline(null);
+      setDeclineReason("");
+      setSelectedId(null);
+
+      await fetchCheckups(false);
+
+      setSuccess(`Request #${row.id} declined.`);
+
+      window.dispatchEvent(
+        new Event("mdrrmo:notif-refresh"),
+      );
+    } catch (err) {
+      console.error("Error declining check-up:", err);
+
+      setError(
+        `Failed to decline request #${row.id}: ${
+          err?.message || "Unknown error"
+        }`,
+      );
+    } finally {
+      setSavingId(null);
+    }
+  }, [
+    pendingDecline,
+    savingId,
+    declineReason,
+    fetchCheckups,
+  ]);
+
   const handleStatusUpdate = useCallback(
     async (row, newStatus) => {
       if (savingId !== null) return;
@@ -536,15 +602,16 @@ export default function CheckUpTable() {
 
       if (currentStatus === normalizedStatus) return;
 
+      /* Decline routes through the reason modal instead of firing directly. */
+      if (normalizedStatus === "Declined") {
+        requestDecline(row);
+        return;
+      }
+
       const patientName = row.patientName || "Unknown patient";
 
-      const action =
-        normalizedStatus === "Approved" ? "approve" : "decline";
-
-      const confirmed = window.confirm(
-        action === "approve"
-          ? `Approve check-up request #${row.id} for ${patientName}?`
-          : `Decline check-up request #${row.id} for ${patientName}?`,
+      const confirmed = await showConfirm(
+        `Approve check-up request #${row.id} for ${patientName}?`,
       );
 
       if (!confirmed) return;
@@ -558,6 +625,8 @@ export default function CheckUpTable() {
           .from(CHECKUP_TABLE)
           .update({
             status: normalizedStatus,
+            /* Clear any prior reason when approving or resetting. */
+            review_notes: null,
             updated_at: new Date().toISOString(),
           })
           .eq("id", row.id);
@@ -571,21 +640,17 @@ export default function CheckUpTable() {
         setSelectedId(null);
 
         setSuccess(
-          normalizedStatus === "Approved"
-            ? `Request #${row.id} approved. It is now available in the staff check-up queue.`
-            : `Request #${row.id} declined.`,
+          `Request #${row.id} approved. It is now available in the staff check-up queue.`,
         );
 
         window.dispatchEvent(
           new Event("mdrrmo:notif-refresh"),
         );
       } catch (err) {
-        console.error("Error updating check-up status:", err);
+        console.error("Error approving check-up:", err);
 
         setError(
-          `Failed to ${
-            normalizedStatus === "Approved" ? "approve" : "decline"
-          } request #${row.id}: ${
+          `Failed to approve request #${row.id}: ${
             err?.message || "Unknown error"
           }`,
         );
@@ -593,7 +658,7 @@ export default function CheckUpTable() {
         setSavingId(null);
       }
     },
-    [fetchCheckups, savingId],
+    [fetchCheckups, savingId, requestDecline],
   );
 
   /* ── Loading ──────────────────────────────────────────────────── */
@@ -1075,6 +1140,20 @@ export default function CheckUpTable() {
                 )}
               </div>
 
+              {/* Decline reason banner (visible to requester) */}
+
+              {normalizeStatus(selectedCheckup.status) === "Declined" &&
+                selectedCheckup.review_notes && (
+                  <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30">
+                    <p className="text-xs font-bold uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                      Decline Reason (visible to requester)
+                    </p>
+                    <p className="mt-1 whitespace-pre-line text-sm text-amber-900 dark:text-amber-100">
+                      {selectedCheckup.review_notes}
+                    </p>
+                  </div>
+                )}
+
               {/* Reporter and account card */}
 
               <div className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-slate-50 p-4 sm:flex-row sm:items-center dark:border-slate-700 dark:bg-slate-900">
@@ -1267,6 +1346,135 @@ export default function CheckUpTable() {
         </div>
       )}
 
+      {/* ── Decline reason modal ─────────────────────────────────── */}
+
+      {pendingDecline && (
+        <div
+          className="fixed inset-0 z-[60] flex items-center justify-center overflow-y-auto bg-black/60 p-4"
+          onClick={() => {
+            if (!savingId) {
+              setPendingDecline(null);
+              setDeclineReason("");
+            }
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="decline-checkup-title"
+            className="w-full max-w-md rounded-2xl bg-white shadow-2xl dark:bg-slate-800"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 dark:border-slate-700">
+              <div className="flex items-center gap-3">
+                <div className="rounded-xl bg-red-100 p-2 text-red-600 dark:bg-red-900/40">
+                  <XCircle className="h-5 w-5" />
+                </div>
+                <div>
+                  <h2
+                    id="decline-checkup-title"
+                    className="text-lg font-bold text-slate-800 dark:text-slate-100"
+                  >
+                    Decline Check-Up Request
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {pendingDecline.patientName || "Unknown patient"} · #
+                    {pendingDecline.id}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!savingId) {
+                    setPendingDecline(null);
+                    setDeclineReason("");
+                  }
+                }}
+                disabled={savingId !== null}
+                aria-label="Close decline dialog"
+                className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 disabled:opacity-50 dark:hover:bg-slate-700"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-4 p-6">
+              <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm dark:border-red-800 dark:bg-red-900/20">
+                <p className="font-bold text-red-800 dark:text-red-200">
+                  The requester will see this reason
+                </p>
+                <p className="mt-1 text-xs leading-relaxed text-red-700 dark:text-red-300">
+                  The reason below is shown to the requester the next time
+                  they open this request.
+                </p>
+              </div>
+
+              {error && (
+                <div
+                  role="alert"
+                  className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+                >
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <p>{error}</p>
+                </div>
+              )}
+
+              <div>
+                <label
+                  htmlFor="checkup-decline-reason"
+                  className="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-200"
+                >
+                  Reason for declining
+                  <span className="ml-1 text-xs font-normal text-slate-400">
+                    (optional, but recommended)
+                  </span>
+                </label>
+                <textarea
+                  id="checkup-decline-reason"
+                  rows={3}
+                  maxLength={500}
+                  value={declineReason}
+                  onChange={(event) => setDeclineReason(event.target.value)}
+                  placeholder="e.g. Preferred date is fully booked. Please choose another available date."
+                  className="w-full resize-y rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:ring-2 focus:ring-red-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                />
+                <p className="mt-1 text-xs text-slate-500">
+                  {declineReason.length}/500 characters.
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-3 border-t border-slate-200 pt-4 dark:border-slate-700">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setPendingDecline(null);
+                    setDeclineReason("");
+                  }}
+                  disabled={savingId !== null}
+                  className="rounded-lg border border-slate-300 px-4 py-2.5 font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={confirmDecline}
+                  disabled={savingId !== null}
+                  className="flex items-center gap-2 rounded-lg bg-red-600 px-5 py-2.5 font-bold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {savingId !== null ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <XCircle className="h-4 w-4" />
+                  )}
+                  {savingId !== null ? "Declining..." : "Decline Request"}
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Summary report */}
 
       {showReport && (
@@ -1291,7 +1499,6 @@ function CheckUpSummaryReportModal({ onClose }) {
 
   const todayKey = (() => {
     const date = new Date();
-
     return [
       date.getFullYear(),
       String(date.getMonth() + 1).padStart(2, "0"),
@@ -1315,59 +1522,43 @@ function CheckUpSummaryReportModal({ onClose }) {
         let query = supabase
           .from(CHECKUP_TABLE)
           .select(
-            "patientFor, mobility, preferredDate, status, hospitalName, location, escort, staffId",
+            "id, status, patientFor, mobility, hospitalName, location, escort, staffId, created_at",
           );
 
         if (fromDate) {
-          query = query.gte("preferredDate", fromDate);
+          query = query.gte("created_at", `${fromDate}T00:00:00.000Z`);
         }
-
         if (toDate) {
-          query = query.lte("preferredDate", toDate);
+          query = query.lte("created_at", `${toDate}T23:59:59.999999`);
         }
 
         const { data, error } = await query;
-
         if (error) throw error;
-
-        if (!cancelled) {
-          setRows(data || []);
-        }
+        if (!cancelled) setRows(data || []);
       } catch (err) {
-        console.error("Error fetching report data:", err);
-
+        console.error("Error fetching check-up report data:", err);
         if (!cancelled) {
-          setFetchError(
-            err?.message || "Unable to load report data.",
-          );
+          setFetchError(err?.message || "Unable to load report data.");
         }
       } finally {
-        if (!cancelled) {
-          setFetching(false);
-        }
+        if (!cancelled) setFetching(false);
       }
     };
 
     fetchRows();
-
     return () => {
       cancelled = true;
     };
   }, [fromDate, toDate]);
 
   const stats = useMemo(() => {
-    const countBy = (
-      field,
-      fallback,
-      labeler = (value) => value,
-    ) => {
+    const countBy = (field, fallback = "Other", labelFn = null) => {
       const counts = {};
-
       rows.forEach((row) => {
-        const key = labeler(row[field] || fallback);
+        let key = row[field] || fallback;
+        if (labelFn) key = labelFn(key);
         counts[key] = (counts[key] || 0) + 1;
       });
-
       return Object.entries(counts)
         .map(([name, count]) => ({ name, count }))
         .sort((a, b) => b.count - a.count);
@@ -1383,36 +1574,16 @@ function CheckUpSummaryReportModal({ onClose }) {
       .map(([name, count]) => ({ name, count }))
       .sort((a, b) => b.count - a.count);
 
-    const patientForData = countBy(
-      "patientFor",
-      "Other",
-      patientForLabel,
-    );
-
-    const mobilityData = countBy(
-      "mobility",
-      "Not Specified",
-      mobilityLabel,
-    );
-
-    const hospitalData = countBy(
-      "hospitalName",
-      "Not Specified",
-    );
-
-    const locationData = countBy(
-      "location",
-      "Not Specified",
-    );
+    const patientForData = countBy("patientFor", "Other", patientForLabel);
+    const mobilityData = countBy("mobility", "Not Specified", mobilityLabel);
+    const hospitalData = countBy("hospitalName", "Not Specified");
+    const locationData = countBy("location", "Not Specified");
 
     const escortCount = rows.filter(
       (row) => safeText(row.escort).length > 0,
     ).length;
 
-    const staffCount = rows.filter(
-      (row) => hasValue(row.staffId),
-    ).length;
-
+    const staffCount = rows.filter((row) => hasValue(row.staffId)).length;
     const residentCount = rows.length - staffCount;
 
     return {
@@ -1430,9 +1601,7 @@ function CheckUpSummaryReportModal({ onClose }) {
   }, [rows]);
 
   const pct = (count) =>
-    rows.length
-      ? Math.round((count / rows.length) * 100)
-      : 0;
+    rows.length ? Math.round((count / rows.length) * 100) : 0;
 
   const pieColors = [
     "#3b82f6",
@@ -1464,29 +1633,314 @@ function CheckUpSummaryReportModal({ onClose }) {
       ? `${fromDate || "Start"} → ${toDate || "End"}`
       : "All dates";
 
+  const escapeHtml = (value) =>
+    String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+
+  const handlePrint = () => {
+    if (fetching || fetchError) return;
+
+    const card = (label, value, sub) => `
+      <div class="card">
+        <div class="card-label">${escapeHtml(label)}</div>
+        <div class="card-value">${escapeHtml(value)}</div>
+        ${sub ? `<div class="card-sub">${escapeHtml(sub)}</div>` : ""}
+      </div>`;
+
+    const topCards = `
+      ${card("Total Appointments", rows.length, "In coverage")}
+      ${card(
+        "Top Patient For",
+        stats.topPatientFor ? stats.topPatientFor.name : "—",
+        stats.topPatientFor
+          ? `${stats.topPatientFor.count} requests`
+          : "No data",
+      )}
+      ${card(
+        "Top Mobility",
+        stats.topMobility ? stats.topMobility.name : "—",
+        stats.topMobility
+          ? `${stats.topMobility.count} requests`
+          : "No data",
+      )}
+      ${card(
+        "Escort Requests",
+        stats.escortCount,
+        `${pct(stats.escortCount)}% of total`,
+      )}
+    `;
+
+    const statusCards =
+      stats.statusData.length === 0
+        ? `<p class="muted">No check-ups in the covered range.</p>`
+        : `<div class="grid-4">${stats.statusData
+            .map((entry) =>
+              card(entry.name, entry.count, `${pct(entry.count)}% of total`),
+            )
+            .join("")}</div>`;
+
+    const countTable = (title, data, max = 12) => {
+      const slice = data.slice(0, max);
+      const rowsHtml =
+        slice.length === 0
+          ? `<tr><td colspan="3">No check-ups in the covered range.</td></tr>`
+          : slice
+              .map(
+                (entry) => `
+          <tr>
+            <td>${escapeHtml(entry.name)}</td>
+            <td class="center">${entry.count}</td>
+            <td class="center">${pct(entry.count)}%</td>
+          </tr>`,
+              )
+              .join("");
+      const more =
+        data.length > max
+          ? `<p class="muted" style="margin-top:6px">…and ${data.length - max} more entries.</p>`
+          : "";
+
+      return `
+        <div class="section avoid-break">
+          <h2 class="section-title">${escapeHtml(title)}</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th class="center">Count</th>
+                <th class="center">Share</th>
+              </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+          ${more}
+        </div>`;
+    };
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Outpatient Check-up Summary Report</title>
+  <style>
+    @page { size: A4 portrait; margin: 12mm; }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0 !important;
+      padding: 0 !important;
+      background: #ffffff;
+      color: #000000;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      font-size: 12px;
+      line-height: 1.45;
+      height: auto !important;
+      min-height: 0 !important;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    body > *:first-child {
+      margin-top: 0 !important;
+      padding-top: 0 !important;
+    }
+    h1 { margin: 0; font-size: 20px; text-align: center; color: #000; }
+    h2, .section-title {
+      margin: 0 0 10px;
+      font-size: 14px;
+      font-weight: 800;
+      color: #000;
+      border-bottom: 1px solid #cbd5e1;
+      padding-bottom: 6px;
+    }
+    .header {
+      text-align: center;
+      border-bottom: 2px solid #000;
+      padding-bottom: 14px;
+      margin-bottom: 18px;
+    }
+    .muted { color: #334155; font-size: 11px; }
+    .badge {
+      display: inline-block;
+      border: 1px solid #cbd5e1;
+      border-radius: 999px;
+      padding: 2px 10px;
+      font-size: 11px;
+      font-weight: 600;
+      margin: 2px;
+      background: #fff;
+    }
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+    .card {
+      border-radius: 10px;
+      padding: 10px 12px;
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      color: #000000;
+    }
+    .card-label { font-size: 10px; font-weight: 700; }
+    .card-value { font-size: 20px; font-weight: 800; margin-top: 2px; word-break: break-word; }
+    .card-sub { font-size: 10px; margin-top: 2px; color: #334155; }
+    .section { margin-bottom: 18px; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    th, td {
+      border: 1px solid #cbd5e1;
+      padding: 6px 7px;
+      text-align: left;
+      vertical-align: top;
+      word-wrap: break-word;
+      background: #ffffff;
+      color: #000000;
+    }
+    th { font-size: 10px; border-bottom: 2px solid #94a3b8; }
+    td.center, th.center { text-align: center; }
+    thead { display: table-header-group; }
+    tr { page-break-inside: avoid; break-inside: avoid; }
+    .avoid-break { page-break-inside: avoid; break-inside: avoid; }
+    .footer {
+      border-top: 1px solid #cbd5e1;
+      padding-top: 10px;
+      text-align: center;
+      color: #334155;
+      font-size: 10px;
+      margin-top: 16px;
+    }
+    @media print {
+      html, body {
+        height: auto !important;
+        min-height: 0 !important;
+        overflow: visible !important;
+        background: #ffffff !important;
+        color: #000000 !important;
+        margin: 0 !important;
+        padding: 0 !important;
+      }
+      body > *:first-child {
+        margin-top: 0 !important;
+        page-break-before: avoid !important;
+      }
+      * {
+        background: #ffffff !important;
+        background-color: #ffffff !important;
+        box-shadow: none !important;
+        color: #000000 !important;
+      }
+      table, th, td, .card {
+        background: #ffffff !important;
+        border-color: #cbd5e1 !important;
+        color: #000000 !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="header avoid-break">
+    <p class="muted" style="font-weight:700;letter-spacing:0.15em;text-transform:uppercase">E-MDRRMO</p>
+    <h1>OUTPATIENT CHECK-UP SUMMARY REPORT</h1>
+    <p style="margin-top:10px">
+      <span class="badge">Coverage: ${escapeHtml(rangeLabel)}</span>
+      <span class="badge">${rows.length} appointment${rows.length === 1 ? "" : "s"}</span>
+    </p>
+    <p class="muted" style="margin-top:8px">Generated: ${escapeHtml(generatedAt)}</p>
+  </div>
+
+  <div class="section avoid-break">
+    <div class="grid-4">${topCards}</div>
+  </div>
+
+  <div class="section avoid-break">
+    <h2 class="section-title">Status Overview</h2>
+    ${statusCards}
+  </div>
+
+  ${countTable("Requests by Account Type", [
+    { name: "Resident", count: stats.residentCount },
+    { name: "Staff", count: stats.staffCount },
+  ])}
+  ${countTable("Check-ups by Status", stats.statusData)}
+  ${countTable("Check-ups by Patient For", stats.patientForData)}
+  ${countTable("Check-ups by Mobility", stats.mobilityData)}
+  ${countTable("Top Hospitals", stats.hospitalData, 10)}
+  ${countTable("Top Locations", stats.locationData, 10)}
+
+  <div class="footer avoid-break">
+    <p>This report is system-generated and reflects data at the time of generation. Reporter names and account IDs are omitted from the printed summary.</p>
+    <p>© ${new Date().getFullYear()} E-MDRRMO</p>
+  </div>
+</body>
+</html>`;
+
+    const existing = document.getElementById("checkup-summary-print-frame");
+    if (existing) existing.remove();
+
+    const iframe = document.createElement("iframe");
+    iframe.id = "checkup-summary-print-frame";
+    iframe.setAttribute("title", "Check-up Summary Print");
+    iframe.style.cssText =
+      "position:fixed;right:0;bottom:0;width:0;height:0;border:0;opacity:0;pointer-events:none;";
+    document.body.appendChild(iframe);
+
+    const frameDoc = iframe.contentDocument || iframe.contentWindow.document;
+    frameDoc.open();
+    frameDoc.write(html);
+    frameDoc.close();
+
+    const triggerPrint = () => {
+      try {
+        const win = iframe.contentWindow;
+        void win.document.body.offsetHeight;
+        win.focus();
+        win.print();
+      } catch (err) {
+        console.error("Print failed:", err);
+      }
+      const cleanup = () => {
+        try {
+          iframe.remove();
+        } catch {
+          /* ignore */
+        }
+      };
+      try {
+        iframe.contentWindow.onafterprint = cleanup;
+      } catch {
+        /* ignore */
+      }
+      setTimeout(cleanup, 120000);
+    };
+
+    const schedulePrint = () => {
+      requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+          setTimeout(triggerPrint, 400);
+        });
+      });
+    };
+
+    if (iframe.contentWindow.document.readyState === "complete") {
+      schedulePrint();
+    } else {
+      iframe.onload = schedulePrint;
+    }
+  };
+
   const Card = ({ label, value, sub, color }) => (
     <div className={`rounded-xl border p-4 ${color}`}>
       <p className="text-xs font-bold opacity-70">{label}</p>
-
       <p className="mt-1 text-2xl font-bold">{value}</p>
-
-      {sub && (
-        <p className="mt-1 text-xs opacity-70">{sub}</p>
-      )}
+      {sub && <p className="mt-1 text-xs opacity-70">{sub}</p>}
     </div>
   );
 
-  const CountTable = ({
-    title,
-    data,
-    total,
-    max = 10,
-  }) => (
-    <div className="print-break-avoid">
-      <h2 className="mb-3 font-bold text-slate-800">
-        {title}
-      </h2>
-
+  const CountTable = ({ title, data, total, max = 10 }) => (
+    <div>
+      <h2 className="mb-3 font-bold text-slate-800">{title}</h2>
       {data.length === 0 ? (
         <p className="text-sm text-slate-500">
           No check-ups in the covered range.
@@ -1498,31 +1952,23 @@ function CheckUpSummaryReportModal({ onClose }) {
               <th className="border border-slate-200 p-2 text-left font-bold text-slate-700">
                 Name
               </th>
-
               <th className="border border-slate-200 p-2 text-center font-bold text-slate-700">
                 Count
               </th>
-
               <th className="border border-slate-200 p-2 text-center font-bold text-slate-700">
                 Share
               </th>
             </tr>
           </thead>
-
           <tbody>
             {data.slice(0, max).map((entry) => (
-              <tr
-                key={entry.name}
-                className="border-b border-slate-100"
-              >
+              <tr key={entry.name} className="border-b border-slate-100">
                 <td className="border border-slate-200 p-2 font-semibold text-slate-700">
                   {entry.name}
                 </td>
-
                 <td className="border border-slate-200 p-2 text-center text-slate-600">
                   {entry.count}
                 </td>
-
                 <td className="border border-slate-200 p-2 text-center text-slate-600">
                   {pct(entry.count)}%
                 </td>
@@ -1531,13 +1977,11 @@ function CheckUpSummaryReportModal({ onClose }) {
           </tbody>
         </table>
       )}
-
       {data.length > max && (
         <p className="mt-2 text-xs text-slate-500">
           …and {data.length - max} more entries.
         </p>
       )}
-
       {total !== undefined && (
         <p className="mt-1 text-xs text-slate-400">
           Total in coverage: {total}
@@ -1547,573 +1991,375 @@ function CheckUpSummaryReportModal({ onClose }) {
   );
 
   return (
-    <>
-      <style>{`
-        @media print {
-          @page {
-            size: A4 portrait;
-            margin: 12mm;
-          }
-
-          html,
-          body,
-          #root,
-          .app-shell,
-          .content {
-            height: auto !important;
-            max-height: none !important;
-            overflow: visible !important;
-          }
-
-          body {
-            background: #ffffff !important;
-          }
-
-          body * {
-            visibility: hidden;
-          }
-
-          .report-overlay {
-            position: static !important;
-            overflow: visible !important;
-            padding: 0 !important;
-            background: none !important;
-          }
-
-          .report-print,
-          .report-print * {
-            visibility: visible;
-          }
-
-          .report-print {
-            position: static !important;
-            top: 0 !important;
-            left: 0 !important;
-            width: 100% !important;
-            max-width: none !important;
-            max-height: none !important;
-            margin: 0 !important;
-            box-shadow: none !important;
-            border: none !important;
-            border-radius: 0 !important;
-          }
-
-          .report-print .print-hidden {
-            display: none !important;
-          }
-
-          .report-print .print-break-avoid,
-          .report-print .print-section {
-            break-inside: avoid;
-            page-break-inside: avoid;
-          }
-
-          * {
-            -webkit-print-color-adjust: exact !important;
-            print-color-adjust: exact !important;
-          }
-        }
-      `}</style>
-
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4"
+      onClick={onClose}
+    >
       <div
-        className="report-overlay fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4"
-        onClick={onClose}
+        className="my-8 w-full max-w-4xl rounded-2xl border border-slate-200 bg-white shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
       >
-        <div
-          className="report-print my-8 w-full max-w-4xl rounded-2xl border border-slate-200 bg-white shadow-2xl"
-          onClick={(event) => event.stopPropagation()}
-        >
-          {/* Screen-only toolbar */}
-
-          <div className="print-hidden sticky top-0 z-10 rounded-t-2xl border-b border-slate-200 bg-white/95 backdrop-blur">
-            <div className="flex items-center justify-between gap-3 px-6 pb-3 pt-4">
-              <div className="flex min-w-0 items-center gap-2">
-                <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-purple-100">
-                  <FileText className="h-5 w-5 text-purple-600" />
-                </div>
-
-                <div className="min-w-0">
-                  <h3 className="truncate font-bold leading-tight text-slate-800">
-                    Check-up Summary Report
-                  </h3>
-
-                  <p className="text-xs leading-tight text-slate-400">
-                    Adjust coverage, then print
-                  </p>
-                </div>
+        <div className="sticky top-0 z-10 rounded-t-2xl border-b border-slate-200 bg-white/95 backdrop-blur">
+          <div className="flex items-center justify-between gap-3 px-6 pb-3 pt-4">
+            <div className="flex min-w-0 items-center gap-2">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-purple-100">
+                <FileText className="h-5 w-5 text-purple-600" />
               </div>
-
-              <div className="flex shrink-0 items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => window.print()}
-                  disabled={fetching}
-                  className="flex items-center gap-2 rounded-xl bg-purple-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-purple-700 disabled:opacity-50"
-                >
-                  <Download className="h-4 w-4" />
-
-                  {fetching
-                    ? "Loading…"
-                    : "Print / Save PDF"}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={onClose}
-                  aria-label="Close report"
-                  title="Close"
-                  className="rounded-xl p-2 text-slate-500 transition hover:bg-slate-200"
-                >
-                  <X className="h-5 w-5" />
-                </button>
+              <div className="min-w-0">
+                <h3 className="truncate font-bold leading-tight text-slate-800">
+                  Check-up Summary Report
+                </h3>
+                <p className="text-xs leading-tight text-slate-400">
+                  Adjust coverage, then print
+                </p>
               </div>
             </div>
 
-            <div className="flex flex-wrap items-center gap-2 px-6 pb-4">
-              <span className="text-xs font-bold uppercase tracking-wide text-slate-400">
-                Coverage
-              </span>
-
-              <input
-                type="date"
-                value={fromDate}
-                onChange={(event) =>
-                  setFromDate(event.target.value)
-                }
-                className="rounded-xl border border-slate-300 px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-500"
-              />
-
-              <span className="text-sm text-slate-400">→</span>
-
-              <input
-                type="date"
-                value={toDate}
-                onChange={(event) =>
-                  setToDate(event.target.value)
-                }
-                className="rounded-xl border border-slate-300 px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-500"
-              />
-
-              <div className="ml-1 flex items-center gap-1 rounded-xl bg-slate-100 p-1">
-                {[
-                  {
-                    label: "All Time",
-                    from: "",
-                    to: "",
-                  },
-                  {
-                    label: "This Month",
-                    from: `${todayKey.slice(0, 8)}01`,
-                    to: todayKey,
-                  },
-                  {
-                    label: "Today",
-                    from: todayKey,
-                    to: todayKey,
-                  },
-                ].map((preset) => {
-                  const active =
-                    fromDate === preset.from &&
-                    toDate === preset.to;
-
-                  return (
-                    <button
-                      key={preset.label}
-                      type="button"
-                      onClick={() =>
-                        applyPreset(preset.from, preset.to)
-                      }
-                      className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
-                        active
-                          ? "bg-purple-600 text-white shadow-sm"
-                          : "text-slate-600 hover:bg-white hover:text-slate-800"
-                      }`}
-                    >
-                      {preset.label}
-                    </button>
-                  );
-                })}
-              </div>
-
-              <span className="ml-auto rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-500">
-                {rows.length} record
-                {rows.length === 1 ? "" : "s"} loaded
-              </span>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={handlePrint}
+                disabled={fetching || Boolean(fetchError)}
+                className="flex items-center gap-2 rounded-xl bg-purple-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-purple-700 disabled:opacity-50"
+              >
+                <Download className="h-4 w-4" />
+                {fetching ? "Loading…" : "Print / Save PDF"}
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close report"
+                title="Close"
+                className="rounded-xl p-2 text-slate-500 transition hover:bg-slate-200"
+              >
+                <X className="h-5 w-5" />
+              </button>
             </div>
           </div>
 
-          {/* Report body */}
-
-          <div className="p-8 text-slate-800">
-            <div className="print-section mb-6 border-b-2 border-slate-800 pb-5 text-center">
-              <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">
-                E-MDRRMO
-              </p>
-
-              <h1 className="mt-1 text-2xl font-black text-slate-900">
-                OUTPATIENT CHECK-UP SUMMARY REPORT
-              </h1>
-
-              <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
-                <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
-                  Coverage: {rangeLabel}
-                </span>
-
-                <span className="rounded-full bg-purple-50 px-3 py-1 text-xs font-semibold text-purple-700">
-                  {rows.length} appointment
-                  {rows.length === 1 ? "" : "s"}
-                </span>
-              </div>
-
-              <p className="mt-2 text-xs text-slate-400">
-                Generated: {generatedAt}
-              </p>
+          <div className="flex flex-wrap items-center gap-2 px-6 pb-4">
+            <span className="text-xs font-bold uppercase tracking-wide text-slate-400">
+              Coverage
+            </span>
+            <input
+              type="date"
+              value={fromDate}
+              onChange={(event) => setFromDate(event.target.value)}
+              className="rounded-xl border border-slate-300 px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-500"
+            />
+            <span className="text-sm text-slate-400">→</span>
+            <input
+              type="date"
+              value={toDate}
+              onChange={(event) => setToDate(event.target.value)}
+              className="rounded-xl border border-slate-300 px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-500"
+            />
+            <div className="ml-1 flex items-center gap-1 rounded-xl bg-slate-100 p-1">
+              {[
+                { label: "All Time", from: "", to: "" },
+                {
+                  label: "This Month",
+                  from: `${todayKey.slice(0, 8)}01`,
+                  to: todayKey,
+                },
+                { label: "Today", from: todayKey, to: todayKey },
+              ].map((preset) => {
+                const active =
+                  fromDate === preset.from && toDate === preset.to;
+                return (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    onClick={() => applyPreset(preset.from, preset.to)}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+                      active
+                        ? "bg-purple-600 text-white shadow-sm"
+                        : "text-slate-600 hover:bg-white hover:text-slate-800"
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                );
+              })}
             </div>
-
-            {fetchError ? (
-              <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
-                Failed to load report data: {fetchError}
-              </div>
-            ) : fetching ? (
-              <div className="py-16 text-center font-semibold text-slate-500">
-                Loading report data…
-              </div>
-            ) : (
-              <>
-                {/* Summary cards */}
-
-                <div className="print-break-avoid mb-8 grid grid-cols-2 gap-3 md:grid-cols-4">
-                  <Card
-                    label="Total Appointments"
-                    value={rows.length}
-                    sub="In coverage"
-                    className="border-blue-200 bg-blue-50 text-blue-700"
-                  />
-
-                  <Card
-                    label="Top Patient For"
-                    value={
-                      stats.topPatientFor
-                        ? stats.topPatientFor.name
-                        : "—"
-                    }
-                    sub={
-                      stats.topPatientFor
-                        ? `${stats.topPatientFor.count} requests`
-                        : "No data"
-                    }
-                    className="border-emerald-200 bg-emerald-50 text-emerald-700"
-                  />
-
-                  <Card
-                    label="Top Mobility"
-                    value={
-                      stats.topMobility
-                        ? stats.topMobility.name
-                        : "—"
-                    }
-                    sub={
-                      stats.topMobility
-                        ? `${stats.topMobility.count} requests`
-                        : "No data"
-                    }
-                    className="border-violet-200 bg-violet-50 text-violet-700"
-                  />
-
-                  <Card
-                    label="Escort Requests"
-                    value={stats.escortCount}
-                    sub={`${pct(stats.escortCount)}% of total`}
-                    className="border-rose-200 bg-rose-50 text-rose-700"
-                  />
-                </div>
-
-                {/* Status overview */}
-
-                <div className="print-section mb-8">
-                  <h2 className="mb-3 font-bold text-slate-800">
-                    Status Overview
-                  </h2>
-
-                  {stats.statusData.length === 0 ? (
-                    <p className="text-sm text-slate-500">
-                      No check-ups in the covered range.
-                    </p>
-                  ) : (
-                    <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-                      {stats.statusData.map((entry) => (
-                        <Card
-                          key={entry.name}
-                          label={entry.name}
-                          value={entry.count}
-                          sub={`${pct(entry.count)}% of total`}
-                          className="border-slate-200 bg-slate-50 text-slate-700"
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Status chart */}
-
-                {stats.statusData.length > 0 && (
-                  <div className="print-section mb-8">
-                    <h2 className="mb-3 font-bold text-slate-800">
-                      Status Distribution
-                    </h2>
-
-                    <div className="h-[260px] w-full">
-                      <ResponsiveContainer
-                        width="100%"
-                        height="100%"
-                      >
-                        <PieChart>
-                          <Pie
-                            data={stats.statusData.map(
-                              (entry) => ({
-                                ...entry,
-                                value: entry.count,
-                              }),
-                            )}
-                            innerRadius={60}
-                            outerRadius={95}
-                            paddingAngle={5}
-                            dataKey="value"
-                          >
-                            {stats.statusData.map(
-                              (_, index) => (
-                                <Cell
-                                  key={index}
-                                  fill={
-                                    pieColors[
-                                      index % pieColors.length
-                                    ]
-                                  }
-                                />
-                              ),
-                            )}
-                          </Pie>
-
-                          <Tooltip />
-
-                          <Legend
-                            wrapperStyle={{
-                              paddingTop: "10px",
-                            }}
-                          />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-                )}
-
-                {/* Patient-for chart */}
-
-                {stats.patientForData.length > 0 && (
-                  <div className="print-section mb-8">
-                    <h2 className="mb-3 font-bold text-slate-800">
-                      Patient For Distribution
-                    </h2>
-
-                    <div className="h-[240px] w-full">
-                      <ResponsiveContainer
-                        width="100%"
-                        height="100%"
-                      >
-                        <BarChart
-                          data={stats.patientForData}
-                        >
-                          <CartesianGrid
-                            strokeDasharray="3 3"
-                            vertical={false}
-                            stroke="#e0e0e0"
-                          />
-
-                          <XAxis
-                            dataKey="name"
-                            fontSize={10}
-                            tickLine={false}
-                            axisLine={false}
-                          />
-
-                          <YAxis
-                            allowDecimals={false}
-                            fontSize={10}
-                            tickLine={false}
-                            axisLine={false}
-                          />
-
-                          <Tooltip
-                            cursor={{
-                              fill: "rgba(0,0,0,0.05)",
-                            }}
-                          />
-
-                          <Bar
-                            dataKey="count"
-                            radius={[10, 10, 0, 0]}
-                            barSize={40}
-                          >
-                            {stats.patientForData.map(
-                              (_, index) => (
-                                <Cell
-                                  key={index}
-                                  fill={
-                                    barColors[
-                                      index % barColors.length
-                                    ]
-                                  }
-                                />
-                              ),
-                            )}
-                          </Bar>
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-                )}
-
-                {/* Mobility chart */}
-
-                {stats.mobilityData.length > 0 && (
-                  <div className="print-section mb-8">
-                    <h2 className="mb-3 font-bold text-slate-800">
-                      Mobility Requirements
-                    </h2>
-
-                    <div className="h-[240px] w-full">
-                      <ResponsiveContainer
-                        width="100%"
-                        height="100%"
-                      >
-                        <BarChart data={stats.mobilityData}>
-                          <CartesianGrid
-                            strokeDasharray="3 3"
-                            vertical={false}
-                            stroke="#e0e0e0"
-                          />
-
-                          <XAxis
-                            dataKey="name"
-                            fontSize={10}
-                            tickLine={false}
-                            axisLine={false}
-                          />
-
-                          <YAxis
-                            allowDecimals={false}
-                            fontSize={10}
-                            tickLine={false}
-                            axisLine={false}
-                          />
-
-                          <Tooltip
-                            cursor={{
-                              fill: "rgba(0,0,0,0.05)",
-                            }}
-                          />
-
-                          <Bar
-                            dataKey="count"
-                            radius={[10, 10, 0, 0]}
-                            barSize={40}
-                          >
-                            {stats.mobilityData.map(
-                              (_, index) => (
-                                <Cell
-                                  key={index}
-                                  fill={
-                                    barColors[
-                                      index % barColors.length
-                                    ]
-                                  }
-                                />
-                              ),
-                            )}
-                          </Bar>
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-                )}
-
-                {/* Requester source */}
-
-                <div className="print-section mb-8">
-                  <CountTable
-                    title="Requests by Account Type"
-                    data={[
-                      {
-                        name: "Resident",
-                        count: stats.residentCount,
-                      },
-                      {
-                        name: "Staff",
-                        count: stats.staffCount,
-                      },
-                    ]}
-                    total={rows.length}
-                  />
-                </div>
-
-                {/* Aggregate tables */}
-
-                <div className="mb-8 space-y-8">
-                  <div className="print-section">
-                    <CountTable
-                      title="Check-ups by Status"
-                      data={stats.statusData}
-                      total={rows.length}
-                    />
-                  </div>
-
-                  <div className="print-section">
-                    <CountTable
-                      title="Check-ups by Patient For"
-                      data={stats.patientForData}
-                      total={rows.length}
-                    />
-                  </div>
-
-                  <div className="print-section">
-                    <CountTable
-                      title="Check-ups by Mobility"
-                      data={stats.mobilityData}
-                      total={rows.length}
-                    />
-                  </div>
-                </div>
-
-                <div className="mb-8 space-y-8">
-                  <div className="print-section">
-                    <CountTable
-                      title="Top Hospitals"
-                      data={stats.hospitalData}
-                      max={10}
-                    />
-                  </div>
-
-                  <div className="print-section">
-                    <CountTable
-                      title="Top Locations"
-                      data={stats.locationData}
-                      max={10}
-                    />
-                  </div>
-                </div>
-
-                <div className="print-break-avoid border-t border-slate-200 pt-4 text-center text-xs text-slate-500">
-                  <p>
-                    This report is system-generated and reflects data
-                    at the time of generation. Reporter names and
-                    account IDs are omitted from the printed summary.
-                  </p>
-                </div>
-              </>
-            )}
+            <span className="ml-auto rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-500">
+              {rows.length} record{rows.length === 1 ? "" : "s"} loaded
+            </span>
           </div>
         </div>
+
+        <div className="p-8 text-slate-800 max-h-[70vh] overflow-y-auto">
+          <div className="mb-6 border-b-2 border-slate-800 pb-5 text-center">
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">
+              E-MDRRMO
+            </p>
+            <h1 className="mt-1 text-2xl font-black text-slate-900">
+              OUTPATIENT CHECK-UP SUMMARY REPORT
+            </h1>
+            <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                Coverage: {rangeLabel}
+              </span>
+              <span className="rounded-full bg-purple-50 px-3 py-1 text-xs font-semibold text-purple-700">
+                {rows.length} appointment{rows.length === 1 ? "" : "s"}
+              </span>
+            </div>
+            <p className="mt-2 text-xs text-slate-400">
+              Generated: {generatedAt}
+            </p>
+          </div>
+
+          {fetchError ? (
+            <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+              Failed to load report data: {fetchError}
+            </div>
+          ) : fetching ? (
+            <div className="py-16 text-center font-semibold text-slate-500">
+              Loading report data…
+            </div>
+          ) : (
+            <>
+              <div className="mb-8 grid grid-cols-2 gap-3 md:grid-cols-4">
+                <Card
+                  label="Total Appointments"
+                  value={rows.length}
+                  sub="In coverage"
+                  color="border-blue-200 bg-blue-50 text-blue-700"
+                />
+                <Card
+                  label="Top Patient For"
+                  value={
+                    stats.topPatientFor ? stats.topPatientFor.name : "—"
+                  }
+                  sub={
+                    stats.topPatientFor
+                      ? `${stats.topPatientFor.count} requests`
+                      : "No data"
+                  }
+                  color="border-emerald-200 bg-emerald-50 text-emerald-700"
+                />
+                <Card
+                  label="Top Mobility"
+                  value={stats.topMobility ? stats.topMobility.name : "—"}
+                  sub={
+                    stats.topMobility
+                      ? `${stats.topMobility.count} requests`
+                      : "No data"
+                  }
+                  color="border-violet-200 bg-violet-50 text-violet-700"
+                />
+                <Card
+                  label="Escort Requests"
+                  value={stats.escortCount}
+                  sub={`${pct(stats.escortCount)}% of total`}
+                  color="border-rose-200 bg-rose-50 text-rose-700"
+                />
+              </div>
+
+              <div className="mb-8">
+                <h2 className="mb-3 font-bold text-slate-800">
+                  Status Overview
+                </h2>
+                {stats.statusData.length === 0 ? (
+                  <p className="text-sm text-slate-500">
+                    No check-ups in the covered range.
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                    {stats.statusData.map((entry) => (
+                      <Card
+                        key={entry.name}
+                        label={entry.name}
+                        value={entry.count}
+                        sub={`${pct(entry.count)}% of total`}
+                        color="border-slate-200 bg-slate-50 text-slate-700"
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {stats.statusData.length > 0 && (
+                <div className="mb-8">
+                  <h2 className="mb-3 font-bold text-slate-800">
+                    Status Distribution
+                  </h2>
+                  <div className="h-[260px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={stats.statusData.map((entry) => ({
+                            ...entry,
+                            value: entry.count,
+                          }))}
+                          innerRadius={60}
+                          outerRadius={95}
+                          paddingAngle={5}
+                          dataKey="value"
+                        >
+                          {stats.statusData.map((_, index) => (
+                            <Cell
+                              key={index}
+                              fill={pieColors[index % pieColors.length]}
+                            />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                        <Legend wrapperStyle={{ paddingTop: "10px" }} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
+
+              {stats.patientForData.length > 0 && (
+                <div className="mb-8">
+                  <h2 className="mb-3 font-bold text-slate-800">
+                    Patient For Distribution
+                  </h2>
+                  <div className="h-[240px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={stats.patientForData}>
+                        <CartesianGrid
+                          strokeDasharray="3 3"
+                          vertical={false}
+                          stroke="#e0e0e0"
+                        />
+                        <XAxis
+                          dataKey="name"
+                          fontSize={10}
+                          tickLine={false}
+                          axisLine={false}
+                        />
+                        <YAxis
+                          allowDecimals={false}
+                          fontSize={10}
+                          tickLine={false}
+                          axisLine={false}
+                        />
+                        <Tooltip
+                          cursor={{ fill: "rgba(0,0,0,0.05)" }}
+                        />
+                        <Bar
+                          dataKey="count"
+                          radius={[10, 10, 0, 0]}
+                          barSize={40}
+                        >
+                          {stats.patientForData.map((_, index) => (
+                            <Cell
+                              key={index}
+                              fill={barColors[index % barColors.length]}
+                            />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
+
+              {stats.mobilityData.length > 0 && (
+                <div className="mb-8">
+                  <h2 className="mb-3 font-bold text-slate-800">
+                    Mobility Requirements
+                  </h2>
+                  <div className="h-[240px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={stats.mobilityData}>
+                        <CartesianGrid
+                          strokeDasharray="3 3"
+                          vertical={false}
+                          stroke="#e0e0e0"
+                        />
+                        <XAxis
+                          dataKey="name"
+                          fontSize={10}
+                          tickLine={false}
+                          axisLine={false}
+                        />
+                        <YAxis
+                          allowDecimals={false}
+                          fontSize={10}
+                          tickLine={false}
+                          axisLine={false}
+                        />
+                        <Tooltip
+                          cursor={{ fill: "rgba(0,0,0,0.05)" }}
+                        />
+                        <Bar
+                          dataKey="count"
+                          radius={[10, 10, 0, 0]}
+                          barSize={40}
+                        >
+                          {stats.mobilityData.map((_, index) => (
+                            <Cell
+                              key={index}
+                              fill={barColors[index % barColors.length]}
+                            />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
+
+              <div className="mb-8">
+                <CountTable
+                  title="Requests by Account Type"
+                  data={[
+                    { name: "Resident", count: stats.residentCount },
+                    { name: "Staff", count: stats.staffCount },
+                  ]}
+                  total={rows.length}
+                />
+              </div>
+
+              <div className="mb-8 space-y-8">
+                <CountTable
+                  title="Check-ups by Status"
+                  data={stats.statusData}
+                  total={rows.length}
+                />
+                <CountTable
+                  title="Check-ups by Patient For"
+                  data={stats.patientForData}
+                  total={rows.length}
+                />
+                <CountTable
+                  title="Check-ups by Mobility"
+                  data={stats.mobilityData}
+                  total={rows.length}
+                />
+              </div>
+
+              <div className="mb-8 space-y-8">
+                <CountTable
+                  title="Top Hospitals"
+                  data={stats.hospitalData}
+                  max={10}
+                />
+                <CountTable
+                  title="Top Locations"
+                  data={stats.locationData}
+                  max={10}
+                />
+              </div>
+
+              <div className="border-t border-slate-200 pt-4 text-center text-xs text-slate-500">
+                <p>
+                  This report is system-generated and reflects data at the
+                  time of generation. Reporter names and account IDs are
+                  omitted from the printed summary.
+                </p>
+                <p className="mt-1">
+                  © {new Date().getFullYear()} E-MDRRMO
+                </p>
+              </div>
+            </>
+          )}
+        </div>
       </div>
-    </>
+    </div>
   );
 }

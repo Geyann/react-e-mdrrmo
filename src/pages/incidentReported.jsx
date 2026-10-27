@@ -23,7 +23,10 @@ const IncidentReported = () => {
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
   const closeBtnRef = useRef(null);
-const [showReport, setShowReport] = useState(false);
+  const [showReport, setShowReport] = useState(false);
+
+  /* Reason shown to the reporter when the report is rejected. */
+  const [reviewNotes, setReviewNotes] = useState('');
 
   const STATUS_OPTIONS = ['Pending', 'In Progress', 'Resolved', 'Rejected'];
 
@@ -102,6 +105,7 @@ const [showReport, setShowReport] = useState(false);
     setSelected(report);
     setNewStatus(report.status || 'Pending');
     setAdminResponse(report.adminResponse || '');
+    setReviewNotes(report.review_notes || '');
     setError('');
     setSuccess('');
   };
@@ -114,11 +118,17 @@ const [showReport, setShowReport] = useState(false);
     setError('');
     setSuccess('');
 
+    const trimmedNotes = reviewNotes.trim();
+
     const { error: updateError } = await supabase
       .from('reportIncident')
       .update({
         status: newStatus,
         adminResponse,
+        /* Only persist review_notes when rejecting. When the admin
+         * switches the status back to anything else, clear the reason
+         * so a stale message never reaches the reporter. */
+        review_notes: newStatus === 'Rejected' ? (trimmedNotes || null) : null,
         updated_at: new Date().toISOString(),
       })
       .eq('reportIncidentId', selected.reportIncidentId);
@@ -466,6 +476,17 @@ const [showReport, setShowReport] = useState(false);
                 </div>
               )}
 
+              {/* Decline reason banner — visible if the report was previously rejected. */}
+              {selected.status === 'Rejected' && selected.review_notes && (
+                <div className="mb-5 p-4 bg-amber-50 border border-amber-200 rounded-xl">
+                  <p className="text-xs font-bold uppercase tracking-wide text-amber-700 flex items-center gap-1.5 mb-1">
+                    <AlertCircle className="w-3.5 h-3.5" aria-hidden="true" />
+                    Decline Reason (visible to reporter)
+                  </p>
+                  <p className="text-sm text-amber-900 whitespace-pre-line">{selected.review_notes}</p>
+                </div>
+              )}
+
               {/* Report details */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
                 <div className="p-3 bg-slate-50 rounded-xl">
@@ -559,6 +580,28 @@ const [showReport, setShowReport] = useState(false);
                   />
                 </div>
 
+                {/* Reason field — only shown when the admin selects Rejected. */}
+                {newStatus === 'Rejected' && (
+                  <div className="mb-5">
+                    <label htmlFor="review-notes" className="text-sm font-bold text-slate-700">
+                      Reason for rejection
+                      <span className="ml-1 text-xs font-normal text-slate-400">(shown to the reporter)</span>
+                    </label>
+                    <textarea
+                      id="review-notes"
+                      value={reviewNotes}
+                      onChange={(e) => setReviewNotes(e.target.value)}
+                      rows={3}
+                      maxLength={500}
+                      placeholder="e.g. The report is a duplicate of an earlier submission. Please do not re-submit."
+                      className="w-full p-2.5 border border-red-300 bg-red-50 rounded-xl focus:ring-2 focus:ring-red-500 outline-none mt-1 resize-y text-base"
+                    />
+                    <p className="mt-1 text-xs text-slate-500">
+                      {reviewNotes.length}/500 characters. Optional, but helps the reporter understand the decision.
+                    </p>
+                  </div>
+                )}
+
                 <div className="flex flex-col sm:flex-row gap-3">
                   <button
                     type="submit"
@@ -610,12 +653,12 @@ const IncidentSummaryReportModal = ({ onClose }) => {
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
   })();
 
-  const applyPreset = (from, to) => { setFromDate(from); setToDate(to); };
+  const applyPreset = (from, to) => {
+    setFromDate(from);
+    setToDate(to);
+  };
 
-  // ---- Fetch summary rows server-side whenever coverage changes ----
-  // Coverage filters on created_at (timestamptz) using a full-day ISO range.
-  // Deliberately excludes patientName, reporterContact, pictureOfIncident,
-  // adminResponse text, and userId — keeps the printout free of PHI.
+  // Coverage filters on created_at. Excludes PHI (patientName, contact, photos, etc.).
   useEffect(() => {
     const fetchRows = async () => {
       setFetching(true);
@@ -641,7 +684,6 @@ const IncidentSummaryReportModal = ({ onClose }) => {
     fetchRows();
   }, [fromDate, toDate]);
 
-  // ---- All stats computed from fetched rows ----
   const stats = useMemo(() => {
     const countBy = (field, fallback) => {
       const counts = {};
@@ -654,12 +696,10 @@ const IncidentSummaryReportModal = ({ onClose }) => {
         .sort((a, b) => b.count - a.count);
     };
 
-    // Status and priority are dynamic — count whatever values exist
     const statusData = countBy('status', 'Pending');
     const priorityData = countBy('priorityLevel', 'Unspecified');
     const incidentTypeData = countBy('incidentType', 'Other');
 
-    // Top special needs / required tools (comma-separated free text → split)
     const splitCount = (field) => {
       const counts = {};
       rows.forEach((r) => {
@@ -681,10 +721,8 @@ const IncidentSummaryReportModal = ({ onClose }) => {
     const specialNeedsData = splitCount('specialNeeds');
     const requiredToolsData = splitCount('requiredTools');
 
-    // High-priority share
     const highCount = rows.filter((r) => r.priorityLevel === 'High').length;
 
-    // Peak incident hour of day (from report's own date+time text)
     let peakTime = null;
     {
       const hourCounts = {};
@@ -693,7 +731,12 @@ const IncidentSummaryReportModal = ({ onClose }) => {
         if (!m) return;
         let h = Number(m[1]);
         const min = String(m[2]);
-        const ampm = /pm/i.test(String(r.time)) && h !== 12 ? h + 12 : /am/i.test(String(r.time)) && h === 12 ? 0 : h;
+        const ampm =
+          /pm/i.test(String(r.time)) && h !== 12
+            ? h + 12
+            : /am/i.test(String(r.time)) && h === 12
+              ? 0
+              : h;
         const slot = `${String(ampm).padStart(2, '0')}:${min}`;
         hourCounts[slot] = (hourCounts[slot] || 0) + 1;
       });
@@ -719,12 +762,279 @@ const IncidentSummaryReportModal = ({ onClose }) => {
   const BAR_COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f59e0b'];
 
   const generatedAt = new Date().toLocaleString('en-US', {
-    year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit',
+    year: 'numeric',
+    month: 'long',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
   });
   const rangeLabel =
     fromDate || toDate
       ? `${fromDate || 'Start'} → ${toDate || 'End'}`
       : 'All dates';
+
+  const escapeHtml = (value) =>
+    String(value ?? '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
+
+  /**
+   * Print only the summary report body on a white page via hidden iframe
+   * (no popup blocker). Charts are on-screen only.
+   */
+  const handlePrint = () => {
+    if (fetching || fetchError) return;
+
+    const card = (label, value, sub) => `
+      <div class="card">
+        <div class="card-label">${escapeHtml(label)}</div>
+        <div class="card-value">${escapeHtml(value)}</div>
+        ${sub ? `<div class="card-sub">${escapeHtml(sub)}</div>` : ''}
+      </div>`;
+
+    const topCards = `
+      ${card('Total Incidents', rows.length, 'In coverage')}
+      ${card('High Priority', stats.highCount, `${pct(stats.highCount)}% of total`)}
+      ${card(
+        'Top Incident Type',
+        stats.topIncidentType ? stats.topIncidentType.name : '—',
+        stats.topIncidentType ? `${stats.topIncidentType.count} reports` : 'No data',
+      )}
+      ${card(
+        'Peak Report Time',
+        stats.peakTime ? stats.peakTime.slot : '—',
+        stats.peakTime ? `${stats.peakTime.count} reports` : 'No data',
+      )}
+    `;
+
+    const statusCards =
+      stats.statusData.length === 0
+        ? `<p class="muted">No incidents in the covered range.</p>`
+        : `<div class="grid-4">${stats.statusData
+            .map((s) => card(s.name, s.count, `${pct(s.count)}% of total`))
+            .join('')}</div>`;
+
+    const countTable = (title, data, max = 12) => {
+      const slice = data.slice(0, max);
+      const rowsHtml =
+        slice.length === 0
+          ? `<tr><td colspan="3">No data in the covered range.</td></tr>`
+          : slice
+              .map(
+                (d) => `
+          <tr>
+            <td>${escapeHtml(d.name)}</td>
+            <td class="center">${d.count}</td>
+            <td class="center">${pct(d.count)}%</td>
+          </tr>`,
+              )
+              .join('');
+      const more =
+        data.length > max
+          ? `<p class="muted" style="margin-top:6px">…and ${data.length - max} more entries.</p>`
+          : '';
+
+      return `
+        <div class="section avoid-break">
+          <h2 class="section-title">${escapeHtml(title)}</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th class="center">Count</th>
+                <th class="center">Share</th>
+              </tr>
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+          ${more}
+        </div>`;
+    };
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Incident Report Summary</title>
+  <style>
+    @page { size: A4 portrait; margin: 12mm; }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0;
+      background: #ffffff;
+      color: #000000;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      font-size: 12px;
+      line-height: 1.45;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    h1 { margin: 0; font-size: 20px; text-align: center; color: #000; }
+    h2, .section-title {
+      margin: 0 0 10px;
+      font-size: 14px;
+      font-weight: 800;
+      color: #000;
+      border-bottom: 1px solid #cbd5e1;
+      padding-bottom: 6px;
+    }
+    .header {
+      text-align: center;
+      border-bottom: 2px solid #000;
+      padding-bottom: 14px;
+      margin-bottom: 18px;
+    }
+    .muted { color: #334155; font-size: 11px; }
+    .badge {
+      display: inline-block;
+      border: 1px solid #cbd5e1;
+      border-radius: 999px;
+      padding: 2px 10px;
+      font-size: 11px;
+      font-weight: 600;
+      margin: 2px;
+      background: #fff;
+    }
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+    .card {
+      border-radius: 10px;
+      padding: 10px 12px;
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      color: #000000;
+    }
+    .card-label { font-size: 10px; font-weight: 700; }
+    .card-value { font-size: 20px; font-weight: 800; margin-top: 2px; word-break: break-word; }
+    .card-sub { font-size: 10px; margin-top: 2px; color: #334155; }
+    .section { margin-bottom: 18px; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    th, td {
+      border: 1px solid #cbd5e1;
+      padding: 6px 7px;
+      text-align: left;
+      vertical-align: top;
+      word-wrap: break-word;
+      background: #ffffff;
+      color: #000000;
+    }
+    th { font-size: 10px; border-bottom: 2px solid #94a3b8; }
+    td.center, th.center { text-align: center; }
+    thead { display: table-header-group; }
+    tr { page-break-inside: avoid; break-inside: avoid; }
+    .avoid-break { page-break-inside: avoid; break-inside: avoid; }
+    .footer {
+      border-top: 1px solid #cbd5e1;
+      padding-top: 10px;
+      text-align: center;
+      color: #334155;
+      font-size: 10px;
+      margin-top: 16px;
+    }
+    @media print {
+      html, body {
+        height: auto !important;
+        overflow: visible !important;
+        background: #ffffff !important;
+        color: #000000 !important;
+      }
+      * {
+        background: #ffffff !important;
+        background-color: #ffffff !important;
+        box-shadow: none !important;
+        color: #000000 !important;
+      }
+      table, th, td, .card {
+        background: #ffffff !important;
+        border-color: #cbd5e1 !important;
+        color: #000000 !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="header avoid-break">
+    <p class="muted" style="font-weight:700;letter-spacing:0.15em;text-transform:uppercase">E-MDRRMO</p>
+    <h1>INCIDENT REPORT SUMMARY</h1>
+    <p style="margin-top:10px">
+      <span class="badge">Coverage: ${escapeHtml(rangeLabel)}</span>
+      <span class="badge">${rows.length} incident${rows.length === 1 ? '' : 's'}</span>
+    </p>
+    <p class="muted" style="margin-top:8px">Generated: ${escapeHtml(generatedAt)}</p>
+  </div>
+
+  <div class="section avoid-break">
+    <div class="grid-4">${topCards}</div>
+  </div>
+
+  <div class="section avoid-break">
+    <h2 class="section-title">Status Overview</h2>
+    ${statusCards}
+  </div>
+
+  ${countTable('Incidents by Status', stats.statusData)}
+  ${countTable('Incidents by Priority', stats.priorityData)}
+  ${countTable('Incidents by Type', stats.incidentTypeData)}
+  ${countTable('Special Needs Requested', stats.specialNeedsData, 10)}
+  ${countTable('Required Tools / Equipment', stats.requiredToolsData, 10)}
+
+  <div class="footer avoid-break">
+    <p>This report is system-generated and reflects data at the time of generation.</p>
+    <p>© ${new Date().getFullYear()} E-MDRRMO</p>
+  </div>
+</body>
+</html>`;
+
+    const existing = document.getElementById('incident-summary-print-frame');
+    if (existing) existing.remove();
+
+    const iframe = document.createElement('iframe');
+    iframe.id = 'incident-summary-print-frame';
+    iframe.setAttribute('title', 'Incident Summary Print');
+    iframe.style.position = 'fixed';
+    iframe.style.right = '0';
+    iframe.style.bottom = '0';
+    iframe.style.width = '0';
+    iframe.style.height = '0';
+    iframe.style.border = '0';
+    iframe.style.opacity = '0';
+    iframe.style.pointerEvents = 'none';
+    document.body.appendChild(iframe);
+
+    const frameDoc = iframe.contentDocument || iframe.contentWindow.document;
+    frameDoc.open();
+    frameDoc.write(html);
+    frameDoc.close();
+
+    const triggerPrint = () => {
+      try {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+      } catch (err) {
+        console.error('Print failed:', err);
+      }
+      setTimeout(() => {
+        try {
+          iframe.remove();
+        } catch {
+          /* ignore */
+        }
+      }, 60_000);
+    };
+
+    if (iframe.contentWindow.document.readyState === 'complete') {
+      setTimeout(triggerPrint, 300);
+    } else {
+      iframe.onload = () => setTimeout(triggerPrint, 300);
+    }
+  };
 
   const Card = ({ label, value, sub, color }) => (
     <div className={`p-4 rounded-xl border ${color}`}>
@@ -735,7 +1045,7 @@ const IncidentSummaryReportModal = ({ onClose }) => {
   );
 
   const CountTable = ({ title, data, total, max = 10 }) => (
-    <div className="print-break-avoid">
+    <div>
       <h2 className="font-bold text-slate-800 mb-3">{title}</h2>
       {data.length === 0 ? (
         <p className="text-sm text-slate-500">No data in the covered range.</p>
@@ -769,271 +1079,236 @@ const IncidentSummaryReportModal = ({ onClose }) => {
   );
 
   return (
-    <>
-      {/* Print CSS: full-length multi-page PDF, only the report body visible */}
-      <style>{`
-        @media print {
-          @page { size: A4 portrait; margin: 12mm; }
-          body { background: #ffffff !important; }
-          body * { visibility: hidden; }
-          .report-overlay {
-            position: static !important;
-            overflow: visible !important;
-            padding: 0 !important;
-            background: none !important;
-          }
-          .report-print, .report-print * { visibility: visible; }
-          .report-print {
-            position: absolute !important;
-            top: 0 !important;
-            left: 0 !important;
-            width: 100% !important;
-            max-width: none !important;
-            max-height: none !important;
-            margin: 0 !important;
-            box-shadow: none !important;
-            border: none !important;
-            border-radius: 0 !important;
-          }
-          .report-print .print-hidden { display: none !important; }
-          .report-print .print-break-avoid { break-inside: avoid; page-break-inside: avoid; }
-          .report-print .print-section { break-inside: avoid; page-break-inside: avoid; }
-          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-        }
-      `}</style>
-
+    <div
+      className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center p-3 sm:p-4 overflow-y-auto"
+      onClick={onClose}
+    >
       <div
-        className="report-overlay fixed inset-0 z-50 bg-black/60 flex items-start justify-center p-3 sm:p-4 overflow-y-auto"
-        onClick={onClose}
+        className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl my-8"
+        onClick={(e) => e.stopPropagation()}
       >
-        <div
-          className="report-print bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl my-8"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {/* ===== Toolbar (screen only) ===== */}
-          <div className="print-hidden sticky top-0 z-10 bg-white/95 backdrop-blur border-b border-slate-200 rounded-t-2xl">
-            <div className="flex items-center justify-between gap-3 px-6 pt-4 pb-3">
-              <div className="flex items-center gap-2 min-w-0">
-                <div className="w-9 h-9 rounded-xl bg-purple-100 flex items-center justify-center flex-shrink-0">
-                  <Siren className="w-5 h-5 text-purple-600" />
-                </div>
-                <div className="min-w-0">
-                  <h3 className="font-bold text-slate-800 leading-tight truncate">Incident Summary Report</h3>
-                  <p className="text-xs text-slate-400 leading-tight">Adjust coverage, then print</p>
-                </div>
+        {/* Toolbar — not printed */}
+        <div className="sticky top-0 z-10 bg-white/95 backdrop-blur border-b border-slate-200 rounded-t-2xl">
+          <div className="flex items-center justify-between gap-3 px-6 pt-4 pb-3">
+            <div className="flex items-center gap-2 min-w-0">
+              <div className="w-9 h-9 rounded-xl bg-purple-100 flex items-center justify-center flex-shrink-0">
+                <Siren className="w-5 h-5 text-purple-600" />
               </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <button
-                  type="button"
-                  onClick={() => window.print()}
-                  disabled={fetching}
-                  className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-xl font-bold text-sm transition"
-                >
-                  {fetching ? 'Loading…' : 'Print / Save PDF'}
-                </button>
-                <button
-                  type="button"
-                  onClick={onClose}
-                  aria-label="Close report"
-                  className="p-2 rounded-xl hover:bg-slate-200 text-slate-500 transition"
-                >
-                  <X className="w-5 h-5" />
-                </button>
+              <div className="min-w-0">
+                <h3 className="font-bold text-slate-800 leading-tight truncate">Incident Summary Report</h3>
+                <p className="text-xs text-slate-400 leading-tight">Adjust coverage, then print</p>
               </div>
             </div>
-
-            {/* Coverage controls */}
-            <div className="flex flex-wrap items-center gap-2 px-6 pb-4">
-              <span className="text-xs font-bold uppercase tracking-wide text-slate-400">Coverage</span>
-              <input
-                type="date"
-                value={fromDate}
-                onChange={(e) => setFromDate(e.target.value)}
-                className="px-2 py-2 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-              />
-              <span className="text-slate-400 text-sm">→</span>
-              <input
-                type="date"
-                value={toDate}
-                onChange={(e) => setToDate(e.target.value)}
-                className="px-2 py-2 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-              />
-              <div className="flex items-center gap-1 ml-1 bg-slate-100 rounded-xl p-1">
-                {[
-                  { label: 'All Time', from: '', to: '' },
-                  { label: 'This Month', from: `${todayKey.slice(0, 8)}01`, to: todayKey },
-                  { label: 'Today', from: todayKey, to: todayKey },
-                ].map((p) => {
-                  const active = fromDate === p.from && toDate === p.to;
-                  return (
-                    <button
-                      key={p.label}
-                      type="button"
-                      onClick={() => applyPreset(p.from, p.to)}
-                      className={`px-3 py-1.5 text-xs font-bold rounded-lg transition ${
-                        active
-                          ? 'bg-purple-600 text-white shadow-sm'
-                          : 'text-slate-600 hover:bg-white hover:text-slate-800'
-                      }`}
-                    >
-                      {p.label}
-                    </button>
-                  );
-                })}
-              </div>
-              <span className="ml-auto text-xs font-semibold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-full">
-                {rows.length} record{rows.length === 1 ? '' : 's'} loaded
-              </span>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button
+                type="button"
+                onClick={handlePrint}
+                disabled={fetching || Boolean(fetchError)}
+                className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-xl font-bold text-sm transition"
+              >
+                {fetching ? 'Loading…' : 'Print / Save PDF'}
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close report"
+                className="p-2 rounded-xl hover:bg-slate-200 text-slate-500 transition"
+              >
+                <X className="w-5 h-5" />
+              </button>
             </div>
           </div>
 
-          {/* ===== Report body ===== */}
-          <div className="p-8 text-slate-800">
-            {/* Report header */}
-            <div className="text-center border-b-2 border-slate-800 pb-5 mb-6 print-section">
-              <p className="text-xs font-bold tracking-[0.2em] text-slate-400 uppercase">E-MDRRMO</p>
-              <h1 className="text-2xl font-black text-slate-900 mt-1">INCIDENT REPORT SUMMARY</h1>
-              <div className="flex flex-wrap items-center justify-center gap-2 mt-3">
-                <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-3 py-1 rounded-full">
-                  Coverage: {rangeLabel}
-                </span>
-                <span className="text-xs font-semibold text-purple-700 bg-purple-50 px-3 py-1 rounded-full">
-                  {rows.length} incident{rows.length === 1 ? '' : 's'}
-                </span>
-              </div>
-              <p className="text-xs text-slate-400 mt-2">Generated: {generatedAt}</p>
+          <div className="flex flex-wrap items-center gap-2 px-6 pb-4">
+            <span className="text-xs font-bold uppercase tracking-wide text-slate-400">Coverage</span>
+            <input
+              type="date"
+              value={fromDate}
+              onChange={(e) => setFromDate(e.target.value)}
+              className="px-2 py-2 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+            />
+            <span className="text-slate-400 text-sm">→</span>
+            <input
+              type="date"
+              value={toDate}
+              onChange={(e) => setToDate(e.target.value)}
+              className="px-2 py-2 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+            />
+            <div className="flex items-center gap-1 ml-1 bg-slate-100 rounded-xl p-1">
+              {[
+                { label: 'All Time', from: '', to: '' },
+                { label: 'This Month', from: `${todayKey.slice(0, 8)}01`, to: todayKey },
+                { label: 'Today', from: todayKey, to: todayKey },
+              ].map((p) => {
+                const active = fromDate === p.from && toDate === p.to;
+                return (
+                  <button
+                    key={p.label}
+                    type="button"
+                    onClick={() => applyPreset(p.from, p.to)}
+                    className={`px-3 py-1.5 text-xs font-bold rounded-lg transition ${
+                      active
+                        ? 'bg-purple-600 text-white shadow-sm'
+                        : 'text-slate-600 hover:bg-white hover:text-slate-800'
+                    }`}
+                  >
+                    {p.label}
+                  </button>
+                );
+              })}
             </div>
-
-            {fetchError ? (
-              <div className="p-4 mb-6 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
-                Failed to load report data: {fetchError}
-              </div>
-            ) : fetching ? (
-              <div className="py-16 text-center text-slate-500 font-semibold">
-                Loading report data…
-              </div>
-            ) : (
-              <>
-                {/* Highlights */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8 print-break-avoid">
-                  <Card label="Total Incidents" value={rows.length} sub="In coverage" color="bg-blue-50 border-blue-200 text-blue-700" />
-                  <Card
-                    label="High Priority"
-                    value={stats.highCount}
-                    sub={`${pct(stats.highCount)}% of total`}
-                    color="bg-red-50 border-red-200 text-red-700"
-                  />
-                  <Card
-                    label="Top Incident Type"
-                    value={stats.topIncidentType ? stats.topIncidentType.name : '—'}
-                    sub={stats.topIncidentType ? `${stats.topIncidentType.count} reports` : 'No data'}
-                    color="bg-emerald-50 border-emerald-200 text-emerald-700"
-                  />
-                  <Card
-                    label="Peak Report Time"
-                    value={stats.peakTime ? stats.peakTime.slot : '—'}
-                    sub={stats.peakTime ? `${stats.peakTime.count} reports` : 'No data'}
-                    color="bg-violet-50 border-violet-200 text-violet-700"
-                  />
-                </div>
-
-                {/* Status overview */}
-                <div className="mb-8 print-section">
-                  <h2 className="font-bold text-slate-800 mb-3">Status Overview</h2>
-                  {stats.statusData.length === 0 ? (
-                    <p className="text-sm text-slate-500">No incidents in the covered range.</p>
-                  ) : (
-                    <div className={`grid gap-3 ${stats.statusData.length >= 4 ? 'grid-cols-2 md:grid-cols-4' : stats.statusData.length === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
-                      {stats.statusData.map((s, i) => (
-                        <Card
-                          key={s.name}
-                          label={s.name}
-                          value={s.count}
-                          sub={`${pct(s.count)}% of total`}
-                          color={
-                            i === 0
-                              ? 'bg-yellow-50 border-yellow-200 text-yellow-700'
-                              : i === 1
-                                ? 'bg-green-50 border-green-200 text-green-700'
-                                : 'bg-slate-50 border-slate-200 text-slate-700'
-                          }
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Priority distribution (pie) */}
-                {stats.priorityData.length > 0 && (
-                  <div className="mb-8 print-section">
-                    <h2 className="font-bold text-slate-800 mb-3">Priority Distribution</h2>
-                    <div className="w-full h-[260px]">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={stats.priorityData.map((p) => ({ ...p, value: p.count }))}
-                            innerRadius={60}
-                            outerRadius={95}
-                            paddingAngle={5}
-                            dataKey="value"
-                          >
-                            {stats.priorityData.map((_, i) => (
-                              <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-                            ))}
-                          </Pie>
-                          <Tooltip />
-                          <Legend wrapperStyle={{ paddingTop: '10px' }} />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-                )}
-
-                {/* Incident type distribution (bar) */}
-                {stats.incidentTypeData.length > 0 && (
-                  <div className="mb-8 print-section">
-                    <h2 className="font-bold text-slate-800 mb-3">Incident Types</h2>
-                    <div className="w-full h-[240px]">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={stats.incidentTypeData.slice(0, 8)}>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e0e0e0" />
-                          <XAxis dataKey="name" fontSize={10} tickLine={false} axisLine={false} />
-                          <YAxis allowDecimals={false} fontSize={10} tickLine={false} axisLine={false} />
-                          <Tooltip cursor={{ fill: 'rgba(0,0,0,0.05)' }} />
-                          <Bar dataKey="count" radius={[10, 10, 0, 0]} barSize={40}>
-                            {stats.incidentTypeData.slice(0, 8).map((_, i) => (
-                              <Cell key={i} fill={BAR_COLORS[i % BAR_COLORS.length]} />
-                            ))}
-                          </Bar>
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-                )}
-
-                {/* Count tables */}
-                <div className="space-y-8 mb-8">
-                  <div className="print-section"><CountTable title="Incidents by Status" data={stats.statusData} total={rows.length} /></div>
-                  <div className="print-section"><CountTable title="Incidents by Priority" data={stats.priorityData} total={rows.length} /></div>
-                  <div className="print-section"><CountTable title="Incidents by Type" data={stats.incidentTypeData} total={rows.length} /></div>
-                </div>
-
-                {/* Special needs & required tools summary */}
-                <div className="space-y-8 mb-8">
-                  <div className="print-section"><CountTable title="Special Needs Requested" data={stats.specialNeedsData} max={10} /></div>
-                  <div className="print-section"><CountTable title="Required Tools / Equipment" data={stats.requiredToolsData} max={10} /></div>
-                </div>
-
-                {/* Footer */}
-                <div className="pt-4 border-t border-slate-200 text-center text-xs text-slate-500 print-break-avoid">
-                  <p>This report is system-generated and reflects data at the time of generation.</p>
-                  <p className="mt-1">© 2023 Your Organization Name</p>
-                </div>
-              </>
-            )}
+            <span className="ml-auto text-xs font-semibold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-full">
+              {rows.length} record{rows.length === 1 ? '' : 's'} loaded
+            </span>
           </div>
         </div>
+
+        {/* On-screen preview */}
+        <div className="p-8 text-slate-800 max-h-[70vh] overflow-y-auto">
+          <div className="text-center border-b-2 border-slate-800 pb-5 mb-6">
+            <p className="text-xs font-bold tracking-[0.2em] text-slate-400 uppercase">E-MDRRMO</p>
+            <h1 className="text-2xl font-black text-slate-900 mt-1">INCIDENT REPORT SUMMARY</h1>
+            <div className="flex flex-wrap items-center justify-center gap-2 mt-3">
+              <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-3 py-1 rounded-full">
+                Coverage: {rangeLabel}
+              </span>
+              <span className="text-xs font-semibold text-purple-700 bg-purple-50 px-3 py-1 rounded-full">
+                {rows.length} incident{rows.length === 1 ? '' : 's'}
+              </span>
+            </div>
+            <p className="text-xs text-slate-400 mt-2">Generated: {generatedAt}</p>
+          </div>
+
+          {fetchError ? (
+            <div className="p-4 mb-6 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
+              Failed to load report data: {fetchError}
+            </div>
+          ) : fetching ? (
+            <div className="py-16 text-center text-slate-500 font-semibold">
+              Loading report data…
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+                <Card label="Total Incidents" value={rows.length} sub="In coverage" color="bg-blue-50 border-blue-200 text-blue-700" />
+                <Card
+                  label="High Priority"
+                  value={stats.highCount}
+                  sub={`${pct(stats.highCount)}% of total`}
+                  color="bg-red-50 border-red-200 text-red-700"
+                />
+                <Card
+                  label="Top Incident Type"
+                  value={stats.topIncidentType ? stats.topIncidentType.name : '—'}
+                  sub={stats.topIncidentType ? `${stats.topIncidentType.count} reports` : 'No data'}
+                  color="bg-emerald-50 border-emerald-200 text-emerald-700"
+                />
+                <Card
+                  label="Peak Report Time"
+                  value={stats.peakTime ? stats.peakTime.slot : '—'}
+                  sub={stats.peakTime ? `${stats.peakTime.count} reports` : 'No data'}
+                  color="bg-violet-50 border-violet-200 text-violet-700"
+                />
+              </div>
+
+              <div className="mb-8">
+                <h2 className="font-bold text-slate-800 mb-3">Status Overview</h2>
+                {stats.statusData.length === 0 ? (
+                  <p className="text-sm text-slate-500">No incidents in the covered range.</p>
+                ) : (
+                  <div
+                    className={`grid gap-3 ${
+                      stats.statusData.length >= 4
+                        ? 'grid-cols-2 md:grid-cols-4'
+                        : stats.statusData.length === 3
+                          ? 'grid-cols-3'
+                          : 'grid-cols-2'
+                    }`}
+                  >
+                    {stats.statusData.map((s, i) => (
+                      <Card
+                        key={s.name}
+                        label={s.name}
+                        value={s.count}
+                        sub={`${pct(s.count)}% of total`}
+                        color={
+                          i === 0
+                            ? 'bg-yellow-50 border-yellow-200 text-yellow-700'
+                            : i === 1
+                              ? 'bg-green-50 border-green-200 text-green-700'
+                              : 'bg-slate-50 border-slate-200 text-slate-700'
+                        }
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {stats.priorityData.length > 0 && (
+                <div className="mb-8">
+                  <h2 className="font-bold text-slate-800 mb-3">Priority Distribution</h2>
+                  <div className="w-full h-[260px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={stats.priorityData.map((p) => ({ ...p, value: p.count }))}
+                          innerRadius={60}
+                          outerRadius={95}
+                          paddingAngle={5}
+                          dataKey="value"
+                        >
+                          {stats.priorityData.map((_, i) => (
+                            <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                        <Legend wrapperStyle={{ paddingTop: '10px' }} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
+
+              {stats.incidentTypeData.length > 0 && (
+                <div className="mb-8">
+                  <h2 className="font-bold text-slate-800 mb-3">Incident Types</h2>
+                  <div className="w-full h-[240px]">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={stats.incidentTypeData.slice(0, 8)}>
+                        <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e0e0e0" />
+                        <XAxis dataKey="name" fontSize={10} tickLine={false} axisLine={false} />
+                        <YAxis allowDecimals={false} fontSize={10} tickLine={false} axisLine={false} />
+                        <Tooltip cursor={{ fill: 'rgba(0,0,0,0.05)' }} />
+                        <Bar dataKey="count" radius={[10, 10, 0, 0]} barSize={40}>
+                          {stats.incidentTypeData.slice(0, 8).map((_, i) => (
+                            <Cell key={i} fill={BAR_COLORS[i % BAR_COLORS.length]} />
+                          ))}
+                        </Bar>
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
+
+              <div className="space-y-8 mb-8">
+                <CountTable title="Incidents by Status" data={stats.statusData} total={rows.length} />
+                <CountTable title="Incidents by Priority" data={stats.priorityData} total={rows.length} />
+                <CountTable title="Incidents by Type" data={stats.incidentTypeData} total={rows.length} />
+              </div>
+
+              <div className="space-y-8 mb-8">
+                <CountTable title="Special Needs Requested" data={stats.specialNeedsData} max={10} />
+                <CountTable title="Required Tools / Equipment" data={stats.requiredToolsData} max={10} />
+              </div>
+
+              <div className="pt-4 border-t border-slate-200 text-center text-xs text-slate-500">
+                <p>This report is system-generated and reflects data at the time of generation.</p>
+                <p className="mt-1">© {new Date().getFullYear()} E-MDRRMO</p>
+              </div>
+            </>
+          )}
+        </div>
       </div>
-    </>
+    </div>
   );
 };

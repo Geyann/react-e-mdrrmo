@@ -4,7 +4,7 @@ import {
   ClipboardCheck, Search, RefreshCw, AlertCircle, CheckCircle, XCircle, Clock,
   MapPin, Phone, Calendar, Loader2, Bell, CheckCheck
 } from 'lucide-react';
-
+import { useDialog } from '../components/AppDialog';
 const StaffCheckUpQueue = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -14,6 +14,7 @@ const StaffCheckUpQueue = () => {
   const [noteDrafts, setNoteDrafts] = useState({});
   const [error, setError] = useState('');
   const [success, setSuccess] = useState('');
+  const { showAlert, showConfirm } = useDialog();
 
   useEffect(() => {
     fetchQueue();
@@ -114,7 +115,7 @@ const StaffCheckUpQueue = () => {
   // ===== STAFF RESPONSES =====
   const handleConfirm = async (row) => {
     const name = row.patientName || 'Unknown';
-    if (!window.confirm(`Confirm appointment #${row.id} for ${name}? The patient will be attended at the scheduled time.`)) return;
+    if (!await showConfirm(`Confirm appointment #${row.id} for ${name}? The patient will be attended at the scheduled time.`)) return;
 
     setSavingId(row.id);
     setError('');
@@ -141,7 +142,7 @@ const StaffCheckUpQueue = () => {
 
   const handleComplete = async (row) => {
     const name = row.patientName || 'Unknown';
-    if (!window.confirm(`Mark appointment #${row.id} for ${name} as completed?`)) return;
+    if (!await showConfirm(`Mark appointment #${row.id} for ${name} as completed?`)) return;
 
     setSavingId(row.id);
     setError('');
@@ -168,7 +169,7 @@ const StaffCheckUpQueue = () => {
 
   const handleDecline = async (row) => {
     const name = row.patientName || 'Unknown';
-    if (!window.confirm(`Decline appointment #${row.id} for ${name}? Add a note explaining why if possible.`)) return;
+    if (!await showConfirm(`Decline appointment #${row.id} for ${name}? Add a note explaining why if possible.`)) return;
 
     setSavingId(row.id);
     setError('');

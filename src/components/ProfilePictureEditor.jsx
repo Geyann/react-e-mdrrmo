@@ -14,7 +14,7 @@ import {
   Loader2,
   Trash2,
 } from "lucide-react";
-
+import { useDialog } from "./AppDialog";
 import { supabase } from "../createClient";
 
 const BUCKET_NAME = "images";
@@ -293,6 +293,7 @@ export default function ProfilePictureEditor({
 
   const [success, setSuccess] =
     useState("");
+    const { showConfirm } = useDialog();
 
   const hasExplicitPicture =
     Object.prototype.hasOwnProperty.call(
@@ -497,7 +498,7 @@ export default function ProfilePictureEditor({
       return;
     }
 
-    const confirmed = window.confirm(
+    const confirmed = await showConfirm(
       "Remove your profile picture?",
     );
 

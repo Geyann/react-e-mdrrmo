@@ -13,6 +13,7 @@ import {
   Trash2,
   X,
 } from "lucide-react";
+import { useDialog } from "./AppDialog";
 
 const safeText = (value) =>
   String(value ?? "")
@@ -42,6 +43,7 @@ export default function InventoryManager({
   onDataChanged,
 }) {
   const [searchTerm, setSearchTerm] = useState("");
+  const {showAlert, showConfirm} = useDialog();
   const [showModal, setShowModal] = useState(false);
   const [editingItem, setEditingItem] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -206,7 +208,7 @@ export default function InventoryManager({
   const handleDelete = async (item) => {
     if (deletingId !== null) return;
 
-    const confirmed = window.confirm(
+    const confirmed = await showConfirm(
       `Delete "${item.name}" from ${title}?\n\nThis action cannot be undone.`,
     );
 

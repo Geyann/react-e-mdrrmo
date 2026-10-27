@@ -476,7 +476,7 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="mt-10 grid min-w-0 gap-6 xl:grid-cols-2">
+          <div className="mt-10 grid min-w-0 gap-6 xl:grid-cols-1">
             <article className="min-w-0">
               <div className="mb-4 flex items-center gap-3 rounded-2xl border border-red-100 bg-red-50 p-4 dark:border-red-900/70 dark:bg-red-950/20">
                 <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300">

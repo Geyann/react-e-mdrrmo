@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { supabase } from '../createClient';
 import imgLogo from '../Images/logo.png';
 import { Shield, Mail, Lock, User, Eye, EyeOff, AlertCircle, ArrowLeft, Users } from 'lucide-react';
-
+import { useDialog } from '../components/AppDialog';
 const StaffRegister = () => {
   const navigate = useNavigate();
   const [formData, setFormData] = useState({
@@ -19,6 +19,7 @@ const StaffRegister = () => {
   const [showConfirm, setShowConfirm] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const { showAlert } = useDialog();
 
   const handleChange = (e) => {
     setFormData({ ...formData, [e.target.name]: e.target.value });
@@ -107,7 +108,7 @@ const StaffRegister = () => {
         throw new Error(insertError.message);
       }
 
-      alert(`${role.charAt(0).toUpperCase() + role.slice(1)} account created successfully! You can now log in with your Work ID.`);
+      await showAlert(`${role.charAt(0).toUpperCase() + role.slice(1)} account created successfully! You can now log in with your Work ID.`);
       navigate('/admin/login');
     } catch (err) {
       setError(err.message || 'An unexpected error occurred.');

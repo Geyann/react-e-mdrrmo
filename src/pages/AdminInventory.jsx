@@ -5,6 +5,7 @@ import {
   useRef,
   useState,
 } from "react";
+import { useDialog } from "../components/AppDialog";
 import { useNavigate } from "react-router-dom";
 import { supabase } from "../createClient";
 import {
@@ -680,7 +681,7 @@ function AmbulancesPanel({
   const [form, setForm] = useState(makeAmbulanceForm);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
-
+  const { showConfirm } = useDialog();
   const usageCounts = useMemo(() => {
     const counts = {};
 
@@ -821,7 +822,7 @@ function AmbulancesPanel({
     }
 
     if (
-      !window.confirm(
+      !await showConfirm(
         `Delete ambulance ${ambulance.unit_number}?`,
       )
     ) {
@@ -1822,7 +1823,7 @@ function StaffReportsPanel({
         : "reject";
 
     if (
-      !window.confirm(
+      !await showConfirm(
         `Are you sure you want to ${action} report "${report.title}"?`,
       )
     ) {

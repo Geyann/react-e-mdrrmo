@@ -882,7 +882,7 @@ export default function IncidentTrends() {
             Loading averages
           </h1>
           <p className="mt-1 text-sm text-slate-500 dark:text-slate-400">
-            Calculating average approved reports per month and per year…
+            Calculating average reports per month and per year…
           </p>
         </div>
       </div>
@@ -917,24 +917,17 @@ export default function IncidentTrends() {
                   SafeResponse Analytics
                 </p>
                 <h1 className="mt-1 text-2xl font-black leading-tight text-white sm:text-3xl lg:text-4xl">
-                  Average Approved Reports
+                  Average Reports
                 </h1>
-                <p className="mt-2 max-w-2xl text-sm leading-6 text-blue-50/85">
-                  {isGuest
-                    ? "Averages calculated only from community records that administrators have approved."
-                    : "Averages calculated only from community and personal records that administrators have approved."}
-                </p>
+               
               </div>
             </div>
 
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <div className="inline-flex items-center justify-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-bold text-white backdrop-blur-sm">
-                <CheckCircle2 className="h-4 w-4" />
-                Approved only
-              </div>
+             
               <div className="rounded-full bg-white px-4 py-2 text-center shadow-lg">
                 <p className="text-[10px] font-black uppercase tracking-wide text-blue-600">
-                  Approved Records
+                  Records
                 </p>
                 <p className="text-xl font-black text-slate-900">
                   {communitySummary.total}
@@ -1055,14 +1048,14 @@ export default function IncidentTrends() {
                     title={`Community Average per Month${selectedYear ? ` — ${selectedYear}` : ""}`}
                     subtitle={
                       selectedYear
-                        ? `Based on ${communityYearSummary.total} approved community records in ${selectedYear} (÷ 12)`
-                        : "Average monthly volume across approved community records"
+                        ? `Based on ${communityYearSummary.total} community records in ${selectedYear} (÷ 12)`
+                        : "Average monthly volume across community records"
                     }
                   >
                     {communityYearSummary.total === 0 ? (
                       <EmptyState
                         icon={BarChart3}
-                        title="No approved community records for this year"
+                        title="No community records for this year"
                         description="Approve submissions in the admin dashboards or choose another year."
                       />
                     ) : (
@@ -1072,13 +1065,13 @@ export default function IncidentTrends() {
                             icon={TrendingUp}
                             label="Community Avg / Month"
                             value={averageDisplay(communityYearSummary.total, 12)}
-                            detail={`${communityYearSummary.total} approved in ${selectedYear}`}
+                            detail={`${communityYearSummary.total} in ${selectedYear}`}
                             wrapperClass="border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900 dark:bg-violet-950/30 dark:text-violet-300"
                             iconClass="bg-violet-600"
                           />
                           <StatCard
                             icon={Layers}
-                            label="Approved Community Records"
+                            label="Community Records"
                             value={communityYearSummary.total}
                             detail={`Year ${selectedYear}`}
                             wrapperClass="border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-300"
@@ -1130,15 +1123,15 @@ export default function IncidentTrends() {
                       title={`My Average per Month${selectedYear ? ` — ${selectedYear}` : ""}`}
                       subtitle={
                         selectedYear
-                          ? `Based on ${myYearSummary.total} of your approved records in ${selectedYear} (÷ 12)`
-                          : "Your personal average monthly volume (approved only)"
+                          ? `Based on ${myYearSummary.total} of your  records in ${selectedYear} (÷ 12)`
+                          : "Your personal average monthly volume"
                       }
                     >
                       {myYearSummary.total === 0 ? (
                         <EmptyState
                           icon={UserRound}
-                          title="No approved personal records for this year"
-                          description="You have no approved submissions in the selected year."
+                          title="No personal records for this year"
+                          description="You have no submissions in the selected year."
                         />
                       ) : (
                         <>
@@ -1147,13 +1140,13 @@ export default function IncidentTrends() {
                               icon={TrendingUp}
                               label="My Avg / Month"
                               value={averageDisplay(myYearSummary.total, 12)}
-                              detail={`${myYearSummary.total} approved in ${selectedYear}`}
+                              detail={`${myYearSummary.total} in ${selectedYear}`}
                               wrapperClass="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300"
                               iconClass="bg-emerald-600"
                             />
                             <StatCard
                               icon={UserRound}
-                              label="My Approved Records"
+                              label="My Records"
                               value={myYearSummary.total}
                               detail={`Year ${selectedYear}`}
                               wrapperClass="border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-900 dark:bg-cyan-950/30 dark:text-cyan-300"
@@ -1207,13 +1200,13 @@ export default function IncidentTrends() {
                 <div className="space-y-8">
                   <Panel
                     title="Community Average per Year"
-                    subtitle={`Mean yearly volume over ${communitySummary.span} year${communitySummary.span === 1 ? "" : "s"} (approved only)`}
+                    subtitle={`Mean yearly volume over ${communitySummary.span} year${communitySummary.span === 1 ? "" : "s"}`}
                   >
                     {communitySummary.total === 0 ? (
                       <EmptyState
                         icon={TrendingUp}
-                        title="No approved community records available"
-                        description="Yearly averages require approved records with valid dates."
+                        title="No community records available"
+                        description="Yearly averages require records with valid dates."
                       />
                     ) : (
                       <>
@@ -1222,7 +1215,7 @@ export default function IncidentTrends() {
                             icon={BarChart3}
                             label="Community Avg / Year"
                             value={averageDisplay(communitySummary.total, Math.max(1, communitySummary.span))}
-                            detail={`${communitySummary.total} approved records`}
+                            detail={`${communitySummary.total} records`}
                             wrapperClass="border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-300"
                             iconClass="bg-blue-600"
                           />
@@ -1277,13 +1270,13 @@ export default function IncidentTrends() {
                   {!isGuest && (
                     <Panel
                       title="My Average per Year"
-                      subtitle={`Your personal mean yearly volume over ${mySummary.span} year${mySummary.span === 1 ? "" : "s"} (approved only)`}
+                      subtitle={`Your personal mean yearly volume over ${mySummary.span} year${mySummary.span === 1 ? "" : "s"}`}
                     >
                       {mySummary.total === 0 ? (
                         <EmptyState
                           icon={UserRound}
-                          title="No approved personal records available"
-                          description="You have not submitted any approved reports yet."
+                          title="No personal records available"
+                          description="You have not submitted any reports yet."
                         />
                       ) : (
                         <>
@@ -1292,7 +1285,7 @@ export default function IncidentTrends() {
                               icon={BarChart3}
                               label="My Avg / Year"
                               value={averageDisplay(mySummary.total, Math.max(1, mySummary.span))}
-                              detail={`${mySummary.total} approved records`}
+                              detail={`${mySummary.total} records`}
                               wrapperClass="border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300"
                               iconClass="bg-emerald-600"
                             />

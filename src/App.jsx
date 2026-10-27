@@ -13,6 +13,7 @@ import AdminAppointmentDashboard from "./components/AdminAppointmentDashboard";
 import AdminDashboard from "./components/AdminDashboard";
 import AdminNavbar from "./components/adminNavbar";
 import AdminLoginRedirect from "./components/AdminLoginRedirect";
+import {AppDialogProvider} from "./components/AppDialog";
 
 import Navbar from "./components/navbar";
 import GuestNavbar from "./components/GuestNavbar";
@@ -46,6 +47,7 @@ import RegisterAdmin from "./pages/register-admin";
 import Report from "./pages/Report";
 import Settings from "./pages/Settings";
 import StaffBorrowerSlip from "./pages/StaffBorrowerSlip";
+import StaffHazardReports from "./pages/StaffHazardReports";
 import StaffCheckUpQueue from "./pages/StaffCheckUpQueue";
 import StaffHome from "./pages/StaffHome";
 import StaffInventory from "./pages/StaffInventory";
@@ -125,8 +127,8 @@ export default function App() {
   ========================================================== */
 
   const adminLoginPaths = new Set([
-    "/admin",
-    "/admin/login",
+    // "/admin",
+    // "/admin/login",
     "/admin/register-admin",
   ]);
 
@@ -204,6 +206,7 @@ export default function App() {
 
   return (
     <SettingsProvider>
+      <AppDialogProvider>
       <div className="app-gradient-frame min-h-screen bg-gradient-to-r from-blue-600 via-blue-600 to-purple-600 md:p-2">
         <div className="app-surface min-h-[calc(100vh-1rem)] overflow-visible rounded-none bg-slate-50 shadow-2xl md:rounded-[1.75rem] dark:bg-slate-950">
           {renderNavbar()}
@@ -257,10 +260,10 @@ export default function App() {
                 element={<AdminLoginRedirect />}
               />
 
-              <Route
+              {/* <Route
                 path="/admin/login"
                 element={<AdminLoginRedirect />}
-              />
+              /> */}
 
               <Route
                 path="/admin/register-admin"
@@ -526,6 +529,14 @@ export default function App() {
                   </ProtectedRoute>
                 }
               />
+              <Route
+  path="/staff/hazard-reports"
+  element={
+    <ProtectedRoute staffOnly>
+      <StaffHazardReports />
+    </ProtectedRoute>
+  }
+/>
 
               <Route
                 path="/staff/borrow"
@@ -626,6 +637,7 @@ export default function App() {
           </main>
         </div>
       </div>
+      </AppDialogProvider>
     </SettingsProvider>
   );
 }

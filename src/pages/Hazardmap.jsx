@@ -1187,9 +1187,6 @@ export default function Hazardmap() {
                             : "text-slate-200 hover:bg-slate-800/80"
                         }`}
                       >
-                        <span aria-hidden="true" className="text-base">
-                          {option.icon || "📍"}
-                        </span>
                         <span className="truncate">{option.label}</span>
                       </button>
                     );
