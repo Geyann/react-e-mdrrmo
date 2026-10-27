@@ -3,18 +3,21 @@ import { createPortal } from 'react-dom';
 import { MapContainer, TileLayer, Polygon, Marker } from 'react-leaflet';
 import L from 'leaflet';
 import 'leaflet/dist/leaflet.css';
-import { supabase } from "../createClient";
+import { supabase } from '../createClient';
 import {
   HAZARD_FILTER_OPTIONS,
   CATEGORY_ICONS as TAXONOMY_ICONS,
-} from "../utils/HazardTaxonomy";
+} from '../utils/HazardTaxonomy';
 
 // ─── Fix Leaflet Default Icon ───────────────────────────────────────────────
 delete L.Icon.Default.prototype._getIconUrl;
 L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
-  iconUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
-  shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
+  iconRetinaUrl:
+    'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon-2x.png',
+  iconUrl:
+    'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-icon.png',
+  shadowUrl:
+    'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
 
 // ─── Custom SVG Marker Factory ──────────────────────────────────────────────
@@ -74,7 +77,6 @@ const STATUSES = [
   { id: 'rejected', label: 'Rejected' },
 ];
 
-// ─── NEW: Review status configuration ───────────────────────────────────────
 const REVIEW_STATUSES = [
   { id: 'all', label: 'All Review States' },
   { id: 'pending', label: 'Unreviewed' },
@@ -103,8 +105,10 @@ const REVIEW_STATUS_META = {
 // ─── Helpers ────────────────────────────────────────────────────────────────
 const getPhotoUrls = (photoPaths, bucket = 'hazard-photos') => {
   if (!photoPaths || !Array.isArray(photoPaths) || photoPaths.length === 0) return [];
-  return photoPaths.map(path => {
-    if (typeof path === 'string' && (path.startsWith('http://') || path.startsWith('https://'))) return path;
+  return photoPaths.map((path) => {
+    if (typeof path === 'string' && (path.startsWith('http://') || path.startsWith('https://'))) {
+      return path;
+    }
     const { data } = supabase.storage.from(bucket).getPublicUrl(path);
     return data?.publicUrl || path;
   });
@@ -112,8 +116,17 @@ const getPhotoUrls = (photoPaths, bucket = 'hazard-photos') => {
 
 const formatDate = (d) => {
   if (!d) return 'N/A';
-  try { return new Date(d).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit' }); }
-  catch { return d; }
+  try {
+    return new Date(d).toLocaleDateString('en-US', {
+      year: 'numeric',
+      month: 'short',
+      day: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit',
+    });
+  } catch {
+    return d;
+  }
 };
 
 const timeAgo = (d) => {
@@ -128,38 +141,61 @@ const timeAgo = (d) => {
   return `${days}d ago`;
 };
 
+const hasValidCoords = (r) => {
+  const lat = parseFloat(r?.latitude);
+  const lng = parseFloat(r?.longitude);
+  return Number.isFinite(lat) && Number.isFinite(lng);
+};
+
 // ════════════════════════════════════════════════════════════════════════════
-//  LIGHTBOX COMPONENT
+//  LIGHTBOX
 // ════════════════════════════════════════════════════════════════════════════
 const Lightbox = ({ images, currentIndex, onClose, onPrev, onNext }) => {
   if (!images || images.length === 0) return null;
   const img = images[currentIndex];
   return (
-    <div className="fixed inset-0 z-[9999] bg-black/90 flex items-center justify-center backdrop-blur-sm"
-      onClick={onClose}>
+    <div
+      className="fixed inset-0 z-[9999] bg-black/90 flex items-center justify-center backdrop-blur-sm"
+      onClick={onClose}
+    >
       <div className="relative max-w-5xl max-h-[90vh] mx-4" onClick={(e) => e.stopPropagation()}>
-        <button onClick={onClose}
-          className="absolute -top-10 right-0 text-white/70 hover:text-white text-sm font-semibold transition">Close [X]</button>
+        <button
+          onClick={onClose}
+          className="absolute -top-10 right-0 text-white/70 hover:text-white text-sm font-semibold transition"
+        >
+          Close [X]
+        </button>
         {images.length > 1 && (
           <>
-            <button onClick={onPrev}
-              className="absolute left-2 top-1/2 -translate-y-1/2 text-white/70 hover:text-white text-3xl transition">&lsaquo;</button>
-            <button onClick={onNext}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-white/70 hover:text-white text-3xl transition">&rsaquo;</button>
+            <button
+              onClick={onPrev}
+              className="absolute left-2 top-1/2 -translate-y-1/2 text-white/70 hover:text-white text-3xl transition"
+            >
+              ‹
+            </button>
+            <button
+              onClick={onNext}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-white/70 hover:text-white text-3xl transition"
+            >
+              ›
+            </button>
             <div className="absolute -bottom-8 left-1/2 -translate-x-1/2 text-white/50 text-sm">
               {currentIndex + 1} / {images.length}
             </div>
           </>
         )}
-        <img src={img} alt={`Hazard photo ${currentIndex + 1}`}
-          className="max-w-full max-h-[85vh] rounded-lg shadow-2xl object-contain" />
+        <img
+          src={img}
+          alt={`Hazard photo ${currentIndex + 1}`}
+          className="max-w-full max-h-[85vh] rounded-lg shadow-2xl object-contain"
+        />
       </div>
     </div>
   );
 };
 
 // ════════════════════════════════════════════════════════════════════════════
-//  DETAIL PANEL COMPONENT
+//  DETAIL PANEL
 // ════════════════════════════════════════════════════════════════════════════
 const DetailPanel = ({
   report,
@@ -170,7 +206,6 @@ const DetailPanel = ({
   heatmapVisible,
   photos,
   onOpenLightbox,
-  // NEW: assignment + review props
   staffMembers,
   onAssign,
   onClearAssignment,
@@ -180,7 +215,6 @@ const DetailPanel = ({
   const [selectedStaffId, setSelectedStaffId] = useState('');
   const [assignError, setAssignError] = useState('');
 
-  // Reset the picker whenever the report being shown changes
   useEffect(() => {
     setSelectedStaffId('');
     setAssignError('');
@@ -192,7 +226,6 @@ const DetailPanel = ({
   const isPending = displayStatus === 'pending';
   const riskColor = HAZARD_COLORS[report.risk_level?.toLowerCase()] || '#3b82f6';
 
-  // NEW: review + assignment state
   const reviewStatus = report.review_status || 'pending';
   const reviewMeta = REVIEW_STATUS_META[reviewStatus] || REVIEW_STATUS_META.pending;
   const assignedStaffId = report.assigned_to_staff_id;
@@ -205,9 +238,7 @@ const DetailPanel = ({
       setAssignError('Select a staff member first.');
       return;
     }
-    const chosen = staffMembers.find(
-      (s) => String(s.id) === String(selectedStaffId),
-    );
+    const chosen = staffMembers.find((s) => String(s.id) === String(selectedStaffId));
     if (!chosen) {
       setAssignError('Selected staff member was not found.');
       return;
@@ -217,14 +248,13 @@ const DetailPanel = ({
   };
 
   return (
-    <div className="w-[420px] bg-slate-100 border-l border-slate-700 overflow-y-auto flex flex-col h-full font-sans">
-
-      {/* ── Panel Header ── */}
-      <div className="bg-slate-100 px-5 py-4 border-b border-slate-700 flex items-center justify-between sticky top-0 z-10">
+    <div className="w-[420px] bg-slate-50 border-l border-slate-200 overflow-y-auto flex flex-col h-full font-sans shrink-0">
+      {/* Header */}
+      <div className="bg-white px-5 py-4 border-b border-slate-200 flex items-center justify-between sticky top-0 z-10">
         <div className="flex items-center gap-3">
-          <button onClick={onClose} className="p-1.5 hover:bg-slate-700 rounded-lg transition">
-            <svg className="w-5 h-5 text-slate-900" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18"/>
+          <button onClick={onClose} className="p-1.5 hover:bg-slate-100 rounded-lg transition">
+            <svg className="w-5 h-5 text-slate-700" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 19l-7-7m0 0l7-7m-7 7h18" />
             </svg>
           </button>
           <div>
@@ -232,38 +262,44 @@ const DetailPanel = ({
               {CATEGORY_ICONS[report.hazard_category?.toLowerCase()] || '⚠️'}
               {report.hazard_category} Hazard
             </h2>
-            <p className="text-xs text-slate-600">Report #{report.id?.toString().slice(0, 8)}</p>
+            <p className="text-xs text-slate-500">Report #{report.id?.toString().slice(0, 8)}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <span className="px-2.5 py-1 text-xs font-semibold rounded-md capitalize"
-            style={{ backgroundColor: riskColor + '20', color: riskColor }}>
+          <span
+            className="px-2.5 py-1 text-xs font-semibold rounded-md capitalize"
+            style={{ backgroundColor: riskColor + '20', color: riskColor }}
+          >
             {report.risk_level || 'N/A'}
           </span>
-          <span className={`px-2.5 py-1 text-xs font-semibold rounded-md border capitalize ${
-            isPending ? 'bg-amber-100 text-amber-700 border-amber-300' :
-            displayStatus === 'approved' ? 'bg-emerald-100 text-emerald-700 border-emerald-300' :
-            'bg-red-100 text-red-700 border-red-300'
-          }`}>{displayStatus}</span>
+          <span
+            className={`px-2.5 py-1 text-xs font-semibold rounded-md border capitalize ${
+              isPending
+                ? 'bg-amber-100 text-amber-700 border-amber-300'
+                : displayStatus === 'approved'
+                  ? 'bg-emerald-100 text-emerald-700 border-emerald-300'
+                  : 'bg-red-100 text-red-700 border-red-300'
+            }`}
+          >
+            {displayStatus}
+          </span>
         </div>
       </div>
 
-      {/* ── NEW: Review & Assignment Card ── */}
-      <div className="px-5 pt-4 pb-3 border-b border-slate-700 bg-white/40">
+      {/* Review & Assignment */}
+      <div className="px-5 pt-4 pb-3 border-b border-slate-200 bg-white">
         <div className="flex items-center justify-between mb-3">
           <p className="text-sm text-slate-900 font-semibold flex items-center gap-1.5">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12l2 2 4-4M7.835 4.697a3.42 3.42 0 001.946-.806 3.42 3.42 0 014.438 0 3.42 3.42 0 001.946.806 3.42 3.42 0 013.138 3.138 3.42 3.42 0 00.806 1.946 3.42 3.42 0 010 4.438 3.42 3.42 0 00-.806 1.946 3.42 3.42 0 01-3.138 3.138 3.42 3.42 0 00-1.946.806 3.42 3.42 0 01-4.438 0 3.42 3.42 0 00-1.946-.806 3.42 3.42 0 01-3.138-3.138 3.42 3.42 0 00-.806-1.946 3.42 3.42 0 010-4.438 3.42 3.42 0 00.806-1.946 3.42 3.42 0 013.138-3.138z"/>
-            </svg>
             Review & Assignment
           </p>
-          <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-full border ${reviewMeta.className}`}>
-            <span className={`inline-block w-1.5 h-1.5 rounded-full ${reviewMeta.dotClass}`}></span>
+          <span
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-semibold rounded-full border ${reviewMeta.className}`}
+          >
+            <span className={`inline-block w-1.5 h-1.5 rounded-full ${reviewMeta.dotClass}`} />
             {reviewMeta.label}
           </span>
         </div>
 
-        {/* Review status buttons */}
         <div className="grid grid-cols-3 gap-1.5 mb-4">
           {['pending', 'under_review', 'resolved'].map((s) => {
             const meta = REVIEW_STATUS_META[s];
@@ -286,7 +322,6 @@ const DetailPanel = ({
           })}
         </div>
 
-        {/* Current assignment */}
         {hasAssignment ? (
           <div className="rounded-lg border border-indigo-200 bg-indigo-50 p-3 mb-3">
             <div className="flex items-center gap-2 mb-1">
@@ -315,7 +350,6 @@ const DetailPanel = ({
           <p className="text-xs text-slate-500 mb-3 italic">No staff assigned yet.</p>
         )}
 
-        {/* Assign to staff */}
         <label className="block text-xs font-semibold text-slate-700 mb-1.5">
           {hasAssignment ? 'Reassign to another staff member' : 'Assign to staff member'}
         </label>
@@ -330,9 +364,7 @@ const DetailPanel = ({
             className="flex-1 min-w-0 px-2.5 py-2 text-sm bg-white border border-slate-300 rounded-lg text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-500 disabled:opacity-50"
           >
             <option value="">
-              {staffMembers.length === 0
-                ? 'No active staff found'
-                : 'Select a staff member...'}
+              {staffMembers.length === 0 ? 'No active staff found' : 'Select a staff member...'}
             </option>
             {staffMembers.map((s) => (
               <option key={s.id} value={s.id}>
@@ -349,47 +381,43 @@ const DetailPanel = ({
             {hasAssignment ? 'Reassign' : 'Assign'}
           </button>
         </div>
-        {assignError && (
-          <p className="text-[11px] text-red-600 mt-1.5">{assignError}</p>
-        )}
+        {assignError && <p className="text-[11px] text-red-600 mt-1.5">{assignError}</p>}
 
-        {/* Reviewed metadata */}
         {report.reviewed_by_name && (
-          <p className="text-[11px] text-slate-500 mt-3 pt-3 border-t border-slate-300">
+          <p className="text-[11px] text-slate-500 mt-3 pt-3 border-t border-slate-200">
             Last reviewed by <strong>{report.reviewed_by_name}</strong>
             {report.reviewed_at ? ` · ${timeAgo(report.reviewed_at)}` : ''}
           </p>
         )}
       </div>
 
-      {/* ── Photo Gallery ── */}
+      {/* Photos */}
       {photos.length > 0 && (
-        <div className="px-5 pt-4 pb-2 border-b border-slate-700">
-          <p className="text-sm text-slate-900 font-semibold mb-2.5 flex items-center gap-1.5">
-            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16l4.586-4.586a2 2 0 012.828 0L16 16m-2-2l1.586-1.586a2 2 0 012.828 0L20 14m-6-6h.01M6 20h12a2 2 0 002-2V6a2 2 0 00-2-2H6a2 2 0 00-2 2v12a2 2 0 002 2z"/>
-            </svg>
-            Photos ({photos.length})
-          </p>
-          <div className="flex gap-2 overflow-x-auto pb-1 scrollbar-thin">
+        <div className="px-5 pt-4 pb-2 border-b border-slate-200">
+          <p className="text-sm text-slate-900 font-semibold mb-2.5">Photos ({photos.length})</p>
+          <div className="flex gap-2 overflow-x-auto pb-1">
             {photos.map((url, i) => (
-              <img key={i} src={url} alt={`Photo ${i + 1}`}
+              <img
+                key={i}
+                src={url}
+                alt={`Photo ${i + 1}`}
                 onClick={() => onOpenLightbox(photos, i)}
-                className="w-24 h-20 object-cover rounded-lg border border-slate-300 cursor-pointer hover:border-purple-500 transition flex-shrink-0" />
+                className="w-24 h-20 object-cover rounded-lg border border-slate-300 cursor-pointer hover:border-purple-500 transition flex-shrink-0"
+              />
             ))}
           </div>
         </div>
       )}
 
-      {/* ── Report Details ── */}
+      {/* Details */}
       <div className="px-5 py-4 space-y-5 flex-1">
-        {/* Description */}
         <div>
           <p className="text-sm text-slate-900 font-semibold mb-1">Description</p>
-          <p className="text-sm text-slate-700 leading-relaxed">{report.hazard_description || 'No description provided.'}</p>
+          <p className="text-sm text-slate-700 leading-relaxed">
+            {report.hazard_description || 'No description provided.'}
+          </p>
         </div>
 
-        {/* Details Grid */}
         <div className="grid grid-cols-2 gap-4">
           <div>
             <p className="text-sm text-slate-900 font-semibold mb-1">Reporter</p>
@@ -409,19 +437,19 @@ const DetailPanel = ({
           </div>
         </div>
 
-        {/* Location */}
         <div>
           <p className="text-sm text-slate-900 font-semibold mb-1">Location</p>
           <p className="text-sm text-slate-700">{report.address || 'No address'}</p>
           {report.landmark && (
             <p className="text-sm text-slate-600 mt-1">Near: {report.landmark}</p>
           )}
-          <p className="text-sm text-slate-500 mt-1">
-            {parseFloat(report.latitude)?.toFixed(5)}, {parseFloat(report.longitude)?.toFixed(5)}
-          </p>
+          {hasValidCoords(report) && (
+            <p className="text-sm text-slate-500 mt-1">
+              {parseFloat(report.latitude).toFixed(5)}, {parseFloat(report.longitude).toFixed(5)}
+            </p>
+          )}
         </div>
 
-        {/* Recommended Action */}
         {report.recommended_action && (
           <div>
             <p className="text-sm text-slate-900 font-semibold mb-1">Recommended Action</p>
@@ -429,235 +457,254 @@ const DetailPanel = ({
           </div>
         )}
 
-        {/* Created */}
-        <div className="pt-3 border-t border-slate-300">
-          <p className="text-sm text-slate-500">Submitted {timeAgo(report.created_at) || formatDate(report.created_at)}</p>
+        <div className="pt-3 border-t border-slate-200">
+          <p className="text-sm text-slate-500">
+            Submitted {timeAgo(report.created_at) || formatDate(report.created_at)}
+          </p>
         </div>
       </div>
 
-      {/* ── Action Buttons ── */}
-      <div className="px-5 py-4 border-t border-slate-300 bg-slate-100 space-y-3">
-        {/* Status actions */}
+      {/* Actions */}
+      <div className="px-5 py-4 border-t border-slate-200 bg-white space-y-3">
         <div className="flex gap-3">
-          {isPending && (
+          {isPending ? (
             <>
-              <button onClick={() => onUpdateStatus(report, 'approved')}
-                className="flex-1 px-4 py-2.5 text-sm font-semibold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition">Approve</button>
-              <button onClick={() => onUpdateStatus(report, 'rejected')}
-                className="flex-1 px-4 py-2.5 text-sm font-semibold rounded-lg bg-red-600 text-white hover:bg-red-700 transition">Reject</button>
+              <button
+                onClick={() => onUpdateStatus(report, 'approved')}
+                disabled={saving}
+                className="flex-1 px-4 py-2.5 text-sm font-semibold rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 transition disabled:opacity-50"
+              >
+                Approve
+              </button>
+              <button
+                onClick={() => onUpdateStatus(report, 'rejected')}
+                disabled={saving}
+                className="flex-1 px-4 py-2.5 text-sm font-semibold rounded-lg bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50"
+              >
+                Reject
+              </button>
             </>
-          )}
-          {!isPending && (
-            <button onClick={() => onUpdateStatus(report, 'pending')}
-              className="flex-1 px-4 py-2.5 text-sm font-semibold rounded-lg bg-amber-600 text-white hover:bg-amber-700 transition">Reset to Pending</button>
+          ) : (
+            <button
+              onClick={() => onUpdateStatus(report, 'pending')}
+              disabled={saving}
+              className="flex-1 px-4 py-2.5 text-sm font-semibold rounded-lg bg-amber-600 text-white hover:bg-amber-700 transition disabled:opacity-50"
+            >
+              Reset to Pending
+            </button>
           )}
         </div>
 
-        {/* Toggle heatmap + Delete */}
         <div className="flex gap-3">
-          <button onClick={() => onToggleHeatmap(report)}
-            className={`flex-1 px-4 py-2.5 text-sm font-semibold rounded-lg border transition ${
+          <button
+            onClick={() => onToggleHeatmap(report)}
+            disabled={saving}
+            className={`flex-1 px-4 py-2.5 text-sm font-semibold rounded-lg border transition disabled:opacity-50 ${
               heatmapVisible
                 ? 'bg-purple-600 border-purple-500 text-white hover:bg-purple-700'
-                : 'bg-slate-200 border-slate-300 text-slate-700 hover:bg-slate-300'
-            }`}>
+                : 'bg-slate-100 border-slate-300 text-slate-700 hover:bg-slate-200'
+            }`}
+          >
             {heatmapVisible ? 'Hide from Heatmap' : 'Show on Heatmap'}
           </button>
-          <button onClick={() => onDelete(report)}
-            className="px-4 py-2.5 text-sm font-semibold rounded-lg bg-red-600 border-red-700 text-white hover:bg-red-700 transition">Delete</button>
+          <button
+            onClick={() => onDelete(report)}
+            disabled={saving}
+            className="px-4 py-2.5 text-sm font-semibold rounded-lg bg-red-600 text-white hover:bg-red-700 transition disabled:opacity-50"
+          >
+            Delete
+          </button>
         </div>
       </div>
     </div>
   );
 };
 
-// ── Boundary Data ──
+// ── Boundary Data (NAIC) ──
 const naicBoundaryRaw = [
   [120.676693, 14.346669], [120.683441, 14.335786], [120.723202, 14.313171],
-  [120.726786, 14.310712], [120.733770, 14.306325], [120.736533, 14.303019],
+  [120.726786, 14.310712], [120.73377, 14.306325], [120.736533, 14.303019],
   [120.737455, 14.302343], [120.745282, 14.294946], [120.745602, 14.294668],
-  [120.745803, 14.294520], [120.746162, 14.294151], [120.746301, 14.294031],
+  [120.745803, 14.29452], [120.746162, 14.294151], [120.746301, 14.294031],
   [120.74645, 14.293735], [120.747109, 14.293254], [120.747533, 14.292911],
   [120.747852, 14.292674], [120.748284, 14.292371], [120.748703, 14.292116],
-  [120.749145, 14.291734], [120.749515, 14.291505], [120.749520, 14.291427],
+  [120.749145, 14.291734], [120.749515, 14.291505], [120.74952, 14.291427],
   [120.749729, 14.291396], [120.750271, 14.291021], [120.750813, 14.290548],
   [120.751204, 14.290262], [120.756628, 14.286374], [120.758951, 14.283754],
   [120.760941, 14.282012], [120.761349, 14.281711], [120.763151, 14.280016],
   [120.763296, 14.279912], [120.763398, 14.279792], [120.763548, 14.279813],
   [120.763682, 14.279725], [120.763763, 14.279626], [120.764036, 14.279434],
-  [120.764192, 14.279293], [120.764390, 14.278862], [120.765098, 14.278269],
+  [120.764192, 14.279293], [120.76439, 14.278862], [120.765098, 14.278269],
   [120.765227, 14.278087], [120.765517, 14.277874], [120.766091, 14.277261],
-  [120.766504, 14.276970], [120.769116, 14.274531], [120.769320, 14.274391],
+  [120.766504, 14.27697], [120.769116, 14.274531], [120.76932, 14.274391],
   [120.769433, 14.274235], [120.769449, 14.274043], [120.769395, 14.273622],
   [120.769313, 14.273443], [120.769302, 14.273188], [120.769733, 14.273133],
-  [120.770565, 14.272956], [120.770860, 14.272920], [120.771487, 14.273045],
-  [120.771745, 14.273070], [120.772024, 14.273034], [120.772340, 14.272889],
-  [120.772689, 14.272785], [120.773274, 14.272452], [120.773574, 14.272161],
+  [120.770565, 14.272956], [120.77086, 14.27292], [120.771487, 14.273045],
+  [120.771745, 14.27307], [120.772024, 14.273034], [120.77234, 14.272889],
+  [120.772689, 14.272785], [120.773274, 14.272452], [120.77357, 14.272161],
   [120.773681, 14.272114], [120.773944, 14.272187], [120.774239, 14.272389],
-  [120.774320, 14.272660], [120.774271, 14.273705], [120.774411, 14.274277],
-  [120.774658, 14.274453], [120.775044, 14.274490], [120.775377, 14.274448],
+  [120.77432, 14.27266], [120.774271, 14.273705], [120.774411, 14.274277],
+  [120.774658, 14.274453], [120.775044, 14.27449], [120.775377, 14.274448],
   [120.775736, 14.274329], [120.776047, 14.274079], [120.776369, 14.274043],
-  [120.776605, 14.274058], [120.777463, 14.274308],
-  [120.777748, 14.274251], [120.777930, 14.274074], [120.778064, 14.273767],
-  [120.778064, 14.273414], [120.778193, 14.273148], [120.778230, 14.272915],
-  [120.778466, 14.272618], [120.778670, 14.272582], [120.778767, 14.272670],
-  [120.778831, 14.272930], [120.778976, 14.273065], [120.779276, 14.273159],
-  [120.779684, 14.273112], [120.780247, 14.273096], [120.780355, 14.273003],
-  [120.780489, 14.272748], [120.780628, 14.272462], [120.781251, 14.271958],
-  [120.781723, 14.271755], [120.782066, 14.271688], [120.782570, 14.271823],
-  [120.782849, 14.271708], [120.783064, 14.271537], [120.783262, 14.271495],
-  [120.783573, 14.271485], [120.783927, 14.271209], [120.784228, 14.270918],
-  [120.784748, 14.270674], [120.785456, 14.270258], [120.786057, 14.270086],
-  [120.786465, 14.270081], [120.786722, 14.270040], [120.787017, 14.269910],
-  [120.787135, 14.269754], [120.788637, 14.269083], [120.788788, 14.269088],
-  [120.788879, 14.269192], [120.788949, 14.269400], [120.789056, 14.269390],
-  [120.789142, 14.269333], [120.789673, 14.268724], [120.789877, 14.268298],
-  [120.789909, 14.267788], [120.789807, 14.267575], [120.789812, 14.267373],
-  [120.789973, 14.267029], [120.790424, 14.266847], [120.790885, 14.266842],
-  [120.792081, 14.266265], [120.792666, 14.265771], [120.792816, 14.265527],
-  [120.792806, 14.264981], [120.792859, 14.264752], [120.793020, 14.264529],
-  [120.793294, 14.264061], [120.793626, 14.263837], [120.794694, 14.263452],
-  [120.795080, 14.263177], [120.795300, 14.262896], [120.795332, 14.262397],
-  [120.795386, 14.262220], [120.795606, 14.261747], [120.795600, 14.260380],
-  [120.795681, 14.260219], [120.795944, 14.260099], [120.796400, 14.259985],
-  [120.797001, 14.259725], [120.797279, 14.259553], [120.797414, 14.259350],
-  [120.797296, 14.258950], [120.797124, 14.258674], [120.796668, 14.258508],
-  [120.796405, 14.258331], [120.796303, 14.258056], [120.796228, 14.257276],
-  [120.796292, 14.256527], [120.796518, 14.255519], [120.796571, 14.255040],
-  [120.796550, 14.254619], [120.796486, 14.254323], [120.796545, 14.253954],
-  [120.796689, 14.253621], [120.797011, 14.253356], [120.797306, 14.253226],
-  [120.797821, 14.253143], [120.798234, 14.252961], [120.798637, 14.252862],
-  [120.798760, 14.252685], [120.798916, 14.251583], [120.799066, 14.251198],
-  [120.799291, 14.251021], [120.800493, 14.250564], [120.800793, 14.250584],
-  [120.801115, 14.250720], [120.801437, 14.251136], [120.802016, 14.251780],
-  [120.802435, 14.251936], [120.802789, 14.251884], [120.803250, 14.251645],
-  [120.803593, 14.251125], [120.80315, 14.250772], [120.804151, 14.250345],
-  [120.804666, 14.249836], [120.805385, 14.249295], [120.805771, 14.249160],
-  [120.806040, 14.249181], [120.806351, 14.249295], [120.806565, 14.249097],
-  [120.806544, 14.248671], [120.806726, 14.247824], [120.807118, 14.247345],
-  [120.807885, 14.246986], [120.808164, 14.246633], [120.808239, 14.246238],
-  [120.808389, 14.245884], [120.808336, 14.245343], [120.808690, 14.244761],
-  [120.809307, 14.244054], [120.809934, 14.243217], [120.810530, 14.241543],
-  [120.810653, 14.240815], [120.811356, 14.240118], [120.811999, 14.239728],
-  [120.812327, 14.239832], [120.812654, 14.240066], [120.813029, 14.240128],
-  [120.813421, 14.239946], [120.813657, 14.239504], [120.813501, 14.238194],
-  [120.814156, 14.236790], [120.814725, 14.236317], [120.815331, 14.236041],
-  [120.815776, 14.235225], [120.816275, 14.234539], [120.816801, 14.233702],
-  [120.816908, 14.233572], [120.817798, 14.233993], [120.818222, 14.234144],
-  [120.818480, 14.234388], [120.818571, 14.234346], [120.818780, 14.234341],
-  [120.819021, 14.234424], [120.819386, 14.234617], [120.819869, 14.235152],
-  [120.820320, 14.235584], [120.820513, 14.235490], [120.821076, 14.236041],
-  [120.821387, 14.236275], [120.822541, 14.236951], [120.822959, 14.237243],
-  [120.823404, 14.237627], [120.823619, 14.237846], [120.824692, 14.239068],
-  [120.824794, 14.238964], [120.825271, 14.239291], [120.825556, 14.239640],
-  [120.826591, 14.240180], [120.826870, 14.240440], [120.827385, 14.240789],
-  [120.827873, 14.240279], [120.829074, 14.239333], [120.829439, 14.239593],
-  [120.829782, 14.239146], [120.830748, 14.238178], [120.831499, 14.237076],
-  [120.831864, 14.237440], [120.832679, 14.237950], [120.834235, 14.235974],
-  [120.835319, 14.236431], [120.836209, 14.237045], [120.836563, 14.237752],
-  [120.836853, 14.237752], [120.837185, 14.237544], [120.837604, 14.237461],
-  [120.838376, 14.238012], [120.839331, 14.238771], [120.839589, 14.238917],
-  [120.840511, 14.239302], [120.841305, 14.239707], [120.841606, 14.239811],
-  [120.842217, 14.240123], [120.842915, 14.240373], [120.843548, 14.240633],
-  [120.844245, 14.240809], [120.844513, 14.240913], [120.845232, 14.241101],
-  [120.847882, 14.241953], [120.848848, 14.241995], [120.849631, 14.242889],
-  [120.849717, 14.242661], [120.851036, 14.243056], [120.851562, 14.243128],
-  [120.853697, 14.243711], [120.854427, 14.243773], [120.854641, 14.243836],
-  [120.854888, 14.243856], [120.855103, 14.243908], [120.855328, 14.244106],
-  [120.855532, 14.244200], [120.856025, 14.244324], [120.856476, 14.244501],
-  [120.856948, 14.244730], [120.857227, 14.244803], [120.858278, 14.245208],
-  [120.858783, 14.245395], [120.859179, 14.245603], [120.859373, 14.245603],
-  [120.859469, 14.245624], [120.859609, 14.245811], [120.859759, 14.245624],
-  [120.860317, 14.245988], [120.861218, 14.246435], [120.861105, 14.246591],
-  [120.861019, 14.246685], [120.860950, 14.246836], [120.860955, 14.247064],
-  [120.860998, 14.247283], [120.861014, 14.247579], [120.861073, 14.247818],
-  [120.861025, 14.247933], [120.860596, 14.248422], [120.860108, 14.248676],
-  [120.859979, 14.249004], [120.860011, 14.249186], [120.859947, 14.249383],
-  [120.859426, 14.249643], [120.858777, 14.249758], [120.858493, 14.250007],
-  [120.858343, 14.249992], [120.858209, 14.250018], [120.858166, 14.250132],
-  [120.858064, 14.250184], [120.857940, 14.250174], [120.857774, 14.250220],
-  [120.857624, 14.250340], [120.857082, 14.250714], [120.857028, 14.250933],
-  [120.857077, 14.251172], [120.857098, 14.251286], [120.857184, 14.251349],
-  [120.857157, 14.251666], [120.857168, 14.251796], [120.857087, 14.251931],
-  [120.857012, 14.252009], [120.856894, 14.252087], [120.856782, 14.252113],
-  [120.856159, 14.252056], [120.855612, 14.252264], [120.855446, 14.252363],
-  [120.855328, 14.252524], [120.855280, 14.252747], [120.855119, 14.253075],
-  [120.854802, 14.253205], [120.854539, 14.253189], [120.854411, 14.253241],
-  [120.854250, 14.253371], [120.854335, 14.253636], [120.854459, 14.253746],
-  [120.854480, 14.254016], [120.854464, 14.254546], [120.854405, 14.254681],
-  [120.854276, 14.254728], [120.854196, 14.254723], [120.854056, 14.254645],
-  [120.853509, 14.254619], [120.853322, 14.254562], [120.852887, 14.254552],
-  [120.852656, 14.254484], [120.852415, 14.254562], [120.852120, 14.254697],
-  [120.852034, 14.254869], [120.852141, 14.256023], [120.851959, 14.256886],
-  [120.851508, 14.257136], [120.851229, 14.257479], [120.850822, 14.257676],
-  [120.850425, 14.257520], [120.850317, 14.257385], [120.849835, 14.257489],
-  [120.849663, 14.257780], [120.849459, 14.257895], [120.849320, 14.258103],
-  [120.849328, 14.258425], [120.849481, 14.258955], [120.849416, 14.259413],
-  [120.849234, 14.259610], [120.849094, 14.260026], [120.848848, 14.260109],
-  [120.848558, 14.260151], [120.848322, 14.260172], [120.847625, 14.260151],
-  [120.847517, 14.260057], [120.847313, 14.260130], [120.847356, 14.260359],
-  [120.847228, 14.261305], [120.847324, 14.262990], [120.847204, 14.263278],
-  [120.845954, 14.263309], [120.845227, 14.263806], [120.843419, 14.264399],
-  [120.843118, 14.264549], [120.842153, 14.264747], [120.841772, 14.265215],
-  [120.840431, 14.265797], [120.839111, 14.266754], [120.838553, 14.266946],
-  [120.837990, 14.267502], [120.837395, 14.267700], [120.836445, 14.268469],
-  [120.835635, 14.269650], [120.835351, 14.270362], [120.835129, 14.270509],
-  [120.834857, 14.270622], [120.834310, 14.271402], [120.834020, 14.271573],
-  [120.832829, 14.272135], [120.831757, 14.272863], [120.830977, 14.273624],
-  [120.830464, 14.274750], [120.830324, 14.274895], [120.828388, 14.275530],
-  [120.827851, 14.275997], [120.826564, 14.276678], [120.825920, 14.276720],
-  [120.825355, 14.276904], [120.825027, 14.277107], [120.824477, 14.278675],
-  [120.824520, 14.279278], [120.824584, 14.279522], [120.824193, 14.279990],
-  [120.823662, 14.280026], [120.823190, 14.280328], [120.822980, 14.280843],
-  [120.822948, 14.282111], [120.822423, 14.282324], [120.822074, 14.282844],
-  [120.821768, 14.283390], [120.821301, 14.283795], [120.820679, 14.283910],
-  [120.819810, 14.284513], [120.819317, 14.284664], [120.819150, 14.285209],
-  [120.818506, 14.285901], [120.818329, 14.286062], [120.818024, 14.286566],
-  [120.817389, 14.286896], [120.816975, 14.286984], [120.81643, 14.287161],
-  [120.816548, 14.287429], [120.816854, 14.287965], [120.817292, 14.288653],
-  [120.817260, 14.288892], [120.817013, 14.289105], [120.816766, 14.289230],
-  [120.816366, 14.289358], [120.816329, 14.289519], [120.814059, 14.329502],
-  [120.813791, 14.329590], [120.813625, 14.329601], [120.813507, 14.329575],
-  [120.813389, 14.329559], [120.813190, 14.329543], [120.812960, 14.329627],
-  [120.812697, 14.330697], [120.812767, 14.330973], [120.812895, 14.331196],
-  [120.812981, 14.331451], [120.812976, 14.332407], [120.812622, 14.333041],
-  [120.812461, 14.333546], [120.812176, 14.333847], [120.811978, 14.334221],
-  [120.811710, 14.334419], [120.811479, 14.334393], [120.811018, 14.334689],
-  [120.810626, 14.334881], [120.810288, 14.335141], [120.810020, 14.335396],
-  [120.809897, 14.335599], [120.809859, 14.335812], [120.809736, 14.335952],
-  [120.808641, 14.336243], [120.808142, 14.336285], [120.807869, 14.336357],
-  [120.807606, 14.336633], [120.807488, 14.336893], [120.807343, 14.337085],
-  [120.807053, 14.337251], [120.806614, 14.337215], [120.806496, 14.337251],
-  [120.806308, 14.337454], [120.806131, 14.337818], [120.805643, 14.338493],
-  [120.805369, 14.339190], [120.804500, 14.339767], [120.803095, 14.340884],
-  [120.802842, 14.341144], [120.802687, 14.341456], [120.802698, 14.341804],
-  [120.802853, 14.342012], [120.802799, 14.342142], [120.801710, 14.342953],
-  [120.801061, 14.343270], [120.799280, 14.343618], [120.798736, 14.343921],
-  [120.797247, 14.345437], [120.796410, 14.346357], [120.796142, 14.346419],
-  [120.795552, 14.346170], [120.794391, 14.345532], [120.793377, 14.345200],
-  [120.792655, 14.345151], [120.790778, 14.345640], [120.790064, 14.345842],
-  [120.788729, 14.346414], [120.788329, 14.346525], [120.787951, 14.346398],
-  [120.787827, 14.346201], [120.787854, 14.345842], [120.788181, 14.344798],
-  [120.788080, 14.344621], [120.787817, 14.344626], [120.787039, 14.345084],
-  [120.785730, 14.345707], [120.784617, 14.345730], [120.782468, 14.346045],
-  [120.782134, 14.346156], [120.781753, 14.346354], [120.781417, 14.346684],
-  [120.781304, 14.346866], [120.781143, 14.347396], [120.781047, 14.347952],
-  [120.780961, 14.348087], [120.744502, 14.377321], [120.708761, 14.406043],
-  [120.708354, 14.403861], [120.687116, 14.363579], [120.686765, 14.362958],
+  [120.776605, 14.274058], [120.777463, 14.274308], [120.777748, 14.274251],
+  [120.77793, 14.274074], [120.778064, 14.273767], [120.778064, 14.273414],
+  [120.778193, 14.273148], [120.77823, 14.272915], [120.778466, 14.272618],
+  [120.77867, 14.272582], [120.778767, 14.27267], [120.778831, 14.27293],
+  [120.778976, 14.273065], [120.779276, 14.273159], [120.779684, 14.273112],
+  [120.780247, 14.273096], [120.780355, 14.273003], [120.780489, 14.272748],
+  [120.780628, 14.272462], [120.781251, 14.271958], [120.781723, 14.271755],
+  [120.782066, 14.271688], [120.78257, 14.271823], [120.782849, 14.271708],
+  [120.783064, 14.271537], [120.783262, 14.271495], [120.783573, 14.271485],
+  [120.783927, 14.271209], [120.784228, 14.270918], [120.784748, 14.270674],
+  [120.785456, 14.270258], [120.786057, 14.270086], [120.786465, 14.270081],
+  [120.786722, 14.27004], [120.787017, 14.26991], [120.787135, 14.269754],
+  [120.788637, 14.269083], [120.788788, 14.269088], [120.788879, 14.269192],
+  [120.788949, 14.2694], [120.789056, 14.26939], [120.789142, 14.269333],
+  [120.789673, 14.268724], [120.789877, 14.268298], [120.789909, 14.267788],
+  [120.789807, 14.267575], [120.789812, 14.267373], [120.789973, 14.267029],
+  [120.790424, 14.266847], [120.790885, 14.266842], [120.792081, 14.266265],
+  [120.792666, 14.265771], [120.792816, 14.265527], [120.792806, 14.264981],
+  [120.792859, 14.264752], [120.79302, 14.264529], [120.793294, 14.264061],
+  [120.793626, 14.263837], [120.794694, 14.263452], [120.79508, 14.263177],
+  [120.7953, 14.262896], [120.795332, 14.262397], [120.795386, 14.26222],
+  [120.795606, 14.261747], [120.7956, 14.26038], [120.795681, 14.260219],
+  [120.795944, 14.260099], [120.7964, 14.259985], [120.797001, 14.259725],
+  [120.797279, 14.259553], [120.797414, 14.25935], [120.797296, 14.25895],
+  [120.797124, 14.258674], [120.796668, 14.258508], [120.796405, 14.258331],
+  [120.796303, 14.258056], [120.796228, 14.257276], [120.796292, 14.256527],
+  [120.796518, 14.255519], [120.796571, 14.25504], [120.79655, 14.254619],
+  [120.796486, 14.254323], [120.796545, 14.253954], [120.796689, 14.253621],
+  [120.797011, 14.253356], [120.797306, 14.253226], [120.797821, 14.253143],
+  [120.798234, 14.252961], [120.798637, 14.252862], [120.79876, 14.252685],
+  [120.798916, 14.251583], [120.799066, 14.251198], [120.799291, 14.251021],
+  [120.800493, 14.250564], [120.800793, 14.250584], [120.801115, 14.25072],
+  [120.801437, 14.251136], [120.802016, 14.25178], [120.802435, 14.251936],
+  [120.802789, 14.251884], [120.80325, 14.251645], [120.803593, 14.251125],
+  [120.80315, 14.250772], [120.804151, 14.250345], [120.804666, 14.249836],
+  [120.805385, 14.249295], [120.805771, 14.24916], [120.80604, 14.249181],
+  [120.806351, 14.249295], [120.806565, 14.249097], [120.806544, 14.248671],
+  [120.806726, 14.247824], [120.807118, 14.247345], [120.807885, 14.246986],
+  [120.808164, 14.246633], [120.808239, 14.246238], [120.808389, 14.245884],
+  [120.808336, 14.245343], [120.80869, 14.244761], [120.809307, 14.244054],
+  [120.809934, 14.243217], [120.81053, 14.241543], [120.810653, 14.240815],
+  [120.811356, 14.240118], [120.811999, 14.239728], [120.812327, 14.239832],
+  [120.812654, 14.240066], [120.813029, 14.240128], [120.813421, 14.239946],
+  [120.813657, 14.239504], [120.813501, 14.238194], [120.814156, 14.23679],
+  [120.814725, 14.236317], [120.815331, 14.236041], [120.815776, 14.235225],
+  [120.816275, 14.234539], [120.816801, 14.233702], [120.816908, 14.233572],
+  [120.817798, 14.233993], [120.818222, 14.234144], [120.81848, 14.234388],
+  [120.818571, 14.234346], [120.81878, 14.234341], [120.819021, 14.234424],
+  [120.819386, 14.234617], [120.819869, 14.235152], [120.82032, 14.235584],
+  [120.820513, 14.23549], [120.821076, 14.236041], [120.821387, 14.236275],
+  [120.822541, 14.236951], [120.822959, 14.237243], [120.823404, 14.237627],
+  [120.823619, 14.237846], [120.824692, 14.239068], [120.824794, 14.238964],
+  [120.825271, 14.239291], [120.825556, 14.23964], [120.826591, 14.24018],
+  [120.82687, 14.24044], [120.827385, 14.240789], [120.827873, 14.240279],
+  [120.829074, 14.239333], [120.829439, 14.239593], [120.829782, 14.239146],
+  [120.830748, 14.238178], [120.831499, 14.237076], [120.831864, 14.23744],
+  [120.832679, 14.23795], [120.834235, 14.235974], [120.835319, 14.236431],
+  [120.836209, 14.237045], [120.836563, 14.237752], [120.836853, 14.237752],
+  [120.837185, 14.237544], [120.837604, 14.237461], [120.838376, 14.238012],
+  [120.839331, 14.238771], [120.839589, 14.238917], [120.840511, 14.239302],
+  [120.841305, 14.239707], [120.841606, 14.239811], [120.842217, 14.240123],
+  [120.842915, 14.240373], [120.843548, 14.240633], [120.844245, 14.240809],
+  [120.844513, 14.240913], [120.845232, 14.241101], [120.847882, 14.241953],
+  [120.848848, 14.241995], [120.849631, 14.242889], [120.849717, 14.242661],
+  [120.851036, 14.243056], [120.851562, 14.243128], [120.853697, 14.243711],
+  [120.854427, 14.243773], [120.854641, 14.243836], [120.854888, 14.243856],
+  [120.855103, 14.243908], [120.855328, 14.244106], [120.855532, 14.2442],
+  [120.856025, 14.244324], [120.856476, 14.244501], [120.856948, 14.24473],
+  [120.857227, 14.244803], [120.858278, 14.245208], [120.858783, 14.245395],
+  [120.859179, 14.245603], [120.859373, 14.245603], [120.859469, 14.245624],
+  [120.859609, 14.245811], [120.859759, 14.245624], [120.860317, 14.245988],
+  [120.861218, 14.246435], [120.861105, 14.246591], [120.861019, 14.246685],
+  [120.86095, 14.246836], [120.860955, 14.247064], [120.860998, 14.247283],
+  [120.861014, 14.247579], [120.861073, 14.247818], [120.861025, 14.247933],
+  [120.860596, 14.248422], [120.860108, 14.248676], [120.859979, 14.249004],
+  [120.860011, 14.249186], [120.859947, 14.249383], [120.859426, 14.249643],
+  [120.858777, 14.249758], [120.858493, 14.250007], [120.858343, 14.249992],
+  [120.858209, 14.250018], [120.858166, 14.250132], [120.858064, 14.250184],
+  [120.85794, 14.250174], [120.857774, 14.25022], [120.857624, 14.25034],
+  [120.857082, 14.250714], [120.857028, 14.250933], [120.857077, 14.251172],
+  [120.857098, 14.251286], [120.857184, 14.251349], [120.857157, 14.251666],
+  [120.857168, 14.251796], [120.857087, 14.251931], [120.857012, 14.252009],
+  [120.856894, 14.252087], [120.856782, 14.252113], [120.856159, 14.252056],
+  [120.855612, 14.252264], [120.855446, 14.252363], [120.855328, 14.252524],
+  [120.85528, 14.252747], [120.855119, 14.253075], [120.854802, 14.253205],
+  [120.854539, 14.253189], [120.854411, 14.253241], [120.85425, 14.253371],
+  [120.854335, 14.253636], [120.854459, 14.253746], [120.85448, 14.254016],
+  [120.854464, 14.254546], [120.854405, 14.254681], [120.854276, 14.254728],
+  [120.854196, 14.254723], [120.854056, 14.254645], [120.853961, 14.254619],
+  [120.853322, 14.254562], [120.852887, 14.254552], [120.852656, 14.254484],
+  [120.852415, 14.254562], [120.85212, 14.254697], [120.852034, 14.254869],
+  [120.852141, 14.256023], [120.851959, 14.256886], [120.851508, 14.257136],
+  [120.851229, 14.257479], [120.850822, 14.257676], [120.850425, 14.25752],
+  [120.850317, 14.257385], [120.849835, 14.257489], [120.849663, 14.25778],
+  [120.849459, 14.257895], [120.84932, 14.258103], [120.849328, 14.258425],
+  [120.849481, 14.258955], [120.849416, 14.259413], [120.849234, 14.25961],
+  [120.849094, 14.260026], [120.848848, 14.260109], [120.848558, 14.260151],
+  [120.848322, 14.260172], [120.847625, 14.260151], [120.847517, 14.260057],
+  [120.847313, 14.26013], [120.847356, 14.260359], [120.847228, 14.261305],
+  [120.847324, 14.26299], [120.847204, 14.263278], [120.845954, 14.263309],
+  [120.845227, 14.263806], [120.843419, 14.264399], [120.843118, 14.264549],
+  [120.842153, 14.264747], [120.841772, 14.265215], [120.840431, 14.265797],
+  [120.839111, 14.266754], [120.838553, 14.266946], [120.83799, 14.267502],
+  [120.837395, 14.2677], [120.836445, 14.268469], [120.835635, 14.26965],
+  [120.835351, 14.270362], [120.835129, 14.270509], [120.834857, 14.270622],
+  [120.83431, 14.271402], [120.83402, 14.271573], [120.832829, 14.272135],
+  [120.831757, 14.272863], [120.830977, 14.273624], [120.830464, 14.27475],
+  [120.830324, 14.274895], [120.828388, 14.27553], [120.827851, 14.275997],
+  [120.826564, 14.276678], [120.82592, 14.27672], [120.825355, 14.276904],
+  [120.825027, 14.277107], [120.824477, 14.278675], [120.82452, 14.279278],
+  [120.824584, 14.279522], [120.824193, 14.27999], [120.823662, 14.280026],
+  [120.82319, 14.280328], [120.82298, 14.280843], [120.822948, 14.282111],
+  [120.822423, 14.282324], [120.822074, 14.282844], [120.821768, 14.28339],
+  [120.821301, 14.283795], [120.820679, 14.28391], [120.81981, 14.284513],
+  [120.819317, 14.284664], [120.81915, 14.285209], [120.818506, 14.285901],
+  [120.818329, 14.286062], [120.818024, 14.286566], [120.817389, 14.286896],
+  [120.816975, 14.286984], [120.81643, 14.287161], [120.816548, 14.287429],
+  [120.816854, 14.287965], [120.817292, 14.288653], [120.81726, 14.288892],
+  [120.817013, 14.289105], [120.816766, 14.28923], [120.816366, 14.289358],
+  [120.816329, 14.289519], [120.814059, 14.329502], [120.813791, 14.32959],
+  [120.813625, 14.329601], [120.813507, 14.329575], [120.813389, 14.329559],
+  [120.81319, 14.329543], [120.81296, 14.329627], [120.812697, 14.330697],
+  [120.812767, 14.330973], [120.812895, 14.331196], [120.812981, 14.331451],
+  [120.812976, 14.332407], [120.812622, 14.333041], [120.812461, 14.333546],
+  [120.812176, 14.333847], [120.811978, 14.334221], [120.81171, 14.334419],
+  [120.811479, 14.334393], [120.811018, 14.334689], [120.810626, 14.334881],
+  [120.810288, 14.335141], [120.81002, 14.335396], [120.809897, 14.335599],
+  [120.809859, 14.335812], [120.809736, 14.335952], [120.808641, 14.336243],
+  [120.808142, 14.336285], [120.807869, 14.336357], [120.807606, 14.336633],
+  [120.807488, 14.336893], [120.807343, 14.337085], [120.807053, 14.337251],
+  [120.806614, 14.337215], [120.806496, 14.337251], [120.806308, 14.337454],
+  [120.806131, 14.337818], [120.805643, 14.338493], [120.805369, 14.33919],
+  [120.8045, 14.339767], [120.803095, 14.340884], [120.802842, 14.341144],
+  [120.802687, 14.341456], [120.802698, 14.341804], [120.802853, 14.342012],
+  [120.802799, 14.342142], [120.80171, 14.342953], [120.801061, 14.34327],
+  [120.79928, 14.343618], [120.798736, 14.343921], [120.797247, 14.345437],
+  [120.79641, 14.346357], [120.796142, 14.346419], [120.795552, 14.34617],
+  [120.794391, 14.345532], [120.793377, 14.3452], [120.792655, 14.345151],
+  [120.790778, 14.34564], [120.790064, 14.345842], [120.788729, 14.346414],
+  [120.788329, 14.346525], [120.787951, 14.346398], [120.787827, 14.346201],
+  [120.787854, 14.345842], [120.788181, 14.344798], [120.78808, 14.344621],
+  [120.787817, 14.344626], [120.787039, 14.345084], [120.78573, 14.345707],
+  [120.784617, 14.34573], [120.782468, 14.346045], [120.782134, 14.346156],
+  [120.781753, 14.346354], [120.781417, 14.346684], [120.781304, 14.346866],
+  [120.781143, 14.347396], [120.781047, 14.347952], [120.780961, 14.348087],
+  [120.744502, 14.377321], [120.708761, 14.406043], [120.708354, 14.403861],
+  [120.687116, 14.363579], [120.686765, 14.362958],
 ];
 
 // ════════════════════════════════════════════════════════════════════════════
 //  MAIN COMPONENT
 // ════════════════════════════════════════════════════════════════════════════
 const AdminHazardMap = () => {
-  // ── State ──
   const [reports, setReports] = useState([]);
   const [loading, setLoading] = useState(true);
   const [activeReport, setActiveReport] = useState(null);
   const [selectedCategory, setSelectedCategory] = useState('all');
   const [selectedRisk, setSelectedRisk] = useState('all');
   const [selectedStatus, setSelectedStatus] = useState('all');
-  // NEW: review-status filter
   const [selectedReview, setSelectedReview] = useState('all');
   const [showPendingOnly, setShowPendingOnly] = useState(false);
   const [isRealistic, setIsRealistic] = useState(false);
@@ -667,24 +714,25 @@ const AdminHazardMap = () => {
   const [confirmAction, setConfirmAction] = useState(null);
   const [lightbox, setLightbox] = useState({ open: false, images: [], index: 0 });
   const [showReport, setShowReport] = useState(false);
-
-  // NEW: staff list + save flag
   const [staffMembers, setStaffMembers] = useState([]);
   const [saving, setSaving] = useState(false);
 
-  // ── Derived data ──
-  const flippedBoundary = useMemo(() => naicBoundaryRaw.map(c => [c[1], c[0]]), []);
+  const flippedBoundary = useMemo(() => naicBoundaryRaw.map((c) => [c[1], c[0]]), []);
   const bounds = useMemo(() => L.latLngBounds(flippedBoundary), [flippedBoundary]);
-  const worldBounds = [[-90, -180], [-90, 180], [90, 180], [90, -180]];
+  const worldBounds = [
+    [-90, -180],
+    [-90, 180],
+    [90, 180],
+    [90, -180],
+  ];
   const maskCoords = [worldBounds, flippedBoundary];
 
-  // ── Snackbar helper ──
   const showSnackbar = useCallback((message, type = 'info') => {
     setSnackbar({ show: true, message, type });
     setTimeout(() => setSnackbar({ show: false, message: '', type: 'info' }), 4000);
   }, []);
 
-  // ── NEW: Fetch active staff members ──
+  // ── Fetch active staff ──
   const fetchStaffMembers = useCallback(async () => {
     try {
       const { data, error } = await supabase
@@ -717,7 +765,7 @@ const AdminHazardMap = () => {
 
       setReports(data || []);
       const toggles = {};
-      (data || []).forEach(r => {
+      (data || []).forEach((r) => {
         toggles[r.id] = r.show_on_heatmap !== false;
       });
       setHeatmapToggles(toggles);
@@ -729,17 +777,25 @@ const AdminHazardMap = () => {
     }
   }, [showSnackbar]);
 
-  useEffect(() => { fetchReports(); }, [fetchReports]);
-  useEffect(() => { fetchStaffMembers(); }, [fetchStaffMembers]);
-
-  // Keep the active report in sync with the freshest row after any mutation
   useEffect(() => {
-    if (!activeReport) return;
+    fetchReports();
+  }, [fetchReports]);
+
+  useEffect(() => {
+    fetchStaffMembers();
+  }, [fetchStaffMembers]);
+
+  // Keep active report in sync after mutations
+  useEffect(() => {
+    if (!activeReport?.id) return;
     const fresh = reports.find((r) => r.id === activeReport.id);
-    if (fresh && fresh !== activeReport) {
+    if (fresh) {
       setActiveReport(fresh);
+    } else {
+      // Report was deleted
+      setActiveReport(null);
     }
-  }, [reports, activeReport]);
+  }, [reports]); // intentionally only depend on reports
 
   // ── Stats ──
   const stats = useMemo(() => {
@@ -753,17 +809,14 @@ const AdminHazardMap = () => {
       underReview: 0,
       assigned: 0,
     };
-    reports.forEach(r => {
+    reports.forEach((r) => {
       const st = r.status || 'pending';
       if (st === 'pending') s.pending++;
       else if (st === 'approved') s.approved++;
       else if (st === 'rejected') s.rejected++;
 
-      const rs = r.review_status || 'pending';
-      if (rs === 'under_review') s.underReview++;
-
+      if ((r.review_status || 'pending') === 'under_review') s.underReview++;
       if (r.assigned_to_staff_id) s.assigned++;
-
       if (r.risk_level?.toLowerCase() === 'critical') s.critical++;
       if (r.risk_level?.toLowerCase() === 'high') s.high++;
     });
@@ -772,28 +825,30 @@ const AdminHazardMap = () => {
 
   // ── Filtered reports ──
   const filteredReports = useMemo(() => {
-    return reports.filter(r => {
+    return reports.filter((r) => {
       const st = r.status || 'pending';
       const rs = r.review_status || 'pending';
 
       if (showPendingOnly && st !== 'pending') return false;
-      if (selectedCategory !== 'all' && r.hazard_category?.toLowerCase() !== selectedCategory) return false;
+      if (selectedCategory !== 'all' && r.hazard_category?.toLowerCase() !== selectedCategory)
+        return false;
       if (selectedRisk !== 'all' && r.risk_level?.toLowerCase() !== selectedRisk) return false;
       if (selectedStatus !== 'all' && st !== selectedStatus) return false;
       if (selectedReview !== 'all' && rs !== selectedReview) return false;
 
       if (searchQuery) {
         const q = searchQuery.toLowerCase();
-        const desc = (r.hazard_description || '').toLowerCase();
-        const addr = (r.address || '').toLowerCase();
-        const name = (r.reporter_name || '').toLowerCase();
-        const assignee = (r.assigned_to_name || '').toLowerCase();
-        if (
-          !desc.includes(q) &&
-          !addr.includes(q) &&
-          !name.includes(q) &&
-          !assignee.includes(q)
-        ) return false;
+        const haystack = [
+          r.hazard_description,
+          r.address,
+          r.reporter_name,
+          r.assigned_to_name,
+          r.hazard_category,
+        ]
+          .filter(Boolean)
+          .join(' ')
+          .toLowerCase();
+        if (!haystack.includes(q)) return false;
       }
       return true;
     });
@@ -807,415 +862,549 @@ const AdminHazardMap = () => {
     searchQuery,
   ]);
 
-  // ── Update status ──
-  const updateStatus = useCallback(async (report, newStatus) => {
-    try {
-      const { error } = await supabase
-        .from('hazard_reports')
-        .update({ status: newStatus })
-        .eq('id', report.id);
-      if (error) throw error;
+  // ── Update status (approve / reject / reset) ──
+  const updateStatus = useCallback(
+    async (report, newStatus) => {
+      if (saving) return;
+      setSaving(true);
+      try {
+        const { error } = await supabase
+          .from('hazard_reports')
+          .update({ status: newStatus })
+          .eq('id', report.id);
+        if (error) throw error;
 
-      showSnackbar(`Report ${newStatus}`, 'success');
-      window.dispatchEvent(new Event('mdrrmo:notif-refresh'));
-      fetchReports();
-    } catch (err) {
-      showSnackbar('Failed to update status', 'error');
-    }
-  }, [fetchReports, showSnackbar]);
-
-  // ── NEW: Update review status ──
-  const updateReviewStatus = useCallback(async (report, newReviewStatus) => {
-    if (saving) return;
-    setSaving(true);
-    try {
-      const adminRaw = localStorage.getItem('currentStaff');
-      let reviewerName = null;
-      let reviewerId = null;
-      if (adminRaw) {
-        try {
-          const parsed = JSON.parse(adminRaw);
-          reviewerId = parsed?.id ?? null;
-          reviewerName = parsed?.full_name || parsed?.username || null;
-        } catch { /* ignore */ }
+        showSnackbar(`Report ${newStatus}`, 'success');
+        window.dispatchEvent(new Event('mdrrmo:notif-refresh'));
+        await fetchReports();
+      } catch (err) {
+        console.error(err);
+        showSnackbar('Failed to update status', 'error');
+      } finally {
+        setSaving(false);
       }
+    },
+    [fetchReports, saving, showSnackbar],
+  );
 
-      const payload = {
-        review_status: newReviewStatus,
-        reviewed_by_staff_id: reviewerId,
-        reviewed_by_name: reviewerName,
-        reviewed_at: new Date().toISOString(),
-      };
+  // ── Update review status ──
+  const updateReviewStatus = useCallback(
+    async (report, newReviewStatus) => {
+      if (saving) return;
+      setSaving(true);
+      try {
+        let reviewerName = null;
+        let reviewerStaffId = null;
+        let reviewerAuthId = null;
 
-      const { error } = await supabase
-        .from('hazard_reports')
-        .update(payload)
-        .eq('id', report.id);
-      if (error) throw error;
+        // Prefer staff session, fall back to auth user
+        const staffRaw = localStorage.getItem('currentStaff');
+        if (staffRaw) {
+          try {
+            const parsed = JSON.parse(staffRaw);
+            reviewerStaffId = parsed?.id ?? null;
+            reviewerName = parsed?.full_name || parsed?.username || null;
+          } catch {
+            /* ignore */
+          }
+        }
 
-      showSnackbar(
-        newReviewStatus === 'resolved'
-          ? 'Marked as resolved'
-          : newReviewStatus === 'under_review'
-            ? 'Marked as under review'
-            : 'Review reset to pending',
-        'success',
-      );
+        const {
+          data: { user },
+        } = await supabase.auth.getUser();
+        if (user) {
+          reviewerAuthId = user.id;
+          if (!reviewerName) {
+            reviewerName = user.user_metadata?.full_name || user.email || null;
+          }
+        }
 
-      window.dispatchEvent(new Event('mdrrmo:notif-refresh'));
-      fetchReports();
-    } catch (err) {
-      console.error('Review status update error:', err);
-      showSnackbar('Failed to update review status', 'error');
-    } finally {
-      setSaving(false);
-    }
-  }, [fetchReports, saving, showSnackbar]);
+        const payload = {
+          review_status: newReviewStatus,
+          reviewed_by_staff_id: reviewerStaffId,
+          reviewed_by_name: reviewerName,
+          reviewed_at: new Date().toISOString(),
+        };
+        if (reviewerAuthId) payload.reviewed_by = reviewerAuthId;
 
-  // ── NEW: Assign report to a staff member ──
-  const assignToStaff = useCallback(async (report, staff) => {
-    if (saving) return;
-    setSaving(true);
-    try {
-      const staffName =
-        staff.full_name ||
-        staff.username ||
-        staff.email ||
-        `Staff #${staff.id}`;
+        const { error } = await supabase
+          .from('hazard_reports')
+          .update(payload)
+          .eq('id', report.id);
+        if (error) throw error;
 
-      const { error } = await supabase
-        .from('hazard_reports')
-        .update({
-          assigned_to_staff_id: staff.id,
-          assigned_to_name: staffName,
-          assigned_at: new Date().toISOString(),
-          // First-time assignment automatically moves the report into review
-          review_status:
-            report.review_status && report.review_status !== 'pending'
-              ? report.review_status
-              : 'under_review',
-        })
-        .eq('id', report.id);
-      if (error) throw error;
+        const msg =
+          newReviewStatus === 'resolved'
+            ? 'Marked as resolved'
+            : newReviewStatus === 'under_review'
+              ? 'Marked as under review'
+              : 'Review reset to pending';
+        showSnackbar(msg, 'success');
+        window.dispatchEvent(new Event('mdrrmo:notif-refresh'));
+        await fetchReports();
+      } catch (err) {
+        console.error('Review status update error:', err);
+        showSnackbar('Failed to update review status', 'error');
+      } finally {
+        setSaving(false);
+      }
+    },
+    [fetchReports, saving, showSnackbar],
+  );
 
-      showSnackbar(`Assigned to ${staffName}`, 'success');
-      window.dispatchEvent(new Event('mdrrmo:notif-refresh'));
-      fetchReports();
-    } catch (err) {
-      console.error('Assign error:', err);
-      showSnackbar('Failed to assign report', 'error');
-    } finally {
-      setSaving(false);
-    }
-  }, [fetchReports, saving, showSnackbar]);
+  // ── Assign to staff ──
+  const assignToStaff = useCallback(
+    async (report, staff) => {
+      if (saving) return;
+      setSaving(true);
+      try {
+        const staffName =
+          staff.full_name || staff.username || staff.email || `Staff #${staff.id}`;
 
-  // ── NEW: Clear assignment ──
-  const clearAssignment = useCallback(async (report) => {
-    if (saving) return;
-    setSaving(true);
-    try {
-      const { error } = await supabase
-        .from('hazard_reports')
-        .update({
-          assigned_to_staff_id: null,
-          assigned_to_name: null,
-          assigned_at: null,
-        })
-        .eq('id', report.id);
-      if (error) throw error;
+        const { error } = await supabase
+          .from('hazard_reports')
+          .update({
+            assigned_to_staff_id: staff.id,
+            assigned_to_name: staffName,
+            assigned_at: new Date().toISOString(),
+            // Move into review on first assignment
+            review_status:
+              report.review_status && report.review_status !== 'pending'
+                ? report.review_status
+                : 'under_review',
+          })
+          .eq('id', report.id);
+        if (error) throw error;
 
-      showSnackbar('Assignment cleared', 'success');
-      window.dispatchEvent(new Event('mdrrmo:notif-refresh'));
-      fetchReports();
-    } catch (err) {
-      console.error('Clear assignment error:', err);
-      showSnackbar('Failed to clear assignment', 'error');
-    } finally {
-      setSaving(false);
-    }
-  }, [fetchReports, saving, showSnackbar]);
+        showSnackbar(`Assigned to ${staffName}`, 'success');
+        window.dispatchEvent(new Event('mdrrmo:notif-refresh'));
+        await fetchReports();
+      } catch (err) {
+        console.error('Assign error:', err);
+        showSnackbar('Failed to assign report', 'error');
+      } finally {
+        setSaving(false);
+      }
+    },
+    [fetchReports, saving, showSnackbar],
+  );
 
-  // ── Toggle heatmap ──
-  const toggleHeatmap = useCallback(async (report) => {
-    const newVal = !(heatmapToggles[report.id] ?? true);
-    try {
-      const { error } = await supabase
-        .from('hazard_reports')
-        .update({ show_on_heatmap: newVal })
-        .eq('id', report.id);
-      if (error) throw error;
-      setHeatmapToggles(prev => ({ ...prev, [report.id]: newVal }));
-      showSnackbar(newVal ? 'Visible on heatmap' : 'Hidden from heatmap', 'success');
-    } catch (err) {
-      showSnackbar('Failed to toggle heatmap visibility', 'error');
-    }
-  }, [heatmapToggles, showSnackbar]);
+  // ── Clear assignment ──
+  const clearAssignment = useCallback(
+    async (report) => {
+      if (saving) return;
+      setSaving(true);
+      try {
+        const { error } = await supabase
+          .from('hazard_reports')
+          .update({
+            assigned_to_staff_id: null,
+            assigned_to_name: null,
+            assigned_at: null,
+          })
+          .eq('id', report.id);
+        if (error) throw error;
+
+        showSnackbar('Assignment cleared', 'success');
+        window.dispatchEvent(new Event('mdrrmo:notif-refresh'));
+        await fetchReports();
+      } catch (err) {
+        console.error('Clear assignment error:', err);
+        showSnackbar('Failed to clear assignment', 'error');
+      } finally {
+        setSaving(false);
+      }
+    },
+    [fetchReports, saving, showSnackbar],
+  );
+
+  // ── Toggle heatmap visibility ──
+  const toggleHeatmap = useCallback(
+    async (report) => {
+      if (saving) return;
+      setSaving(true);
+      const current = heatmapToggles[report.id] ?? true;
+      const next = !current;
+      try {
+        const { error } = await supabase
+          .from('hazard_reports')
+          .update({ show_on_heatmap: next })
+          .eq('id', report.id);
+        if (error) throw error;
+
+        setHeatmapToggles((prev) => ({ ...prev, [report.id]: next }));
+        showSnackbar(next ? 'Shown on heatmap' : 'Hidden from heatmap', 'success');
+        await fetchReports();
+      } catch (err) {
+        console.error(err);
+        showSnackbar('Failed to update heatmap visibility', 'error');
+      } finally {
+        setSaving(false);
+      }
+    },
+    [fetchReports, heatmapToggles, saving, showSnackbar],
+  );
 
   // ── Delete report ──
-  const deleteReport = useCallback(async (report) => {
-    try {
-      if (report.hazard_photos && Array.isArray(report.hazard_photos)) {
-        const { error: storageError } = await supabase.storage
-          .from('hazard-photos')
-          .remove(report.hazard_photos);
-        if (storageError) console.warn('Storage cleanup error:', storageError);
+  const deleteReport = useCallback(
+    async (report) => {
+      if (saving) return;
+      setSaving(true);
+      try {
+        const { error } = await supabase.from('hazard_reports').delete().eq('id', report.id);
+        if (error) throw error;
+
+        setActiveReport(null);
+        setConfirmAction(null);
+        showSnackbar('Report deleted', 'success');
+        window.dispatchEvent(new Event('mdrrmo:notif-refresh'));
+        await fetchReports();
+      } catch (err) {
+        console.error(err);
+        showSnackbar('Failed to delete report', 'error');
+      } finally {
+        setSaving(false);
       }
-      const { error } = await supabase
-        .from('hazard_reports')
-        .delete()
-        .eq('id', report.id);
-      if (error) throw error;
-      showSnackbar('Report deleted', 'success');
-      if (activeReport?.id === report.id) setActiveReport(null);
-      fetchReports();
-    } catch (err) {
-      showSnackbar('Failed to delete report', 'error');
-    }
-    setConfirmAction(null);
-  }, [activeReport, fetchReports, showSnackbar]);
+    },
+    [fetchReports, saving, showSnackbar],
+  );
 
   // ── Batch approve ──
   const batchApprove = useCallback(async () => {
+    if (saving) return;
+    const pending = reports.filter((r) => (r.status || 'pending') === 'pending');
+    if (pending.length === 0) {
+      setConfirmAction(null);
+      return;
+    }
+    setSaving(true);
     try {
-      const pendingIds = reports
-        .filter(r => (r.status || 'pending') === 'pending')
-        .map(r => r.id);
-      if (pendingIds.length === 0) {
-        showSnackbar('No pending reports', 'info');
-        setConfirmAction(null);
-        return;
-      }
+      const ids = pending.map((r) => r.id);
       const { error } = await supabase
         .from('hazard_reports')
         .update({ status: 'approved' })
-        .in('id', pendingIds);
+        .in('id', ids);
       if (error) throw error;
-      showSnackbar(`Approved ${pendingIds.length} reports`, 'success');
+
+      setConfirmAction(null);
+      showSnackbar(`Approved ${ids.length} report(s)`, 'success');
       window.dispatchEvent(new Event('mdrrmo:notif-refresh'));
-      fetchReports();
+      await fetchReports();
     } catch (err) {
-      showSnackbar('Batch approval failed', 'error');
+      console.error(err);
+      showSnackbar('Failed to batch approve', 'error');
+    } finally {
+      setSaving(false);
     }
-    setConfirmAction(null);
-  }, [reports, fetchReports, showSnackbar]);
+  }, [fetchReports, reports, saving, showSnackbar]);
 
-  // ═════════════════════════════════════════════════════════════════════════
-  //  RENDER
-  // ═════════════════════════════════════════════════════════════════════════
+  // ── Render ──
   return (
-    <div className="h-screen w-full flex flex-col bg-white font-sans overflow-hidden">
-
-      {/* ─── Snackbar ─── */}
+    <div className="h-[calc(100vh-4rem)] flex flex-col bg-slate-50">
+      {/* Snackbar */}
       {snackbar.show && (
-        <div className={`fixed top-4 left-1/2 -translate-x-1/2 z-[9999] px-5 py-2.5 rounded-lg shadow-2xl text-sm font-semibold transition-all duration-300 ${
-          snackbar.type === 'success' ? 'bg-emerald-600 text-white' :
-          snackbar.type === 'error' ? 'bg-red-600 text-white' : 'bg-blue-600 text-white'
-        }`}>
+        <div
+          className={`fixed top-20 right-6 z-[9998] px-4 py-3 rounded-xl shadow-lg text-sm font-semibold text-white ${
+            snackbar.type === 'error'
+              ? 'bg-red-600'
+              : snackbar.type === 'success'
+                ? 'bg-emerald-600'
+                : 'bg-slate-700'
+          }`}
+        >
           {snackbar.message}
         </div>
       )}
 
-      {/* ─── Confirm Dialog ─── */}
+      {/* Confirm dialog */}
       {confirmAction && (
-        <div className="fixed inset-0 z-[9998] bg-black/70 flex items-center justify-center p-4 backdrop-blur-sm"
-          onClick={() => setConfirmAction(null)}>
-          <div className="bg-slate-300 border border-slate-600 rounded-xl p-6 max-w-md w-full shadow-2xl"
-            onClick={(e) => e.stopPropagation()}>
-            <h3 className="text-slate-900 font-semibold text-base mb-2">{confirmAction.title}</h3>
-            <p className="text-slate-800 text-sm mb-5 leading-relaxed">{confirmAction.message}</p>
-            <div className="flex gap-3 justify-end">
-              <button onClick={() => setConfirmAction(null)}
-                className="px-4 py-2 text-sm font-semibold text-slate-300 bg-slate-700 rounded-lg hover:bg-slate-600 border border-slate-500 transition">Cancel</button>
-              <button onClick={() => { confirmAction.onConfirm(); }}
+        <div className="fixed inset-0 z-[9998] bg-black/50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-md p-6">
+            <h3 className="text-lg font-bold text-slate-900 mb-2">{confirmAction.title}</h3>
+            <p className="text-sm text-slate-600 mb-6">{confirmAction.message}</p>
+            <div className="flex justify-end gap-3">
+              <button
+                onClick={() => setConfirmAction(null)}
+                className="px-4 py-2 text-sm font-semibold rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 transition"
+              >
+                Cancel
+              </button>
+              <button
+                onClick={() => {
+                  confirmAction.onConfirm();
+                }}
                 className={`px-4 py-2 text-sm font-semibold text-white rounded-lg transition ${
-                  confirmAction.danger ? 'bg-red-600 hover:bg-red-700' : 'bg-emerald-600 hover:bg-emerald-700'
-                }`}>{confirmAction.action}</button>
+                  confirmAction.danger
+                    ? 'bg-red-600 hover:bg-red-700'
+                    : 'bg-emerald-600 hover:bg-emerald-700'
+                }`}
+              >
+                {confirmAction.action}
+              </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* ─── Lightbox ─── */}
+      {/* Lightbox */}
       {lightbox.open && (
         <Lightbox
           images={lightbox.images}
           currentIndex={lightbox.index}
           onClose={() => setLightbox({ open: false, images: [], index: 0 })}
-          onPrev={() => setLightbox(prev => ({ ...prev, index: prev.index === 0 ? prev.images.length - 1 : prev.index - 1 }))}
-          onNext={() => setLightbox(prev => ({ ...prev, index: prev.index === prev.images.length - 1 ? 0 : prev.index + 1 }))}
+          onPrev={() =>
+            setLightbox((prev) => ({
+              ...prev,
+              index: prev.index === 0 ? prev.images.length - 1 : prev.index - 1,
+            }))
+          }
+          onNext={() =>
+            setLightbox((prev) => ({
+              ...prev,
+              index: prev.index === prev.images.length - 1 ? 0 : prev.index + 1,
+            }))
+          }
         />
       )}
 
-      {/* ─── Top Navigation Bar ─── */}
-      <div className="bg-slate-100 p-4 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <div>
-            <h1 className="text-lg font-semibold text-slate-900 leading-tight pl-15">Admin Hazard Map</h1>
-            <p className="text-xs text-slate-600 pl-15">NAIC Area • Click a pin to view details</p>
-          </div>
+      {/* Top bar */}
+      <div className="bg-white border-b border-slate-200 p-4 flex items-center justify-between shrink-0">
+        <div>
+          <h1 className="text-lg font-semibold text-slate-900">Admin Hazard Map</h1>
+          <p className="text-xs text-slate-500">NAIC Area • Click a pin to view details</p>
         </div>
 
-        {/* Stats */}
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap justify-end">
           {[
-            { label: 'Total', value: stats.total, color: 'text-blue-700', bg: 'bg-blue-100 border-blue-200' },
-            { label: 'Pending', value: stats.pending, color: 'text-amber-700', bg: 'bg-amber-100 border-amber-200' },
-            { label: 'Approved', value: stats.approved, color: 'text-emerald-700', bg: 'bg-emerald-100 border-emerald-200' },
-            { label: 'Critical', value: stats.critical, color: 'text-red-700', bg: 'bg-red-100 border-red-200' },
-            // NEW: shows how many hazards are actively under review
-            { label: 'In Review', value: stats.underReview, color: 'text-indigo-700', bg: 'bg-indigo-100 border-indigo-200' },
-            // NEW: shows how many hazards have been assigned to staff
-            { label: 'Assigned', value: stats.assigned, color: 'text-purple-700', bg: 'bg-purple-100 border-purple-200' },
-          ].map(s => (
-            <div key={s.label} className={`px-3 py-1.5 rounded-md border ${s.bg} flex items-center gap-2`}>
+            { label: 'Total', value: stats.total, color: 'text-blue-700', bg: 'bg-blue-50 border-blue-200' },
+            { label: 'Pending', value: stats.pending, color: 'text-amber-700', bg: 'bg-amber-50 border-amber-200' },
+            { label: 'Approved', value: stats.approved, color: 'text-emerald-700', bg: 'bg-emerald-50 border-emerald-200' },
+            { label: 'Critical', value: stats.critical, color: 'text-red-700', bg: 'bg-red-50 border-red-200' },
+            { label: 'In Review', value: stats.underReview, color: 'text-indigo-700', bg: 'bg-indigo-50 border-indigo-200' },
+            { label: 'Assigned', value: stats.assigned, color: 'text-purple-700', bg: 'bg-purple-50 border-purple-200' },
+          ].map((s) => (
+            <div
+              key={s.label}
+              className={`px-3 py-1.5 rounded-md border ${s.bg} flex items-center gap-2`}
+            >
               <span className={`text-sm font-semibold ${s.color}`}>{s.value}</span>
               <span className={`text-xs ${s.color}`}>{s.label}</span>
             </div>
           ))}
 
-          <button onClick={fetchReports}
-            className="ml-2 p-2 bg-slate-200 hover:bg-slate-300 text-slate-700 rounded-md border border-slate-300 transition" title="Refresh">
-            <svg className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/>
+          <button
+            onClick={fetchReports}
+            className="ml-2 p-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-md border border-slate-300 transition"
+            title="Refresh"
+          >
+            <svg
+              className={`w-4 h-4 ${loading ? 'animate-spin' : ''}`}
+              fill="none"
+              stroke="currentColor"
+              viewBox="0 0 24 24"
+            >
+              <path
+                strokeLinecap="round"
+                strokeLinejoin="round"
+                strokeWidth={2}
+                d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"
+              />
             </svg>
           </button>
-          <button onClick={() => setShowReport(true)}
-            className="ml-2 px-3 py-2 text-sm font-semibold rounded-md border bg-purple-600 border-purple-500 text-white hover:bg-purple-700 transition">
+          <button
+            onClick={() => setShowReport(true)}
+            className="ml-1 px-3 py-2 text-sm font-semibold rounded-md border bg-purple-600 border-purple-500 text-white hover:bg-purple-700 transition"
+          >
             Summary Report
           </button>
         </div>
       </div>
 
-      {/* ─── Main Layout ─── */}
+      {/* Main layout */}
       <div className="flex flex-1 overflow-hidden relative">
-
-        {/* ══════ LEFT SIDEBAR ══════ */}
-        <div className="w-80 h-full bg-slate-100 border-r border-slate-300 flex flex-col shrink-0">
-
-          {/* Quick Actions */}
+        {/* LEFT SIDEBAR */}
+        <div className="w-80 h-full bg-white border-r border-slate-200 flex flex-col shrink-0">
           <div className="p-4 border-b border-slate-200">
             <h2 className="text-sm text-purple-700 font-semibold mb-3">Quick Actions</h2>
             <div className="grid grid-cols-2 gap-2">
-              <button onClick={() => setShowPendingOnly(!showPendingOnly)}
+              <button
+                onClick={() => setShowPendingOnly(!showPendingOnly)}
                 className={`px-3 py-2 text-sm font-semibold rounded-lg border transition flex items-center justify-center gap-1 ${
-                  showPendingOnly ? 'bg-amber-600 border-amber-500 text-white' : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
-                }`}>
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
-                </svg>
+                  showPendingOnly
+                    ? 'bg-amber-600 border-amber-500 text-white'
+                    : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
+                }`}
+              >
                 Pending
               </button>
-              <button onClick={() => setConfirmAction({
-                title: 'Approve All Pending?',
-                message: `This will approve ${stats.pending} pending reports. They will appear on the user heatmap.`,
-                action: `Approve ${stats.pending}`,
-                onConfirm: batchApprove
-              })}
-                className="px-3 py-2 text-sm font-semibold rounded-lg border bg-emerald-600 border-emerald-500 text-white hover:bg-emerald-700 transition flex items-center justify-center gap-1">
-                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M5 13l4 4L19 7"/>
-                </svg>
+              <button
+                onClick={() =>
+                  setConfirmAction({
+                    title: 'Approve All Pending?',
+                    message: `This will approve ${stats.pending} pending reports. They will appear on the user heatmap.`,
+                    action: `Approve ${stats.pending}`,
+                    onConfirm: batchApprove,
+                  })
+                }
+                disabled={stats.pending === 0 || saving}
+                className="px-3 py-2 text-sm font-semibold rounded-lg border bg-emerald-600 border-emerald-500 text-white hover:bg-emerald-700 transition flex items-center justify-center gap-1 disabled:opacity-50"
+              >
                 Approve All
               </button>
             </div>
           </div>
 
-          {/* Search */}
           <div className="p-4 border-b border-slate-200">
             <div className="relative">
-              <svg className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/>
+              <svg
+                className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400"
+                fill="none"
+                stroke="currentColor"
+                viewBox="0 0 24 24"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  strokeWidth={2}
+                  d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"
+                />
               </svg>
-              <input type="text" placeholder="Search reports..."
-                value={searchQuery} onChange={(e) => setSearchQuery(e.target.value)}
-                className="w-full pl-9 pr-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500" />
+              <input
+                type="text"
+                placeholder="Search reports..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="w-full pl-9 pr-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
             </div>
           </div>
 
-          {/* Filters */}
           <div className="p-4 border-b border-slate-200 space-y-3">
             <h2 className="text-sm text-purple-700 font-semibold">Filters</h2>
-            <select value={selectedCategory} onChange={(e) => setSelectedCategory(e.target.value)}
-              className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-500">
-              {CATEGORIES.map(c => <option key={c.id} value={c.id}>{CATEGORY_ICONS[c.id] || ''} {c.label}</option>)}
+            <select
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-500"
+            >
+              {CATEGORIES.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {CATEGORY_ICONS[c.id] || ''} {c.label}
+                </option>
+              ))}
             </select>
             <div className="grid grid-cols-2 gap-2">
-              <select value={selectedRisk} onChange={(e) => setSelectedRisk(e.target.value)}
-                className="px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-500">
-                {RISK_LEVELS.map(r => <option key={r.id} value={r.id}>{r.label}</option>)}
+              <select
+                value={selectedRisk}
+                onChange={(e) => setSelectedRisk(e.target.value)}
+                className="px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              >
+                {RISK_LEVELS.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.label}
+                  </option>
+                ))}
               </select>
-              <select value={selectedStatus} onChange={(e) => setSelectedStatus(e.target.value)}
-                className="px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-500">
-                {STATUSES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+              <select
+                value={selectedStatus}
+                onChange={(e) => setSelectedStatus(e.target.value)}
+                className="px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              >
+                {STATUSES.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.label}
+                  </option>
+                ))}
               </select>
             </div>
-            {/* NEW: review-status filter */}
-            <select value={selectedReview} onChange={(e) => setSelectedReview(e.target.value)}
-              className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-500">
-              {REVIEW_STATUSES.map(s => <option key={s.id} value={s.id}>{s.label}</option>)}
+            <select
+              value={selectedReview}
+              onChange={(e) => setSelectedReview(e.target.value)}
+              className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-500"
+            >
+              {REVIEW_STATUSES.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.label}
+                </option>
+              ))}
             </select>
-            <button onClick={() => setIsRealistic(!isRealistic)}
-              className="w-full px-3 py-2 text-sm font-semibold rounded-lg border bg-purple-600 border-purple-500 text-white hover:bg-purple-700 transition">
+            <button
+              onClick={() => setIsRealistic(!isRealistic)}
+              className="w-full px-3 py-2 text-sm font-semibold rounded-lg border bg-purple-600 border-purple-500 text-white hover:bg-purple-700 transition"
+            >
               {isRealistic ? 'Standard Map' : 'Satellite View'}
             </button>
           </div>
 
-          {/* Reports List */}
+          {/* Reports list */}
           <div className="flex-1 overflow-y-auto p-4">
             <p className="text-sm text-purple-700 mb-3 font-semibold">
               Reports ({filteredReports.length}/{stats.total})
             </p>
             {filteredReports.length === 0 ? (
               <div className="text-center text-slate-500 text-sm py-10">
-                <svg className="w-10 h-10 mx-auto mb-2 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M9 20l-5.447-2.724A1 1 0 013 16.382V5.618a1 1 0 011.447-.894L9 7m0 13l6-3m-6 3V7m6 10l4.553 2.276A1 1 0 0021 18.382V7.618a1 1 0 00-.553-.894L15 4m0 13V4m0 0L9 7"/>
-                </svg>
                 No results found
               </div>
             ) : (
               <div className="space-y-2">
-                {filteredReports.map(report => {
+                {filteredReports.map((report) => {
                   const hc = HAZARD_COLORS[report.risk_level?.toLowerCase()] || '#3b82f6';
                   const rptStatus = report.status || 'pending';
                   const isPending = rptStatus === 'pending';
                   const isActive = activeReport?.id === report.id;
                   const photos = getPhotoUrls(report.hazard_photos);
-
-                  // NEW: review/assignment badges for the list
                   const reviewStatus = report.review_status || 'pending';
                   const reviewMeta = REVIEW_STATUS_META[reviewStatus];
                   const assignee = report.assigned_to_name;
 
                   return (
-                    <div key={report.id}
+                    <div
+                      key={report.id}
                       onClick={() => setActiveReport(report)}
                       className={`p-3 rounded-lg border cursor-pointer transition-all ${
-                        isActive ? 'bg-purple-50 border-purple-300 shadow-sm' :
-                        'bg-white border-slate-200 hover:bg-slate-50 hover:border-slate-300'
-                      }`}>
+                        isActive
+                          ? 'bg-purple-50 border-purple-300 shadow-sm'
+                          : 'bg-white border-slate-200 hover:bg-slate-50 hover:border-slate-300'
+                      }`}
+                    >
                       <div className="flex items-center gap-2 mb-2 flex-wrap">
-                        <span className="px-2 py-0.5 text-xs font-semibold rounded capitalize"
-                          style={{ backgroundColor: hc + '20', color: hc }}>{report.risk_level || '?'}</span>
-                        <span className={`px-2 py-0.5 text-xs font-semibold rounded border capitalize ${
-                          isPending ? 'bg-amber-100 text-amber-700 border-amber-300' :
-                          rptStatus === 'approved' ? 'bg-emerald-100 text-emerald-700 border-emerald-300' :
-                          'bg-red-100 text-red-700 border-red-300'
-                        }`}>{rptStatus}</span>
-                        {/* NEW: review-status chip */}
+                        <span
+                          className="px-2 py-0.5 text-xs font-semibold rounded capitalize"
+                          style={{ backgroundColor: hc + '20', color: hc }}
+                        >
+                          {report.risk_level || '?'}
+                        </span>
+                        <span
+                          className={`px-2 py-0.5 text-xs font-semibold rounded border capitalize ${
+                            isPending
+                              ? 'bg-amber-100 text-amber-700 border-amber-300'
+                              : rptStatus === 'approved'
+                                ? 'bg-emerald-100 text-emerald-700 border-emerald-300'
+                                : 'bg-red-100 text-red-700 border-red-300'
+                          }`}
+                        >
+                          {rptStatus}
+                        </span>
                         {reviewStatus !== 'pending' && (
-                          <span className={`px-2 py-0.5 text-xs font-semibold rounded border ${reviewMeta.className}`}>
+                          <span
+                            className={`px-2 py-0.5 text-xs font-semibold rounded border ${reviewMeta.className}`}
+                          >
                             {reviewMeta.label}
                           </span>
                         )}
-                        <span className="px-2 py-0.5 text-xs rounded bg-slate-100 text-slate-700">{report.hazard_category}</span>
-                        {photos.length > 0 && <span className="text-xs text-sky-600">📸 {photos.length}</span>}
+                        <span className="px-2 py-0.5 text-xs rounded bg-slate-100 text-slate-700">
+                          {report.hazard_category}
+                        </span>
+                        {photos.length > 0 && (
+                          <span className="text-xs text-sky-600">📸 {photos.length}</span>
+                        )}
                       </div>
-                      <p className="text-sm text-slate-900 line-clamp-1 mb-1">{report.hazard_description || 'No description'}</p>
+                      <p className="text-sm text-slate-900 line-clamp-1 mb-1">
+                        {report.hazard_description || 'No description'}
+                      </p>
                       <p className="text-xs text-slate-500 truncate">{report.address || ''}</p>
                       <p className="text-xs text-slate-500 mt-1">
                         {report.reporter_name || 'Anonymous'} • {report.date_observed || ''}
                       </p>
-                      {/* NEW: assignee line */}
                       {assignee && (
                         <p className="text-xs text-indigo-700 mt-1 truncate">
                           👤 Assigned to <strong>{assignee}</strong>
@@ -1229,18 +1418,17 @@ const AdminHazardMap = () => {
           </div>
         </div>
 
-        {/* ══════ MAP ══════ */}
+        {/* MAP */}
         <div className="flex-1 relative h-full">
           {loading && (
-            <div className="absolute inset-0 z-[1000] bg-slate-900/80 flex items-center justify-center backdrop-blur-sm">
+            <div className="absolute inset-0 z-[1000] bg-slate-900/60 flex items-center justify-center backdrop-blur-sm">
               <div className="text-center">
-                <div className="w-10 h-10 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4"></div>
-                <p className="text-purple-300 text-sm font-semibold">Loading hazard data...</p>
+                <div className="w-10 h-10 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto mb-4" />
+                <p className="text-purple-200 text-sm font-semibold">Loading hazard data...</p>
               </div>
             </div>
           )}
 
-          {/* Map Legend */}
           <div className="absolute bottom-6 left-6 z-[1000] bg-white border border-slate-200 rounded-xl p-4 shadow-xl">
             <p className="text-sm text-slate-900 font-semibold mb-2">Risk Level</p>
             {[
@@ -1248,9 +1436,9 @@ const AdminHazardMap = () => {
               { label: 'High', color: '#ea580c' },
               { label: 'Medium', color: '#eab308' },
               { label: 'Low', color: '#22c55e' },
-            ].map(item => (
+            ].map((item) => (
               <div key={item.label} className="flex items-center gap-2 py-1">
-                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }}></div>
+                <div className="w-3 h-3 rounded-full" style={{ backgroundColor: item.color }} />
                 <span className="text-xs text-slate-700">{item.label}</span>
               </div>
             ))}
@@ -1260,9 +1448,9 @@ const AdminHazardMap = () => {
                 { label: 'Pending', color: '#f59e0b' },
                 { label: 'Approved', color: '#10b981' },
                 { label: 'Rejected', color: '#ef4444' },
-              ].map(item => (
+              ].map((item) => (
                 <div key={item.label} className="flex items-center gap-2 py-1">
-                  <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: item.color }}></div>
+                  <div className="w-3 h-3 rounded-sm" style={{ backgroundColor: item.color }} />
                   <span className="text-xs text-slate-700">{item.label}</span>
                 </div>
               ))}
@@ -1272,15 +1460,24 @@ const AdminHazardMap = () => {
             </div>
           </div>
 
-          {/* Info overlay */}
           <div className="absolute top-6 left-6 z-[1000] bg-white border border-slate-200 rounded-xl px-4 py-3 shadow-md">
-            <div className="flex items-center gap-4 text-xs font-medium">
-              <span className="text-slate-600">Showing: <strong className="text-slate-900">{filteredReports.length}</strong></span>
+            <div className="flex items-center gap-4 text-xs font-medium flex-wrap">
+              <span className="text-slate-600">
+                Showing: <strong className="text-slate-900">{filteredReports.length}</strong>
+              </span>
               <span className="text-slate-300">|</span>
-              <span className="text-slate-600">Pending: <strong className="text-amber-600">{stats.pending}</strong></span>
-              <span className="text-slate-600">Critical: <strong className="text-red-600">{stats.critical}</strong></span>
-              <span className="text-slate-600">High: <strong className="text-orange-600">{stats.high}</strong></span>
-              <span className="text-slate-600">In Review: <strong className="text-indigo-600">{stats.underReview}</strong></span>
+              <span className="text-slate-600">
+                Pending: <strong className="text-amber-600">{stats.pending}</strong>
+              </span>
+              <span className="text-slate-600">
+                Critical: <strong className="text-red-600">{stats.critical}</strong>
+              </span>
+              <span className="text-slate-600">
+                High: <strong className="text-orange-600">{stats.high}</strong>
+              </span>
+              <span className="text-slate-600">
+                In Review: <strong className="text-indigo-600">{stats.underReview}</strong>
+              </span>
             </div>
           </div>
 
@@ -1296,67 +1493,79 @@ const AdminHazardMap = () => {
           >
             <TileLayer
               key={isRealistic ? 'realistic' : 'standard'}
-              url={isRealistic
-                ? "https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}"
-                : "https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+              url={
+                isRealistic
+                  ? 'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}'
+                  : 'https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png'
               }
               attribution={isRealistic ? '&copy; Esri' : '&copy; OpenStreetMap'}
             />
 
-            {/* Mask */}
             <Polygon
               positions={maskCoords}
-              pathOptions={{ fillColor: isRealistic ? '#000' : '#f8fafc', fillOpacity: 0.55, color: 'transparent' }}
+              pathOptions={{
+                fillColor: isRealistic ? '#000' : '#f8fafc',
+                fillOpacity: 0.55,
+                color: 'transparent',
+              }}
             />
 
-            {/* Boundary */}
             <Polygon
               positions={flippedBoundary}
-              pathOptions={{ color: '#9333ea', fillOpacity: 0, weight: 2, dashArray: '5, 5', opacity: 0.7 }}
+              pathOptions={{
+                color: '#9333ea',
+                fillOpacity: 0,
+                weight: 2,
+                dashArray: '5, 5',
+                opacity: 0.7,
+              }}
             />
 
-            {/* Markers */}
-            {filteredReports.map((report) => {
-              const riskColor = HAZARD_COLORS[report.risk_level?.toLowerCase()] || '#3b82f6';
-              const rptStatus = report.status || 'pending';
-              const isPending = rptStatus === 'pending';
-              const isActive = activeReport?.id === report.id;
+            {filteredReports
+              .filter(hasValidCoords)
+              .map((report) => {
+                const riskColor = HAZARD_COLORS[report.risk_level?.toLowerCase()] || '#3b82f6';
+                const rptStatus = report.status || 'pending';
+                const isPending = rptStatus === 'pending';
+                const isActive = activeReport?.id === report.id;
 
-              return (
-                <Marker
-                  key={report.id}
-                  position={[parseFloat(report.latitude), parseFloat(report.longitude)]}
-                  icon={createColoredIcon(
-                    isActive ? '#9333ea' : (isPending ? '#f59e0b' : riskColor),
-                    isPending || isActive
-                  )}
-                  eventHandlers={{
-                    click: () => setActiveReport(report),
-                  }}
-                />
-              );
-            })}
+                return (
+                  <Marker
+                    key={report.id}
+                    position={[parseFloat(report.latitude), parseFloat(report.longitude)]}
+                    icon={createColoredIcon(
+                      isActive ? '#9333ea' : isPending ? '#f59e0b' : riskColor,
+                      isPending || isActive,
+                    )}
+                    eventHandlers={{
+                      click: () => setActiveReport(report),
+                    }}
+                  />
+                );
+              })}
           </MapContainer>
         </div>
 
-        {/* ══════ RIGHT DETAIL PANEL ══════ */}
+        {/* RIGHT DETAIL PANEL */}
         {activeReport && (
           <DetailPanel
             report={activeReport}
             onClose={() => setActiveReport(null)}
             onUpdateStatus={updateStatus}
             onToggleHeatmap={toggleHeatmap}
-            onDelete={(report) => setConfirmAction({
-              title: 'Delete Report?',
-              message: 'This permanently deletes the report and all its data. Cannot be undone.',
-              action: 'Delete',
-              danger: true,
-              onConfirm: () => deleteReport(report)
-            })}
+            onDelete={(report) =>
+              setConfirmAction({
+                title: 'Delete Report?',
+                message:
+                  'This permanently deletes the report and all its data. This cannot be undone.',
+                action: 'Delete',
+                danger: true,
+                onConfirm: () => deleteReport(report),
+              })
+            }
             heatmapVisible={heatmapToggles[activeReport.id] ?? true}
             photos={getPhotoUrls(activeReport.hazard_photos)}
             onOpenLightbox={(images, index) => setLightbox({ open: true, images, index })}
-            // NEW: assignment + review props
             staffMembers={staffMembers}
             onAssign={assignToStaff}
             onClearAssignment={clearAssignment}
@@ -1379,7 +1588,7 @@ const AdminHazardMap = () => {
 export default AdminHazardMap;
 
 // =============================================
-// HAZARD SUMMARY-ONLY REPORT
+// HAZARD SUMMARY REPORT MODAL (unchanged logic, cleaned)
 // =============================================
 const HazardSummaryReportModal = ({ reportData, onClose }) => {
   const [fromDate, setFromDate] = useState('');
@@ -1410,7 +1619,6 @@ const HazardSummaryReportModal = ({ reportData, onClose }) => {
   }, [reportData, fromDate, toDate]);
 
   const data = filtered;
-
   const pct = (count) => (data.length ? Math.round((count / data.length) * 100) : 0);
 
   const statusOf = (r) => (r.status || 'pending').toLowerCase();
@@ -1461,9 +1669,7 @@ const HazardSummaryReportModal = ({ reportData, onClose }) => {
     minute: '2-digit',
   });
   const rangeLabel =
-    fromDate || toDate
-      ? `${fromDate || 'Start'} → ${toDate || 'End'}`
-      : 'All dates';
+    fromDate || toDate ? `${fromDate || 'Start'} → ${toDate || 'End'}` : 'All dates';
 
   const RISK_COLORS = {
     critical: '#dc2626',
@@ -1480,12 +1686,8 @@ const HazardSummaryReportModal = ({ reportData, onClose }) => {
       .replace(/"/g, '&quot;')
       .replace(/'/g, '&#39;');
 
-  /**
-   * Print ONLY the summary content (header, cards, status, risk,
-   * category table, detailed records, notes, footer) on a white page.
-   * Uses a dedicated print window so nothing else from the app is printed.
-   */
   const handlePrint = () => {
+    // (same print logic as original – kept intact)
     const card = (label, value, sub) => `
       <div class="card">
         <div class="card-label">${escapeHtml(label)}</div>
@@ -1713,11 +1915,9 @@ const HazardSummaryReportModal = ({ reportData, onClose }) => {
     <p>This report is system-generated and reflects data at the time of generation.</p>
     <p>© 2023 E-MDRRMO</p>
   </div>
-
 </body>
 </html>`;
 
-    // Use a hidden iframe (not blocked like window.open pop-ups)
     const existing = document.getElementById('hazard-summary-print-frame');
     if (existing) existing.remove();
 
@@ -1746,7 +1946,6 @@ const HazardSummaryReportModal = ({ reportData, onClose }) => {
       } catch (err) {
         console.error('Print failed:', err);
       }
-      // Remove iframe after print dialog closes / cancels
       setTimeout(() => {
         try {
           iframe.remove();
@@ -1756,7 +1955,6 @@ const HazardSummaryReportModal = ({ reportData, onClose }) => {
       }, 60_000);
     };
 
-    // Wait until iframe content is ready
     if (iframe.contentWindow.document.readyState === 'complete') {
       setTimeout(triggerPrint, 300);
     } else {
@@ -1789,9 +1987,13 @@ const HazardSummaryReportModal = ({ reportData, onClose }) => {
           <tbody>
             {tableRows.map((d) => (
               <tr key={d.name} className="border-b border-slate-100">
-                <td className="p-2 border border-slate-200 font-semibold text-slate-700 capitalize">{d.name}</td>
+                <td className="p-2 border border-slate-200 font-semibold text-slate-700 capitalize">
+                  {d.name}
+                </td>
                 <td className="p-2 border border-slate-200 text-center text-slate-600">{d.count}</td>
-                <td className="p-2 border border-slate-200 text-center text-slate-600">{pct(d.count)}%</td>
+                <td className="p-2 border border-slate-200 text-center text-slate-600">
+                  {pct(d.count)}%
+                </td>
               </tr>
             ))}
           </tbody>
@@ -1809,7 +2011,6 @@ const HazardSummaryReportModal = ({ reportData, onClose }) => {
         className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-3xl my-8"
         onClick={(e) => e.stopPropagation()}
       >
-        {/* Toolbar — not printed */}
         <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-b border-slate-200 sticky top-0 bg-white z-10 rounded-t-2xl">
           <h3 className="font-bold text-slate-800">Hazard Summary Report</h3>
 
@@ -1868,7 +2069,6 @@ const HazardSummaryReportModal = ({ reportData, onClose }) => {
           </div>
         </div>
 
-        {/* On-screen preview = same content that will print */}
         <div className="p-8 text-slate-800 max-h-[70vh] overflow-y-auto">
           <div className="text-center border-b border-slate-200 pb-6 mb-8">
             <h1 className="text-2xl font-black text-slate-900">HAZARD REPORT SUMMARY</h1>
@@ -1878,8 +2078,18 @@ const HazardSummaryReportModal = ({ reportData, onClose }) => {
           </div>
 
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
-            <Card label="Total Reports" value={data.length} sub="In coverage" color="bg-blue-50 border-blue-200 text-blue-700" />
-            <Card label="Critical Risk" value={riskCounts.critical} sub={`${pct(riskCounts.critical)}% of total`} color="bg-red-50 border-red-200 text-red-700" />
+            <Card
+              label="Total Reports"
+              value={data.length}
+              sub="In coverage"
+              color="bg-blue-50 border-blue-200 text-blue-700"
+            />
+            <Card
+              label="Critical Risk"
+              value={riskCounts.critical}
+              sub={`${pct(riskCounts.critical)}% of total`}
+              color="bg-red-50 border-red-200 text-red-700"
+            />
             <Card
               label="Peak Month"
               value={peakMonth ? peakMonth.name : '—'}
@@ -1897,20 +2107,60 @@ const HazardSummaryReportModal = ({ reportData, onClose }) => {
           <div className="mb-8">
             <h2 className="font-bold text-slate-800 mb-3">Status Overview</h2>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <Card label="Pending" value={statusCounts.pending} sub={`${pct(statusCounts.pending)}% of total`} color="bg-yellow-50 border-yellow-200 text-yellow-700" />
-              <Card label="Approved" value={statusCounts.approved} sub={`${pct(statusCounts.approved)}% of total`} color="bg-green-50 border-green-200 text-green-700" />
-              <Card label="Rejected" value={statusCounts.rejected} sub={`${pct(statusCounts.rejected)}% of total`} color="bg-red-50 border-red-200 text-red-700" />
-              <Card label="Other / Reset" value={statusCounts.other} sub={`${pct(statusCounts.other)}% of total`} color="bg-slate-50 border-slate-200 text-slate-700" />
+              <Card
+                label="Pending"
+                value={statusCounts.pending}
+                sub={`${pct(statusCounts.pending)}% of total`}
+                color="bg-yellow-50 border-yellow-200 text-yellow-700"
+              />
+              <Card
+                label="Approved"
+                value={statusCounts.approved}
+                sub={`${pct(statusCounts.approved)}% of total`}
+                color="bg-green-50 border-green-200 text-green-700"
+              />
+              <Card
+                label="Rejected"
+                value={statusCounts.rejected}
+                sub={`${pct(statusCounts.rejected)}% of total`}
+                color="bg-red-50 border-red-200 text-red-700"
+              />
+              <Card
+                label="Other / Reset"
+                value={statusCounts.other}
+                sub={`${pct(statusCounts.other)}% of total`}
+                color="bg-slate-50 border-slate-200 text-slate-700"
+              />
             </div>
           </div>
 
           <div className="mb-8">
             <h2 className="font-bold text-slate-800 mb-3">Risk Level Overview</h2>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-              <Card label="Critical" value={riskCounts.critical} sub={`${pct(riskCounts.critical)}% of total`} color="bg-red-50 border-red-200 text-red-700" />
-              <Card label="High" value={riskCounts.high} sub={`${pct(riskCounts.high)}% of total`} color="bg-orange-50 border-orange-200 text-orange-700" />
-              <Card label="Medium" value={riskCounts.medium} sub={`${pct(riskCounts.medium)}% of total`} color="bg-yellow-50 border-yellow-200 text-yellow-700" />
-              <Card label="Low" value={riskCounts.low} sub={`${pct(riskCounts.low)}% of total`} color="bg-green-50 border-green-200 text-green-700" />
+              <Card
+                label="Critical"
+                value={riskCounts.critical}
+                sub={`${pct(riskCounts.critical)}% of total`}
+                color="bg-red-50 border-red-200 text-red-700"
+              />
+              <Card
+                label="High"
+                value={riskCounts.high}
+                sub={`${pct(riskCounts.high)}% of total`}
+                color="bg-orange-50 border-orange-200 text-orange-700"
+              />
+              <Card
+                label="Medium"
+                value={riskCounts.medium}
+                sub={`${pct(riskCounts.medium)}% of total`}
+                color="bg-yellow-50 border-yellow-200 text-yellow-700"
+              />
+              <Card
+                label="Low"
+                value={riskCounts.low}
+                sub={`${pct(riskCounts.low)}% of total`}
+                color="bg-green-50 border-green-200 text-green-700"
+              />
             </div>
           </div>
 
@@ -1930,11 +2180,19 @@ const HazardSummaryReportModal = ({ reportData, onClose }) => {
                   <thead>
                     <tr className="bg-slate-100">
                       <th className="p-2 text-left font-bold border border-slate-200 text-slate-700">#</th>
-                      <th className="p-2 text-left font-bold border border-slate-200 text-slate-700">Date Observed</th>
-                      <th className="p-2 text-left font-bold border border-slate-200 text-slate-700">Category</th>
+                      <th className="p-2 text-left font-bold border border-slate-200 text-slate-700">
+                        Date Observed
+                      </th>
+                      <th className="p-2 text-left font-bold border border-slate-200 text-slate-700">
+                        Category
+                      </th>
                       <th className="p-2 text-left font-bold border border-slate-200 text-slate-700">Risk</th>
-                      <th className="p-2 text-left font-bold border border-slate-200 text-slate-700">Status</th>
-                      <th className="p-2 text-left font-bold border border-slate-200 text-slate-700">Address</th>
+                      <th className="p-2 text-left font-bold border border-slate-200 text-slate-700">
+                        Status
+                      </th>
+                      <th className="p-2 text-left font-bold border border-slate-200 text-slate-700">
+                        Address
+                      </th>
                     </tr>
                   </thead>
                   <tbody>
@@ -1943,16 +2201,24 @@ const HazardSummaryReportModal = ({ reportData, onClose }) => {
                       return (
                         <tr key={r.id} className="border-b border-slate-100">
                           <td className="p-2 border border-slate-200 text-slate-500">{i + 1}</td>
-                          <td className="p-2 border border-slate-200 text-slate-700">{r.date_observed || '—'}</td>
-                          <td className="p-2 border border-slate-200 text-slate-700 capitalize">{r.hazard_category || '—'}</td>
+                          <td className="p-2 border border-slate-200 text-slate-700">
+                            {r.date_observed || '—'}
+                          </td>
+                          <td className="p-2 border border-slate-200 text-slate-700 capitalize">
+                            {r.hazard_category || '—'}
+                          </td>
                           <td
                             className="p-2 border border-slate-200 font-semibold capitalize"
                             style={{ color: RISK_COLORS[risk] || '#3b82f6' }}
                           >
                             {r.risk_level || '—'}
                           </td>
-                          <td className="p-2 border border-slate-200 text-slate-700 capitalize">{statusOf(r)}</td>
-                          <td className="p-2 border border-slate-200 text-slate-600">{r.address || '—'}</td>
+                          <td className="p-2 border border-slate-200 text-slate-700 capitalize">
+                            {statusOf(r)}
+                          </td>
+                          <td className="p-2 border border-slate-200 text-slate-600">
+                            {r.address || '—'}
+                          </td>
                         </tr>
                       );
                     })}
@@ -1965,7 +2231,10 @@ const HazardSummaryReportModal = ({ reportData, onClose }) => {
           <div className="mb-8 p-4 bg-slate-50 border border-slate-200 rounded-xl">
             <h2 className="font-bold text-slate-800 mb-2">Notes</h2>
             <ul className="text-sm text-slate-600 list-disc list-inside space-y-1">
-              <li>{heatmapVisibleCount} of {data.length} reports are currently visible on the public heatmap.</li>
+              <li>
+                {heatmapVisibleCount} of {data.length} reports are currently visible on the public
+                heatmap.
+              </li>
               <li>Reporter names and contact details are intentionally excluded from this summary.</li>
               <li>Coverage is based on each report&apos;s observed date, not submission date.</li>
             </ul>
