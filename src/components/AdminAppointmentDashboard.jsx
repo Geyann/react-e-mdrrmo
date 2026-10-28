@@ -4,15 +4,39 @@ import React, { useEffect, useMemo, useState } from "react";
 import Calendar from 'react-calendar';
 import 'react-calendar/dist/Calendar.css';
 import { supabase } from "../createClient";
-import { useDialog } from "./AppDialog";
+import { useDialog } from "../components/AppDialog";
 import {
     BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Cell,
     PieChart, Pie, Legend
 } from "recharts";
 import {
     Check, X, Clock, CheckCircle, XCircle, Search, AlertCircle, History,
-    CalendarDays, Download, Loader2
+    CalendarDays, Download, Loader2, User, Phone, Hash, FileText
 } from "lucide-react";
+
+
+function DetailRow({ icon: Icon, label, value, full = false }) {
+    const displayValue =
+        value === null || value === undefined || value === ""
+            ? "—"
+            : String(value);
+
+    return (
+        <div className={`flex items-start gap-3 ${full ? "sm:col-span-2" : ""}`}>
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-purple-50">
+                <Icon className="h-4 w-4 text-purple-600" />
+            </div>
+            <div className="min-w-0">
+                <p className="text-xs font-bold uppercase tracking-wide text-slate-400">
+                    {label}
+                </p>
+                <p className="mt-0.5 break-words text-sm font-semibold text-slate-800">
+                    {displayValue}
+                </p>
+            </div>
+        </div>
+    );
+}
 
 const AdminDashboard = () => {
     // ─────────────────────────────────────────────────────────────
@@ -58,6 +82,9 @@ const AdminDashboard = () => {
     const [declineReason, setDeclineReason] = useState("");
     const [declineError, setDeclineError] = useState("");
     const [declineSaving, setDeclineSaving] = useState(false);
+
+    // Review details before approve / decline
+    const [selectedAppointmentId, setSelectedAppointmentId] = useState(null);
 
     // ─────────────────────────────────────────────────────────────
     // Timezone-safe helpers
@@ -588,6 +615,17 @@ const AdminDashboard = () => {
         return history;
     };
 
+    const selectedAppointment = useMemo(() => {
+        if (selectedAppointmentId == null) return null;
+        return (
+            allAppointments.find(
+                (apt) =>
+                    String(apt.appointmentId) === String(selectedAppointmentId) ||
+                    String(apt.id) === String(selectedAppointmentId)
+            ) || null
+        );
+    }, [allAppointments, selectedAppointmentId]);
+
     // ─────────────────────────────────────────────────────────────
     // Loading
     // ─────────────────────────────────────────────────────────────
@@ -1028,14 +1066,14 @@ const AdminDashboard = () => {
                                                             {apt.status === "pending" ? (
                                                                 <>
                                                                     <button
-                                                                        onClick={() => handleApprove(apt.appointmentId)}
+                                                                        onClick={() => setSelectedAppointmentId(apt.appointmentId || apt.id)}
                                                                         className="flex items-center gap-1 px-3 py-2 bg-green-500 hover:bg-green-600 text-white rounded-lg text-xs font-bold transition"
                                                                     >
                                                                         <Check className="w-3 h-3" />
                                                                         Approve
                                                                     </button>
                                                                     <button
-                                                                        onClick={() => openDeclineModal(apt)}
+                                                                        onClick={() => setSelectedAppointmentId(apt.appointmentId || apt.id)}
                                                                         className="flex items-center gap-1 px-3 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs font-bold transition"
                                                                     >
                                                                         <X className="w-3 h-3" />
@@ -1303,6 +1341,209 @@ const AdminDashboard = () => {
                 )}
 
                 {/* ============================================================= */}
+                {/* REVIEW APPOINTMENT DETAILS (before approve / decline)         */}
+                {/* ============================================================= */}
+                {selectedAppointment && (
+                    <div
+                        className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4"
+                        onClick={() => {
+                            if (!declineSaving) setSelectedAppointmentId(null);
+                        }}
+                    >
+                        <div
+                            role="dialog"
+                            aria-modal="true"
+                            aria-labelledby="appointment-review-title"
+                            className="my-8 w-full max-w-2xl rounded-2xl bg-white shadow-2xl"
+                            onClick={(e) => e.stopPropagation()}
+                        >
+                            <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-6 py-4">
+                                <div className="flex min-w-0 items-start gap-3">
+                                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-purple-100 text-purple-700">
+                                        <CalendarDays className="h-5 w-5" />
+                                    </div>
+                                    <div className="min-w-0">
+                                        <h2
+                                            id="appointment-review-title"
+                                            className="text-lg font-black text-slate-800"
+                                        >
+                                            Review Appointment Request
+                                        </h2>
+                                        <p className="mt-0.5 text-xs text-slate-500">
+                                            #{selectedAppointment.appointmentId || selectedAppointment.id} ·{" "}
+                                            {selectedAppointment.fullName || "Unknown"}
+                                        </p>
+                                        <div className="mt-2">
+                                            <span
+                                                className={`rounded-full px-3 py-1 text-xs font-bold ${
+                                                    selectedAppointment.status === "pending"
+                                                        ? "bg-yellow-100 text-yellow-700"
+                                                        : selectedAppointment.status === "approved"
+                                                            ? "bg-green-100 text-green-700"
+                                                            : "bg-red-100 text-red-700"
+                                                }`}
+                                            >
+                                                {(selectedAppointment.status || "pending").charAt(0).toUpperCase() +
+                                                    (selectedAppointment.status || "pending").slice(1)}
+                                            </span>
+                                        </div>
+                                    </div>
+                                </div>
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedAppointmentId(null)}
+                                    disabled={declineSaving}
+                                    aria-label="Close details"
+                                    className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 disabled:opacity-50"
+                                >
+                                    <XCircle className="h-5 w-5" />
+                                </button>
+                            </div>
+
+                            <div className="space-y-5 px-6 py-5">
+                                <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                                    <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-600 text-sm font-bold text-white">
+                                        {(selectedAppointment.fullName?.charAt(0) || "?").toUpperCase()}
+                                    </div>
+                                    <div className="min-w-0 flex-1">
+                                        <p className="text-sm font-bold text-slate-800">
+                                            {selectedAppointment.fullName || "Unknown"}
+                                        </p>
+                                        <p className="mt-1 font-mono text-xs text-slate-500">
+                                            User ID: {selectedAppointment.user_id || selectedAppointment.userId || "—"}
+                                        </p>
+                                    </div>
+                                </div>
+
+                                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                                    <DetailRow
+                                        icon={Hash}
+                                        label="Appointment ID"
+                                        value={`#${selectedAppointment.appointmentId || selectedAppointment.id}`}
+                                    />
+                                    <DetailRow
+                                        icon={User}
+                                        label="Full Name"
+                                        value={selectedAppointment.fullName}
+                                    />
+                                    <DetailRow
+                                        icon={FileText}
+                                        label="Purpose"
+                                        value={selectedAppointment.purpose}
+                                    />
+                                    <DetailRow
+                                        icon={Calendar}
+                                        label="Date"
+                                        value={selectedAppointment.date}
+                                    />
+                                    <DetailRow
+                                        icon={Clock}
+                                        label="Time"
+                                        value={selectedAppointment.time}
+                                    />
+                                    <DetailRow
+                                        icon={Phone}
+                                        label="Contact"
+                                        value={
+                                            selectedAppointment.contact ||
+                                            selectedAppointment.contactNumber ||
+                                            selectedAppointment.mobile_number
+                                        }
+                                    />
+                                    <DetailRow
+                                        icon={FileText}
+                                        label="Reason / Notes"
+                                        value={selectedAppointment.reason || selectedAppointment.notes}
+                                        full
+                                    />
+                                    {selectedAppointment.decline_reason && (
+                                        <DetailRow
+                                            icon={AlertCircle}
+                                            label="Decline Reason"
+                                            value={selectedAppointment.decline_reason}
+                                            full
+                                        />
+                                    )}
+                                    <DetailRow
+                                        icon={CalendarDays}
+                                        label="Submitted"
+                                        value={
+                                            selectedAppointment.created_at
+                                                ? new Date(selectedAppointment.created_at).toLocaleString()
+                                                : "—"
+                                        }
+                                    />
+                                    <DetailRow
+                                        icon={Clock}
+                                        label="Last Updated"
+                                        value={
+                                            selectedAppointment.updated_at
+                                                ? new Date(selectedAppointment.updated_at).toLocaleString()
+                                                : "—"
+                                        }
+                                    />
+                                </div>
+                            </div>
+
+                            <div className="flex flex-wrap items-center justify-end gap-2 rounded-b-2xl border-t border-slate-200 bg-slate-50 px-6 py-4">
+                                <button
+                                    type="button"
+                                    onClick={() => setSelectedAppointmentId(null)}
+                                    disabled={declineSaving}
+                                    className="rounded-lg bg-slate-200 px-4 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-300 disabled:opacity-50"
+                                >
+                                    Close
+                                </button>
+
+                                {selectedAppointment.status === "pending" && (
+                                    <>
+                                        <button
+                                            type="button"
+                                            onClick={() => openDeclineModal(selectedAppointment)}
+                                            disabled={declineSaving}
+                                            className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-red-700 disabled:opacity-50"
+                                        >
+                                            <XCircle className="h-4 w-4" />
+                                            Decline
+                                        </button>
+                                        <button
+                                            type="button"
+                                            onClick={() =>
+                                                handleApprove(
+                                                    selectedAppointment.appointmentId ||
+                                                        selectedAppointment.id
+                                                )
+                                            }
+                                            disabled={declineSaving}
+                                            className="flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-green-700 disabled:opacity-50"
+                                        >
+                                            <CheckCircle className="h-4 w-4" />
+                                            Approve
+                                        </button>
+                                    </>
+                                )}
+
+                                {selectedAppointment.status !== "pending" && (
+                                    <button
+                                        type="button"
+                                        onClick={() =>
+                                            updateAppointmentStatus(
+                                                selectedAppointment.appointmentId ||
+                                                    selectedAppointment.id,
+                                                "pending"
+                                            )
+                                        }
+                                        className="rounded-lg bg-slate-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-slate-700"
+                                    >
+                                        Reset to Pending
+                                    </button>
+                                )}
+                            </div>
+                        </div>
+                    </div>
+                )}
+
+                {/* ============================================================= */}
                 {/* DECLINE REASON MODAL                                          */}
                 {/* ============================================================= */}
                 {showDeclineModal && declineAppointment && (
@@ -1349,6 +1590,25 @@ const AdminDashboard = () => {
 
                             {/* Body */}
                             <div className="p-5 space-y-4">
+                                {/* Mini request summary */}
+                                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                                    <p>
+                                        <span className="font-bold text-slate-700">Name:</span>{" "}
+                                        {declineAppointment.fullName || "—"}
+                                    </p>
+                                    <p className="mt-1">
+                                        <span className="font-bold text-slate-700">Purpose:</span>{" "}
+                                        {declineAppointment.purpose || "—"}
+                                    </p>
+                                    <p className="mt-1">
+                                        <span className="font-bold text-slate-700">Schedule:</span>{" "}
+                                        {declineAppointment.date || "—"}
+                                        {declineAppointment.time
+                                            ? ` · ${declineAppointment.time}`
+                                            : ""}
+                                    </p>
+                                </div>
+
                                 {/* Warning banner */}
                                 <div className="rounded-xl border border-red-200 bg-red-50 p-4">
                                     <p className="font-bold text-red-800 text-sm">

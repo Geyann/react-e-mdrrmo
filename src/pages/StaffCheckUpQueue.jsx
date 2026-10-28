@@ -5,6 +5,32 @@ import {
   MapPin, Phone, Calendar, Loader2, Bell, CheckCheck
 } from 'lucide-react';
 import { useDialog } from '../components/AppDialog';
+
+/** Philippine mobile: 09XXXXXXXXX (11) or +639XXXXXXXXX (13) */
+function normalizePHMobile(raw) {
+  if (raw == null) return null;
+  let v = String(raw).trim().replace(/[\s\-()]/g, "");
+
+  if (v.startsWith("+639") && /^\+639\d{9}$/.test(v)) return v;
+  if (v.startsWith("639") && /^639\d{9}$/.test(v)) return `+${v}`;
+  if (v.startsWith("09") && /^09\d{9}$/.test(v)) return v;
+  // bare 9XXXXXXXXX (10 digits) → 09XXXXXXXXX
+  if (/^9\d{9}$/.test(v)) return `0${v}`;
+
+  return null;
+}
+
+function isValidPHMobile(raw) {
+  return normalizePHMobile(raw) !== null;
+}
+
+/** Display helper: show normalized PH mobile when possible, otherwise original text. */
+function formatContactDisplay(raw) {
+  if (raw == null || String(raw).trim() === "") return "—";
+  const normalized = normalizePHMobile(raw);
+  return normalized || String(raw).trim();
+}
+
 const StaffCheckUpQueue = () => {
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState('');
@@ -87,11 +113,13 @@ const StaffCheckUpQueue = () => {
   // ===== FILTERS =====
   const filteredQueue = checkups.filter((c) => {
     const q = searchTerm.toLowerCase();
+    const contactDisplay = formatContactDisplay(c.contactDetails);
     const matchesSearch =
       !searchTerm ||
       c.patientName?.toLowerCase().includes(q) ||
       c.hospitalName?.toLowerCase().includes(q) ||
       c.contactDetails?.toLowerCase().includes(q) ||
+      contactDisplay.toLowerCase().includes(q) ||
       c.location?.toLowerCase().includes(q) ||
       c.preferredDate?.toLowerCase().includes(q);
 
@@ -367,7 +395,7 @@ const StaffCheckUpQueue = () => {
                         <td className="px-4 py-4">
                           <div className="flex items-center gap-2 text-sm text-slate-600">
                             <Phone className="w-4 h-4 text-slate-400 flex-shrink-0" />
-                            <span>{c.contactDetails || '—'}</span>
+                            <span>{formatContactDisplay(c.contactDetails)}</span>
                           </div>
                         </td>
                         <td className="px-4 py-4 text-sm text-slate-600 max-w-[160px] truncate">{c.hospitalName || '—'}</td>

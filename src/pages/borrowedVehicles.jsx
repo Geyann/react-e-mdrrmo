@@ -1,20 +1,62 @@
-import React, { useEffect, useState } from 'react';
-import { supabase } from '../createClient';
+import React, { useEffect, useMemo, useState } from "react";
+import { supabase } from "../createClient";
 import {
-  Ambulance, Search, Clock, CheckCircle, XCircle, RefreshCw,
-  AlertCircle, MapPin, Phone, Calendar, User, FileText, Loader2, Download, Printer
-} from 'lucide-react';
-import { useDialog } from '../components/AppDialog';
+  Ambulance,
+  Search,
+  Clock,
+  CheckCircle,
+  XCircle,
+  RefreshCw,
+  AlertCircle,
+  MapPin,
+  Phone,
+  Calendar,
+  User,
+  FileText,
+  Loader2,
+  Download,
+  Printer,
+  Hash,
+  Eye,
+} from "lucide-react";
+import { useDialog } from "../components/AppDialog";
+
+function DetailRow({ icon: Icon, label, value, full = false }) {
+  const displayValue =
+    value === null || value === undefined || value === ""
+      ? "—"
+      : String(value);
+
+  return (
+    <div className={`flex items-start gap-3 ${full ? "sm:col-span-2" : ""}`}>
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-purple-50">
+        <Icon className="h-4 w-4 text-purple-600" />
+      </div>
+      <div className="min-w-0">
+        <p className="text-xs font-bold uppercase tracking-wide text-slate-400">
+          {label}
+        </p>
+        <p className="mt-0.5 break-words text-sm font-semibold text-slate-800">
+          {displayValue}
+        </p>
+      </div>
+    </div>
+  );
+}
+
 const BorrowedVehicles = () => {
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [statusFilter, setStatusFilter] = useState('all');
-  const [vehicleFilter, setVehicleFilter] = useState('all');
+  const [searchTerm, setSearchTerm] = useState("");
+  const [statusFilter, setStatusFilter] = useState("all");
+  const [vehicleFilter, setVehicleFilter] = useState("all");
   const [requests, setRequests] = useState([]);
   const [savingId, setSavingId] = useState(null);
-  const [error, setError] = useState('');
-  const [success, setSuccess] = useState('');
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
   const { showConfirm } = useDialog();
+
+  // Review / details modal (same pattern as checkup table)
+  const [selectedId, setSelectedId] = useState(null);
 
   // Report modal
   const [showReportModal, setShowReportModal] = useState(false);
@@ -22,7 +64,7 @@ const BorrowedVehicles = () => {
 
   // Decline reason modal
   const [declineTarget, setDeclineTarget] = useState(null);
-  const [declineReason, setDeclineReason] = useState('');
+  const [declineReason, setDeclineReason] = useState("");
 
   useEffect(() => {
     fetchRequests();
@@ -30,39 +72,49 @@ const BorrowedVehicles = () => {
 
   const fetchRequests = async () => {
     setLoading(true);
-    setError('');
+    setError("");
     try {
       const { data, error } = await supabase
-        .from('borrow-vehicle')
-        .select('*, profiles(id, full_name, user_id, email, mobile_number)')
-        .order('borrowerId', { ascending: false });
+        .from("borrow-vehicle")
+        .select("*, profiles(id, full_name, user_id, email, mobile_number)")
+        .order("borrowerId", { ascending: false });
 
       if (error) throw error;
       setRequests(data || []);
     } catch (err) {
-      console.error('Error fetching requests:', err);
-      setError('Failed to load requests: ' + err.message);
+      console.error("Error fetching requests:", err);
+      setError("Failed to load requests: " + err.message);
     } finally {
       setLoading(false);
     }
   };
 
+  const selectedRequest = useMemo(() => {
+    if (selectedId == null) return null;
+    return (
+      requests.find((r) => String(r.borrowerId) === String(selectedId)) || null
+    );
+  }, [requests, selectedId]);
+
   // ===== FORMATTERS =====
   const vehicleLabel = (v) => {
     const map = {
-      ambulance: 'Ambulance',
-      'rescue-truck': 'Rescue Truck',
-      'utility-van': 'Utility Van',
+      ambulance: "Ambulance",
+      "rescue-truck": "Rescue Truck",
+      "utility-van": "Utility Van",
     };
-    return map[v] || v || '—';
+    return map[v] || v || "—";
   };
 
   const formatDateTime = (iso) => {
-    if (!iso) return '—';
+    if (!iso) return "—";
     try {
       return new Date(iso).toLocaleString(undefined, {
-        month: 'short', day: 'numeric', year: 'numeric',
-        hour: 'numeric', minute: '2-digit',
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+        hour: "numeric",
+        minute: "2-digit",
       });
     } catch {
       return iso;
@@ -70,10 +122,12 @@ const BorrowedVehicles = () => {
   };
 
   const formatFullDate = (iso) => {
-    if (!iso) return '—';
+    if (!iso) return "—";
     try {
       return new Date(iso).toLocaleDateString(undefined, {
-        year: 'numeric', month: 'long', day: 'numeric',
+        year: "numeric",
+        month: "long",
+        day: "numeric",
       });
     } catch {
       return iso;
@@ -91,15 +145,18 @@ const BorrowedVehicles = () => {
       r.purpose?.toLowerCase().includes(q) ||
       r.requestedBy?.toLowerCase().includes(q) ||
       p.full_name?.toLowerCase().includes(q) ||
-      p.user_id?.toLowerCase().includes(q);
+      p.user_id?.toLowerCase().includes(q) ||
+      p.email?.toLowerCase().includes(q) ||
+      p.mobile_number?.toLowerCase().includes(q);
 
-    const matchesStatus = statusFilter === 'all' || (r.status || 'Pending') === statusFilter;
-    const matchesVehicle = vehicleFilter === 'all' || r.vehicle === vehicleFilter;
+    const matchesStatus =
+      statusFilter === "all" || (r.status || "Pending") === statusFilter;
+    const matchesVehicle =
+      vehicleFilter === "all" || r.vehicle === vehicleFilter;
 
     return matchesSearch && matchesStatus && matchesVehicle;
   });
 
-  // ===== Report Generation Logic (now opens a modal) =====
   const handleGenerateReport = () => {
     setReportDataForModal(filteredRequests);
     setShowReportModal(true);
@@ -108,48 +165,56 @@ const BorrowedVehicles = () => {
   // ===== STATS =====
   const stats = {
     total: requests.length,
-    pending: requests.filter((r) => (r.status || 'Pending') === 'Pending').length,
-    approved: requests.filter((r) => r.status === 'Approved').length,
-    declined: requests.filter((r) => r.status === 'Declined').length,
-    ambulance: requests.filter((r) => r.vehicle === 'ambulance').length,
-    rescueTruck: requests.filter((r) => r.vehicle === 'rescue-truck').length,
-    utilityVan: requests.filter((r) => r.vehicle === 'utility-van').length,
+    pending: requests.filter((r) => (r.status || "Pending") === "Pending")
+      .length,
+    approved: requests.filter((r) => r.status === "Approved").length,
+    declined: requests.filter((r) => r.status === "Declined").length,
+    ambulance: requests.filter((r) => r.vehicle === "ambulance").length,
+    rescueTruck: requests.filter((r) => r.vehicle === "rescue-truck").length,
+    utilityVan: requests.filter((r) => r.vehicle === "utility-van").length,
   };
 
-  // ===== APPROVE =====
+  // ===== APPROVE (from details modal or after review) =====
   const handleApprove = async (row) => {
-    const name = row.profiles?.full_name || row.requestedBy || 'Unknown';
-    if (!await showConfirm(`Approve dispatch request #${row.borrowerId} for ${name}?`)) return;
+    if (!row) return;
+    const name = row.profiles?.full_name || row.requestedBy || "Unknown";
+
+    const confirmed = await showConfirm(
+      `Approve dispatch request #${row.borrowerId} for ${name}?\n\nVehicle: ${vehicleLabel(row.vehicle)}\nDestination: ${row.destination || "—"}\nDate: ${row.date || "—"}${row.time ? ` ${row.time}` : ""}`,
+    );
+    if (!confirmed) return;
 
     setSavingId(row.borrowerId);
-    setError('');
-    setSuccess('');
+    setError("");
+    setSuccess("");
 
     const { error } = await supabase
-      .from('borrow-vehicle')
+      .from("borrow-vehicle")
       .update({
-        status: 'Approved',
+        status: "Approved",
         review_notes: null,
         updated_at: new Date().toISOString(),
       })
-      .eq('borrowerId', row.borrowerId);
+      .eq("borrowerId", row.borrowerId);
 
     if (error) {
-      setError('Failed to approve: ' + error.message);
+      setError("Failed to approve: " + error.message);
       setSavingId(null);
       return;
     }
+
+    setSelectedId(null);
     await fetchRequests();
     setSavingId(null);
     setSuccess(`Dispatch request #${row.borrowerId} approved.`);
   };
 
-  // ===== DECLINE (modal-driven) =====
+  // ===== DECLINE (modal-driven, after reviewing details) =====
   const requestDecline = (row) => {
     setDeclineTarget(row);
-    setDeclineReason(row.review_notes || '');
-    setError('');
-    setSuccess('');
+    setDeclineReason(row.review_notes || "");
+    setError("");
+    setSuccess("");
   };
 
   const confirmDecline = async () => {
@@ -159,26 +224,27 @@ const BorrowedVehicles = () => {
     const trimmedReason = declineReason.trim();
 
     setSavingId(row.borrowerId);
-    setError('');
-    setSuccess('');
+    setError("");
+    setSuccess("");
 
     const { error } = await supabase
-      .from('borrow-vehicle')
+      .from("borrow-vehicle")
       .update({
-        status: 'Declined',
+        status: "Declined",
         review_notes: trimmedReason || null,
         updated_at: new Date().toISOString(),
       })
-      .eq('borrowerId', row.borrowerId);
+      .eq("borrowerId", row.borrowerId);
 
     if (error) {
-      setError('Failed to decline: ' + error.message);
+      setError("Failed to decline: " + error.message);
       setSavingId(null);
       return;
     }
 
     setDeclineTarget(null);
-    setDeclineReason('');
+    setDeclineReason("");
+    setSelectedId(null);
     await fetchRequests();
     setSavingId(null);
     setSuccess(`Dispatch request #${row.borrowerId} declined.`);
@@ -187,54 +253,63 @@ const BorrowedVehicles = () => {
   // ===== BADGES =====
   const StatusBadge = ({ status }) => {
     const map = {
-      Pending: 'bg-yellow-100 text-yellow-700',
-      Approved: 'bg-green-100 text-green-700',
-      Declined: 'bg-red-100 text-red-700',
+      Pending: "bg-yellow-100 text-yellow-700",
+      Approved: "bg-green-100 text-green-700",
+      Declined: "bg-red-100 text-red-700",
     };
-    const cls = map[status || 'Pending'] || 'bg-gray-100 text-gray-700';
-    return <span className={`px-3 py-1 rounded-full text-xs font-bold ${cls}`}>{status || 'Pending'}</span>;
+    const cls = map[status || "Pending"] || "bg-gray-100 text-gray-700";
+    return (
+      <span className={`rounded-full px-3 py-1 text-xs font-bold ${cls}`}>
+        {status || "Pending"}
+      </span>
+    );
   };
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600 font-semibold">Loading vehicle dispatch requests...</p>
+          <div className="mx-auto h-12 w-12 animate-spin rounded-full border-b-2 border-purple-600"></div>
+          <p className="mt-4 font-semibold text-gray-600">
+            Loading vehicle dispatch requests...
+          </p>
         </div>
       </div>
     );
   }
 
   return (
-    <div className="p-6 md:p-10 bg-slate-50 min-h-screen">
-      <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen bg-slate-50 p-6 md:p-10">
+      <div className="mx-auto max-w-7xl">
         {/* Header */}
-        <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-6 gap-4">
+        <div className="mb-6 flex flex-col items-start justify-between gap-4 md:flex-row md:items-center">
           <div>
-            <h1 className="text-3xl font-black text-slate-800 flex items-center gap-3">
-              <Ambulance className="w-8 h-8 text-purple-600" />
+            <h1 className="flex items-center gap-3 text-3xl font-black text-slate-800">
+              <Ambulance className="h-8 w-8 text-purple-600" />
               Borrowed Vehicles
             </h1>
-            <p className="text-slate-500 mt-1">
-              Review and respond to emergency vehicle dispatch requests
+            <p className="mt-1 text-slate-500">
+              Review request details before approving or declining dispatch
+              requests
             </p>
           </div>
           <div className="flex items-center gap-3">
             <button
+              type="button"
               onClick={handleGenerateReport}
               disabled={filteredRequests.length === 0}
-              className="px-4 py-2 bg-indigo-600 text-white rounded-xl font-bold hover:bg-indigo-700 disabled:opacity-50 disabled:cursor-not-allowed transition flex items-center gap-2"
+              className="flex items-center gap-2 rounded-xl bg-indigo-600 px-4 py-2 font-bold text-white transition hover:bg-indigo-700 disabled:cursor-not-allowed disabled:opacity-50"
             >
-              <Download className="w-4 h-4" />
+              <Download className="h-4 w-4" />
               Generate Report
             </button>
 
             <button
+              type="button"
               onClick={fetchRequests}
-              className="px-4 py-2 bg-purple-600 text-white rounded-xl font-bold hover:bg-purple-700 transition flex items-center gap-2"
+              className="flex items-center gap-2 rounded-xl bg-purple-600 px-4 py-2 font-bold text-white transition hover:bg-purple-700"
             >
-              <RefreshCw className="w-4 h-4" />
+              <RefreshCw className="h-4 w-4" />
               Refresh
             </button>
           </div>
@@ -242,57 +317,90 @@ const BorrowedVehicles = () => {
 
         {/* Banners */}
         {success && (
-          <div className="mb-6 p-4 bg-green-50 border border-green-200 rounded-xl flex items-center gap-3">
-            <CheckCircle className="w-5 h-5 text-green-600 flex-shrink-0" />
+          <div className="mb-6 flex items-center gap-3 rounded-xl border border-green-200 bg-green-50 p-4">
+            <CheckCircle className="h-5 w-5 flex-shrink-0 text-green-600" />
             <p className="text-sm font-medium text-green-700">{success}</p>
           </div>
         )}
-        {error && (
-          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-xl flex items-center gap-3">
-            <AlertCircle className="w-5 h-5 text-red-600 flex-shrink-0" />
+        {error && !declineTarget && (
+          <div className="mb-6 flex items-center gap-3 rounded-xl border border-red-200 bg-red-50 p-4">
+            <AlertCircle className="h-5 w-5 flex-shrink-0 text-red-600" />
             <p className="text-sm font-medium text-red-700">{error}</p>
           </div>
         )}
 
         {/* Stats Cards */}
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-6">
+        <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-6">
           {[
-            { label: 'Total Requests', value: stats.total, color: 'bg-blue-50 border-blue-200 text-blue-700', icon: Ambulance },
-            { label: 'Pending', value: stats.pending, color: 'bg-yellow-50 border-yellow-200 text-yellow-700', icon: Clock },
-            { label: 'Approved', value: stats.approved, color: 'bg-green-50 border-green-200 text-green-700', icon: CheckCircle },
-            { label: 'Declined', value: stats.declined, color: 'bg-red-50 border-red-200 text-red-700', icon: XCircle },
-            { label: 'Ambulances', value: stats.ambulance, color: 'bg-indigo-50 border-indigo-200 text-indigo-700', icon: Ambulance },
-            { label: 'Rescue Trucks', value: stats.rescueTruck, color: 'bg-purple-50 border-purple-200 text-purple-700', icon: Ambulance },
+            {
+              label: "Total Requests",
+              value: stats.total,
+              color: "bg-blue-50 border-blue-200 text-blue-700",
+              icon: Ambulance,
+            },
+            {
+              label: "Pending",
+              value: stats.pending,
+              color: "bg-yellow-50 border-yellow-200 text-yellow-700",
+              icon: Clock,
+            },
+            {
+              label: "Approved",
+              value: stats.approved,
+              color: "bg-green-50 border-green-200 text-green-700",
+              icon: CheckCircle,
+            },
+            {
+              label: "Declined",
+              value: stats.declined,
+              color: "bg-red-50 border-red-200 text-red-700",
+              icon: XCircle,
+            },
+            {
+              label: "Ambulances",
+              value: stats.ambulance,
+              color: "bg-indigo-50 border-indigo-200 text-indigo-700",
+              icon: Ambulance,
+            },
+            {
+              label: "Rescue Trucks",
+              value: stats.rescueTruck,
+              color: "bg-purple-50 border-purple-200 text-purple-700",
+              icon: Ambulance,
+            },
           ].map((stat, i) => (
-            <div key={i} className={`p-4 rounded-xl border ${stat.color} shadow-sm`}>
+            <div
+              key={i}
+              className={`rounded-xl border p-4 shadow-sm ${stat.color}`}
+            >
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs font-bold opacity-70">{stat.label}</p>
-                  <p className="text-2xl font-bold mt-1">{stat.value}</p>
+                  <p className="mt-1 text-2xl font-bold">{stat.value}</p>
                 </div>
-                <stat.icon className="w-7 h-7 opacity-70" />
+                <stat.icon className="h-7 w-7 opacity-70" />
               </div>
             </div>
           ))}
         </div>
 
         {/* Search & Filter Bar */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 mb-6">
-          <div className="flex flex-col sm:flex-row gap-3">
+        <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm">
+          <div className="flex flex-col gap-3 sm:flex-row">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-3 w-5 h-5 text-slate-400" />
+              <Search className="absolute left-3 top-3 h-5 w-5 text-slate-400" />
               <input
                 type="text"
                 placeholder="Search by requester, dispatch no., destination, purpose..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none"
+                className="w-full rounded-xl border border-slate-300 py-2 pl-10 pr-4 outline-none focus:ring-2 focus:ring-purple-500"
               />
             </div>
             <select
               value={vehicleFilter}
               onChange={(e) => setVehicleFilter(e.target.value)}
-              className="px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none bg-white"
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2 outline-none focus:ring-2 focus:ring-purple-500"
             >
               <option value="all">All Vehicles</option>
               <option value="ambulance">Ambulance</option>
@@ -302,7 +410,7 @@ const BorrowedVehicles = () => {
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none bg-white"
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2 outline-none focus:ring-2 focus:ring-purple-500"
             >
               <option value="all">All Status</option>
               <option value="Pending">Pending</option>
@@ -313,62 +421,108 @@ const BorrowedVehicles = () => {
         </div>
 
         {/* Requests Table */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm">
           <div className="overflow-x-auto">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-slate-200 bg-slate-50">
-                  <th className="px-4 py-4 text-left text-sm font-bold text-slate-700">#</th>
-                  <th className="px-4 py-4 text-left text-sm font-bold text-slate-700">Borrow ID</th>
-                  <th className="px-4 py-4 text-left text-sm font-bold text-slate-700">Submitted</th>
-                  <th className="px-4 py-4 text-left text-sm font-bold text-slate-700">Dispatch No.</th>
-                  <th className="px-4 py-4 text-left text-sm font-bold text-slate-700">Vehicle</th>
-                  <th className="px-4 py-4 text-left text-sm font-bold text-slate-700">Requested By</th>
-                  <th className="px-4 py-4 text-left text-sm font-bold text-slate-700">Destination</th>
-                  <th className="px-4 py-4 text-left text-sm font-bold text-slate-700">Date</th>
-                  <th className="px-4 py-4 text-left text-sm font-bold text-slate-700">Status</th>
-                  <th className="px-4 py-4 text-left text-sm font-bold text-slate-700">Actions</th>
+                  <th className="px-4 py-4 text-left text-sm font-bold text-slate-700">
+                    #
+                  </th>
+                  <th className="px-4 py-4 text-left text-sm font-bold text-slate-700">
+                    Borrow ID
+                  </th>
+                  <th className="px-4 py-4 text-left text-sm font-bold text-slate-700">
+                    Submitted
+                  </th>
+                  <th className="px-4 py-4 text-left text-sm font-bold text-slate-700">
+                    Dispatch No.
+                  </th>
+                  <th className="px-4 py-4 text-left text-sm font-bold text-slate-700">
+                    Vehicle
+                  </th>
+                  <th className="px-4 py-4 text-left text-sm font-bold text-slate-700">
+                    Requested By
+                  </th>
+                  <th className="px-4 py-4 text-left text-sm font-bold text-slate-700">
+                    Destination
+                  </th>
+                  <th className="px-4 py-4 text-left text-sm font-bold text-slate-700">
+                    Date
+                  </th>
+                  <th className="px-4 py-4 text-left text-sm font-bold text-slate-700">
+                    Status
+                  </th>
+                  <th className="px-4 py-4 text-left text-sm font-bold text-slate-700">
+                    Actions
+                  </th>
                 </tr>
               </thead>
               <tbody>
                 {filteredRequests.length === 0 ? (
                   <tr>
                     <td colSpan={10} className="px-6 py-12 text-center">
-                      <AlertCircle className="w-12 h-12 text-slate-400 mx-auto mb-3" />
-                      <p className="text-slate-600 font-semibold">No dispatch requests found matching your criteria.</p>
+                      <AlertCircle className="mx-auto mb-3 h-12 w-12 text-slate-400" />
+                      <p className="font-semibold text-slate-600">
+                        No dispatch requests found matching your criteria.
+                      </p>
                     </td>
                   </tr>
                 ) : (
                   filteredRequests.map((r, index) => {
-                    const isPending = (r.status || 'Pending') === 'Pending';
+                    const isPending = (r.status || "Pending") === "Pending";
                     const isSaving = savingId === r.borrowerId;
-                    const isDeclined = r.status === 'Declined';
+                    const isDeclined = r.status === "Declined";
                     return (
-                      <tr key={r.borrowerId} className="border-b border-slate-200 hover:bg-slate-50 transition">
-                        <td className="px-4 py-4 text-sm text-slate-500 font-mono">{index + 1}</td>
-                        <td className="px-4 py-4 text-sm font-mono text-slate-600">#{r.borrowerId}</td>
-                        <td className="px-4 py-4 text-sm text-slate-500">{formatDateTime(r.created_at)}</td>
-                        <td className="px-4 py-4 text-sm text-slate-600">{r.dispatchNum || '—'}</td>
+                      <tr
+                        key={r.borrowerId}
+                        className="border-b border-slate-200 transition hover:bg-slate-50"
+                      >
+                        <td className="px-4 py-4 font-mono text-sm text-slate-500">
+                          {index + 1}
+                        </td>
+                        <td className="px-4 py-4 font-mono text-sm text-slate-600">
+                          #{r.borrowerId}
+                        </td>
+                        <td className="px-4 py-4 text-sm text-slate-500">
+                          {formatDateTime(r.created_at)}
+                        </td>
+                        <td className="px-4 py-4 text-sm text-slate-600">
+                          {r.dispatchNum || "—"}
+                        </td>
                         <td className="px-4 py-4">
-                          <span className="text-sm font-semibold text-slate-700">{vehicleLabel(r.vehicle)}</span>
+                          <span className="text-sm font-semibold text-slate-700">
+                            {vehicleLabel(r.vehicle)}
+                          </span>
                         </td>
                         <td className="px-4 py-4">
                           <div className="flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-full bg-blue-600 flex items-center justify-center text-white font-bold text-sm flex-shrink-0">
-                              {(r.profiles?.full_name?.charAt(0) || r.requestedBy?.charAt(0) || '?').toUpperCase()}
+                            <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full bg-blue-600 text-sm font-bold text-white">
+                              {(
+                                r.profiles?.full_name?.charAt(0) ||
+                                r.requestedBy?.charAt(0) ||
+                                "?"
+                              ).toUpperCase()}
                             </div>
                             <div className="min-w-0">
-                              <p className="font-semibold text-slate-800 text-sm">
-                                {r.profiles?.full_name || r.requestedBy || 'Unknown'}
+                              <p className="text-sm font-semibold text-slate-800">
+                                {r.profiles?.full_name ||
+                                  r.requestedBy ||
+                                  "Unknown"}
                               </p>
-                              <p className="text-xs text-slate-400 font-mono">
-                                {r.profiles?.user_id || r.userId || ''}
+                              <p className="font-mono text-xs text-slate-400">
+                                {r.profiles?.user_id || r.userId || ""}
                               </p>
                             </div>
                           </div>
                         </td>
-                        <td className="px-4 py-4 text-sm text-slate-600 max-w-[180px] truncate">{r.destination || '—'}</td>
-                        <td className="px-4 py-4 text-sm text-slate-600">{r.date}{r.time ? ` ${r.time}` : ''}</td>
+                        <td className="max-w-[180px] truncate px-4 py-4 text-sm text-slate-600">
+                          {r.destination || "—"}
+                        </td>
+                        <td className="px-4 py-4 text-sm text-slate-600">
+                          {r.date}
+                          {r.time ? ` ${r.time}` : ""}
+                        </td>
                         <td className="px-4 py-4">
                           <div className="flex flex-col gap-1">
                             <StatusBadge status={r.status} />
@@ -383,23 +537,43 @@ const BorrowedVehicles = () => {
                           </div>
                         </td>
                         <td className="px-4 py-4">
-                          <div className="flex gap-2">
+                          <div className="flex flex-wrap gap-2">
                             <button
-                              onClick={() => handleApprove(r)}
-                              disabled={!isPending || isSaving}
-                              className="flex items-center gap-1 px-3 py-2 bg-green-500 hover:bg-green-600 disabled:bg-slate-300 text-white rounded-lg text-xs font-bold transition"
-                              title="Approve dispatch"
+                              type="button"
+                              onClick={() => setSelectedId(r.borrowerId)}
+                              disabled={isSaving}
+                              className="flex items-center gap-1 rounded-lg bg-purple-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-purple-700 disabled:bg-slate-300"
+                              title="Review full request details"
                             >
-                              {isSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <CheckCircle className="w-3 h-3" />}
+                              <Eye className="h-3 w-3" />
+                              Review
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedId(r.borrowerId)}
+                              disabled={!isPending || isSaving}
+                              className="flex items-center gap-1 rounded-lg bg-green-500 px-3 py-2 text-xs font-bold text-white transition hover:bg-green-600 disabled:bg-slate-300"
+                              title="Review then approve"
+                            >
+                              {isSaving ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <CheckCircle className="h-3 w-3" />
+                              )}
                               Approve
                             </button>
                             <button
-                              onClick={() => requestDecline(r)}
+                              type="button"
+                              onClick={() => setSelectedId(r.borrowerId)}
                               disabled={!isPending || isSaving}
-                              className="flex items-center gap-1 px-3 py-2 bg-red-500 hover:bg-red-600 disabled:bg-slate-300 text-white rounded-lg text-xs font-bold transition"
-                              title="Decline dispatch"
+                              className="flex items-center gap-1 rounded-lg bg-red-500 px-3 py-2 text-xs font-bold text-white transition hover:bg-red-600 disabled:bg-slate-300"
+                              title="Review then decline"
                             >
-                              {isSaving ? <Loader2 className="w-3 h-3 animate-spin" /> : <XCircle className="w-3 h-3" />}
+                              {isSaving ? (
+                                <Loader2 className="h-3 w-3 animate-spin" />
+                              ) : (
+                                <XCircle className="h-3 w-3" />
+                              )}
                               Decline
                             </button>
                           </div>
@@ -413,10 +587,205 @@ const BorrowedVehicles = () => {
           </div>
         </div>
 
-        <div className="mt-4 text-sm text-slate-500 text-center">
+        <div className="mt-4 text-center text-sm text-slate-500">
           Showing {filteredRequests.length} of {requests.length} total requests
         </div>
       </div>
+
+      {/* ── Request details modal (checkup-table style) ───────────── */}
+      {selectedRequest && (
+        <div
+          className="fixed inset-0 z-5000 flex items-start justify-center overflow-y-auto bg-black/50 p-4"
+          onClick={() => {
+            if (!savingId) setSelectedId(null);
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="borrow-review-title"
+            className="my-8 w-full max-w-2xl rounded-2xl bg-white shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Header */}
+            <div className="flex items-start justify-between gap-3 border-b border-slate-200 px-6 py-4">
+              <div className="flex min-w-0 items-start gap-3">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-purple-100 text-purple-700">
+                  <Ambulance className="h-5 w-5" />
+                </div>
+                <div className="min-w-0">
+                  <h2
+                    id="borrow-review-title"
+                    className="text-lg font-black text-slate-800"
+                  >
+                    Review Dispatch Request
+                  </h2>
+                  <p className="mt-0.5 text-xs text-slate-500">
+                    #{selectedRequest.borrowerId} ·{" "}
+                    {selectedRequest.profiles?.full_name ||
+                      selectedRequest.requestedBy ||
+                      "Unknown requester"}
+                  </p>
+                  <div className="mt-2">
+                    <StatusBadge status={selectedRequest.status} />
+                  </div>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setSelectedId(null)}
+                disabled={savingId !== null}
+                aria-label="Close details"
+                className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 disabled:opacity-50"
+              >
+                <XCircle className="h-5 w-5" />
+              </button>
+            </div>
+
+            {/* Body */}
+            <div className="space-y-5 px-6 py-5">
+              {/* Requester summary */}
+              <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-slate-50 p-4">
+                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-blue-600 text-sm font-bold text-white">
+                  {(
+                    selectedRequest.profiles?.full_name?.charAt(0) ||
+                    selectedRequest.requestedBy?.charAt(0) ||
+                    "?"
+                  ).toUpperCase()}
+                </div>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-bold text-slate-800">
+                    {selectedRequest.profiles?.full_name ||
+                      selectedRequest.requestedBy ||
+                      "Unknown"}
+                  </p>
+                  <p className="mt-1 text-xs text-slate-500">
+                    User ID:{" "}
+                    {selectedRequest.profiles?.user_id ||
+                      selectedRequest.userId ||
+                      "—"}
+                  </p>
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    <span className="rounded-full bg-slate-200 px-2 py-0.5 font-mono text-[10px] font-bold text-slate-600">
+                      {selectedRequest.profiles?.email || "No email"}
+                    </span>
+                    <span className="rounded-full bg-slate-200 px-2 py-0.5 font-mono text-[10px] font-bold text-slate-600">
+                      {selectedRequest.profiles?.mobile_number || "No mobile"}
+                    </span>
+                  </div>
+                </div>
+              </div>
+
+              {/* Full request details */}
+              <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+                <DetailRow
+                  icon={Hash}
+                  label="Borrow ID"
+                  value={`#${selectedRequest.borrowerId}`}
+                />
+                <DetailRow
+                  icon={FileText}
+                  label="Dispatch No."
+                  value={selectedRequest.dispatchNum}
+                />
+                <DetailRow
+                  icon={Ambulance}
+                  label="Vehicle"
+                  value={vehicleLabel(selectedRequest.vehicle)}
+                />
+                <DetailRow
+                  icon={User}
+                  label="Requested By"
+                  value={
+                    selectedRequest.profiles?.full_name ||
+                    selectedRequest.requestedBy
+                  }
+                />
+                <DetailRow
+                  icon={Phone}
+                  label="Contact"
+                  value={
+                    selectedRequest.profiles?.mobile_number ||
+                    selectedRequest.contactNum ||
+                    selectedRequest.contact
+                  }
+                />
+                <DetailRow
+                  icon={MapPin}
+                  label="Destination"
+                  value={selectedRequest.destination}
+                />
+                <DetailRow
+                  icon={Calendar}
+                  label="Date"
+                  value={selectedRequest.date}
+                />
+                <DetailRow
+                  icon={Clock}
+                  label="Time"
+                  value={selectedRequest.time}
+                />
+                <DetailRow
+                  icon={FileText}
+                  label="Purpose"
+                  value={selectedRequest.purpose}
+                  full
+                />
+                <DetailRow
+                  icon={Calendar}
+                  label="Submitted"
+                  value={formatDateTime(selectedRequest.created_at)}
+                />
+                <DetailRow
+                  icon={Clock}
+                  label="Last Updated"
+                  value={formatDateTime(selectedRequest.updated_at)}
+                />
+                {selectedRequest.review_notes && (
+                  <DetailRow
+                    icon={FileText}
+                    label="Review Notes"
+                    value={selectedRequest.review_notes}
+                    full
+                  />
+                )}
+              </div>
+            </div>
+
+            {/* Footer actions */}
+            <div className="flex flex-wrap items-center justify-end gap-2 rounded-b-2xl border-t border-slate-200 bg-slate-50 px-6 py-4">
+             
+
+              {(selectedRequest.status || "Pending") === "Pending" && (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => requestDecline(selectedRequest)}
+                    disabled={savingId !== null}
+                    className="flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-red-700 disabled:opacity-50"
+                  >
+                    <XCircle className="h-4 w-4" />
+                    Decline
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleApprove(selectedRequest)}
+                    disabled={savingId !== null}
+                    className="flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-green-700 disabled:opacity-50"
+                  >
+                    {savingId === selectedRequest.borrowerId ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <CheckCircle className="h-4 w-4" />
+                    )}
+                    Approve
+                  </button>
+                </>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Borrowed Vehicles Report Modal */}
       {showReportModal && (
@@ -427,8 +796,11 @@ const BorrowedVehicles = () => {
           formatDateTime={formatDateTime}
           formatFullDate={formatFullDate}
           filterSummary={{
-            vehicle: vehicleFilter === 'all' ? 'All Vehicles' : vehicleLabel(vehicleFilter),
-            status: statusFilter === 'all' ? 'All Status' : statusFilter,
+            vehicle:
+              vehicleFilter === "all"
+                ? "All Vehicles"
+                : vehicleLabel(vehicleFilter),
+            status: statusFilter === "all" ? "All Status" : statusFilter,
           }}
         />
       )}
@@ -436,11 +808,11 @@ const BorrowedVehicles = () => {
       {/* Decline Reason Modal */}
       {declineTarget && (
         <div
-          className="fixed inset-0 bg-black/60 flex items-center justify-center z-[60] p-4"
+          className="fixed inset-0 z-[60] flex items-center justify-center bg-black/60 p-4"
           onClick={() => {
             if (!savingId) {
               setDeclineTarget(null);
-              setDeclineReason('');
+              setDeclineReason("");
             }
           }}
         >
@@ -448,20 +820,26 @@ const BorrowedVehicles = () => {
             role="dialog"
             aria-modal="true"
             aria-labelledby="decline-dispatch-title"
-            className="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-md w-full"
+            className="w-full max-w-md rounded-2xl border border-slate-200 bg-white shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
-            <div className="flex items-center justify-between p-4 border-b border-slate-200">
+            <div className="flex items-center justify-between border-b border-slate-200 p-4">
               <div className="flex items-center gap-3">
-                <div className="w-9 h-9 rounded-xl bg-red-100 text-red-600 flex items-center justify-center">
-                  <XCircle className="w-5 h-5" />
+                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-red-100 text-red-600">
+                  <XCircle className="h-5 w-5" />
                 </div>
                 <div>
-                  <h3 id="decline-dispatch-title" className="font-bold text-slate-800">
+                  <h3
+                    id="decline-dispatch-title"
+                    className="font-bold text-slate-800"
+                  >
                     Decline Dispatch Request
                   </h3>
                   <p className="text-xs text-slate-500">
-                    #{declineTarget.borrowerId} · {declineTarget.profiles?.full_name || declineTarget.requestedBy || 'Unknown'}
+                    #{declineTarget.borrowerId} ·{" "}
+                    {declineTarget.profiles?.full_name ||
+                      declineTarget.requestedBy ||
+                      "Unknown"}
                   </p>
                 </div>
               </div>
@@ -470,36 +848,68 @@ const BorrowedVehicles = () => {
                 onClick={() => {
                   if (!savingId) {
                     setDeclineTarget(null);
-                    setDeclineReason('');
+                    setDeclineReason("");
                   }
                 }}
                 disabled={savingId !== null}
                 aria-label="Close decline dialog"
-                className="p-2 rounded-lg text-slate-500 hover:bg-slate-100 disabled:opacity-50"
+                className="rounded-lg p-2 text-slate-500 hover:bg-slate-100 disabled:opacity-50"
               >
-                <XCircle className="w-5 h-5" />
+                <XCircle className="h-5 w-5" />
               </button>
             </div>
 
-            <div className="p-5 space-y-4">
+            <div className="space-y-4 p-5">
+              {/* Mini details summary before declining */}
+              <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-xs text-slate-600">
+                <p>
+                  <span className="font-bold text-slate-700">Vehicle:</span>{" "}
+                  {vehicleLabel(declineTarget.vehicle)}
+                </p>
+                <p className="mt-1">
+                  <span className="font-bold text-slate-700">Destination:</span>{" "}
+                  {declineTarget.destination || "—"}
+                </p>
+                <p className="mt-1">
+                  <span className="font-bold text-slate-700">Schedule:</span>{" "}
+                  {declineTarget.date || "—"}
+                  {declineTarget.time ? ` · ${declineTarget.time}` : ""}
+                </p>
+                <p className="mt-1">
+                  <span className="font-bold text-slate-700">Purpose:</span>{" "}
+                  {declineTarget.purpose || "—"}
+                </p>
+              </div>
+
               <div className="rounded-xl border border-red-200 bg-red-50 p-4">
-                <p className="font-bold text-red-800 text-sm">The requester will see this reason</p>
+                <p className="text-sm font-bold text-red-800">
+                  The requester will see this reason
+                </p>
                 <p className="mt-1 text-xs leading-relaxed text-red-700">
-                  The reason below is shown to the requester the next time they open this dispatch request.
+                  The reason below is shown to the requester the next time they
+                  open this dispatch request.
                 </p>
               </div>
 
               {error && (
-                <div role="alert" className="p-3 rounded-xl border border-red-200 bg-red-50 text-sm text-red-700 flex items-start gap-2">
-                  <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                <div
+                  role="alert"
+                  className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+                >
+                  <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
                   <p>{error}</p>
                 </div>
               )}
 
               <div>
-                <label htmlFor="dispatch-decline-reason" className="text-sm font-bold text-slate-700 block mb-1">
+                <label
+                  htmlFor="dispatch-decline-reason"
+                  className="mb-1 block text-sm font-bold text-slate-700"
+                >
                   Reason for declining
-                  <span className="ml-1 text-xs font-normal text-slate-400">(optional, but recommended)</span>
+                  <span className="ml-1 text-xs font-normal text-slate-400">
+                    (optional, but recommended)
+                  </span>
                 </label>
                 <textarea
                   id="dispatch-decline-reason"
@@ -508,7 +918,7 @@ const BorrowedVehicles = () => {
                   value={declineReason}
                   onChange={(e) => setDeclineReason(e.target.value)}
                   placeholder="e.g. All ambulances are already dispatched for another emergency. Please contact the command center directly."
-                  className="w-full p-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-red-500 outline-none resize-y text-sm"
+                  className="w-full resize-y rounded-xl border border-slate-300 p-2.5 text-sm outline-none focus:ring-2 focus:ring-red-500"
                 />
                 <p className="mt-1 text-xs text-slate-500">
                   {declineReason.length}/500 characters.
@@ -520,10 +930,10 @@ const BorrowedVehicles = () => {
                   type="button"
                   onClick={() => {
                     setDeclineTarget(null);
-                    setDeclineReason('');
+                    setDeclineReason("");
                   }}
                   disabled={savingId !== null}
-                  className="px-4 py-2.5 border border-slate-300 rounded-xl font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
+                  className="rounded-xl border border-slate-300 px-4 py-2.5 font-bold text-slate-700 hover:bg-slate-50 disabled:opacity-50"
                 >
                   Cancel
                 </button>
@@ -531,9 +941,13 @@ const BorrowedVehicles = () => {
                   type="button"
                   onClick={confirmDecline}
                   disabled={savingId !== null}
-                  className="flex items-center gap-2 px-5 py-2.5 bg-red-600 hover:bg-red-700 disabled:opacity-50 text-white rounded-xl font-bold"
+                  className="flex items-center gap-2 rounded-xl bg-red-600 px-5 py-2.5 font-bold text-white hover:bg-red-700 disabled:opacity-50"
                 >
-                  {savingId !== null ? <Loader2 className="w-4 h-4 animate-spin" /> : <XCircle className="w-4 h-4" />}
+                  {savingId !== null ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <XCircle className="h-4 w-4" />
+                  )}
                   {savingId !== null ? "Declining..." : "Decline Request"}
                 </button>
               </div>
@@ -559,13 +973,13 @@ function BorrowedVehiclesReportModal({
   formatFullDate,
   filterSummary,
 }) {
-  const now = new Date().toLocaleDateString('en-PH', {
-    weekday: 'long',
-    year: 'numeric',
-    month: 'long',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
+  const now = new Date().toLocaleDateString("en-PH", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
   });
 
   const data = reportData || [];
@@ -575,46 +989,72 @@ function BorrowedVehiclesReportModal({
   const vehicleStatusMatrix = {};
 
   data.forEach((r) => {
-    const status = r.status || 'Pending';
-    const vehicle = r.vehicle || 'unknown';
+    const status = r.status || "Pending";
+    const vehicle = r.vehicle || "unknown";
 
     statusCounts[status] = (statusCounts[status] || 0) + 1;
     vehicleCounts[vehicle] = (vehicleCounts[vehicle] || 0) + 1;
 
     if (!vehicleStatusMatrix[vehicle]) vehicleStatusMatrix[vehicle] = {};
-    vehicleStatusMatrix[vehicle][status] = (vehicleStatusMatrix[vehicle][status] || 0) + 1;
+    vehicleStatusMatrix[vehicle][status] =
+      (vehicleStatusMatrix[vehicle][status] || 0) + 1;
   });
 
   const vehicleRows = Object.keys(vehicleCounts);
-  const statusCols = ['Pending', 'Approved', 'Declined'];
-  const pct = (count) => (data.length ? Math.round((count / data.length) * 100) : 0);
+  const statusCols = ["Pending", "Approved", "Declined"];
+  const pct = (count) =>
+    data.length ? Math.round((count / data.length) * 100) : 0;
 
   const summaryCards = [
-    { label: 'Total Requests', value: data.length, pct: 100, color: 'bg-blue-50 border-blue-200 text-blue-700', icon: FileText },
-    { label: 'Pending', value: statusCounts.Pending || 0, pct: pct(statusCounts.Pending || 0), color: 'bg-yellow-50 border-yellow-200 text-yellow-700', icon: Clock },
-    { label: 'Approved', value: statusCounts.Approved || 0, pct: pct(statusCounts.Approved || 0), color: 'bg-green-50 border-green-200 text-green-700', icon: CheckCircle },
-    { label: 'Declined', value: statusCounts.Declined || 0, pct: pct(statusCounts.Declined || 0), color: 'bg-red-50 border-red-200 text-red-700', icon: XCircle },
+    {
+      label: "Total Requests",
+      value: data.length,
+      pct: 100,
+      color: "bg-blue-50 border-blue-200 text-blue-700",
+      icon: FileText,
+    },
+    {
+      label: "Pending",
+      value: statusCounts.Pending || 0,
+      pct: pct(statusCounts.Pending || 0),
+      color: "bg-yellow-50 border-yellow-200 text-yellow-700",
+      icon: Clock,
+    },
+    {
+      label: "Approved",
+      value: statusCounts.Approved || 0,
+      pct: pct(statusCounts.Approved || 0),
+      color: "bg-green-50 border-green-200 text-green-700",
+      icon: CheckCircle,
+    },
+    {
+      label: "Declined",
+      value: statusCounts.Declined || 0,
+      pct: pct(statusCounts.Declined || 0),
+      color: "bg-red-50 border-red-200 text-red-700",
+      icon: XCircle,
+    },
   ];
 
   const escapeHtml = (value) =>
-    String(value ?? '')
-      .replace(/&/g, '&amp;')
-      .replace(/</g, '&lt;')
-      .replace(/>/g, '&gt;')
-      .replace(/"/g, '&quot;')
-      .replace(/'/g, '&#39;');
+    String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
 
   const handlePrint = () => {
     const card = (label, value, sub) => `
       <div class="card">
         <div class="card-label">${escapeHtml(label)}</div>
         <div class="card-value">${escapeHtml(value)}</div>
-        ${sub ? `<div class="card-sub">${escapeHtml(sub)}</div>` : ''}
+        ${sub ? `<div class="card-sub">${escapeHtml(sub)}</div>` : ""}
       </div>`;
 
     const topCards = summaryCards
       .map((c) => card(c.label, c.value, `${c.pct}% of total`))
-      .join('');
+      .join("");
 
     const matrixRows =
       vehicleRows.length === 0
@@ -625,21 +1065,28 @@ function BorrowedVehiclesReportModal({
               return `
           <tr>
             <td>${escapeHtml(vehicleLabel(v))}</td>
-            ${statusCols.map((s) => `<td class="center">${m[s] || 0}</td>`).join('')}
+            ${statusCols
+              .map((s) => `<td class="center">${m[s] || 0}</td>`)
+              .join("")}
             <td class="center"><strong>${vehicleCounts[v]}</strong></td>
           </tr>`;
             })
-            .join('') +
+            .join("") +
           `
           <tr class="total-row">
             <td><strong>All Vehicles</strong></td>
-            ${statusCols.map((s) => `<td class="center"><strong>${statusCounts[s] || 0}</strong></td>`).join('')}
+            ${statusCols
+              .map(
+                (s) =>
+                  `<td class="center"><strong>${statusCounts[s] || 0}</strong></td>`,
+              )
+              .join("")}
             <td class="center"><strong>${data.length}</strong></td>
           </tr>`;
 
     const filterText = filterSummary
       ? `${filterSummary.vehicle} | ${filterSummary.status}`
-      : 'All data';
+      : "All data";
 
     const html = `<!DOCTYPE html>
 <html lang="en">
@@ -741,7 +1188,7 @@ function BorrowedVehiclesReportModal({
     <h1>BORROWED VEHICLES DISPATCH REPORT</h1>
     <p class="muted" style="margin-top:8px">Generated: ${escapeHtml(now)}</p>
     <p class="muted">Filters: ${escapeHtml(filterText)}</p>
-    <p class="muted">${data.length} request${data.length === 1 ? '' : 's'} in coverage</p>
+    <p class="muted">${data.length} request${data.length === 1 ? "" : "s"} in coverage</p>
   </div>
 
   <div class="section avoid-break">
@@ -755,7 +1202,7 @@ function BorrowedVehiclesReportModal({
       <thead>
         <tr>
           <th>Vehicle</th>
-          ${statusCols.map((s) => `<th class="center">${escapeHtml(s)}</th>`).join('')}
+          ${statusCols.map((s) => `<th class="center">${escapeHtml(s)}</th>`).join("")}
           <th class="center">Total</th>
         </tr>
       </thead>
@@ -770,20 +1217,20 @@ function BorrowedVehiclesReportModal({
 </body>
 </html>`;
 
-    const existing = document.getElementById('borrow-vehicles-print-frame');
+    const existing = document.getElementById("borrow-vehicles-print-frame");
     if (existing) existing.remove();
 
-    const iframe = document.createElement('iframe');
-    iframe.id = 'borrow-vehicles-print-frame';
-    iframe.setAttribute('title', 'Borrowed Vehicles Report Print');
-    iframe.style.position = 'fixed';
-    iframe.style.right = '0';
-    iframe.style.bottom = '0';
-    iframe.style.width = '0';
-    iframe.style.height = '0';
-    iframe.style.border = '0';
-    iframe.style.opacity = '0';
-    iframe.style.pointerEvents = 'none';
+    const iframe = document.createElement("iframe");
+    iframe.id = "borrow-vehicles-print-frame";
+    iframe.setAttribute("title", "Borrowed Vehicles Report Print");
+    iframe.style.position = "fixed";
+    iframe.style.right = "0";
+    iframe.style.bottom = "0";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "0";
+    iframe.style.opacity = "0";
+    iframe.style.pointerEvents = "none";
     document.body.appendChild(iframe);
 
     const frameDoc = iframe.contentDocument || iframe.contentWindow.document;
@@ -796,7 +1243,7 @@ function BorrowedVehiclesReportModal({
         iframe.contentWindow.focus();
         iframe.contentWindow.print();
       } catch (err) {
-        console.error('Print failed:', err);
+        console.error("Print failed:", err);
       }
       setTimeout(() => {
         try {
@@ -807,7 +1254,7 @@ function BorrowedVehiclesReportModal({
       }, 60_000);
     };
 
-    if (iframe.contentWindow.document.readyState === 'complete') {
+    if (iframe.contentWindow.document.readyState === "complete") {
       setTimeout(triggerPrint, 300);
     } else {
       iframe.onload = () => setTimeout(triggerPrint, 300);
@@ -815,22 +1262,24 @@ function BorrowedVehiclesReportModal({
   };
 
   return (
-    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl border border-slate-200 shadow-xl max-w-4xl w-full max-h-[90vh] overflow-y-auto">
-        <div className="flex items-center justify-between p-4 border-b border-slate-200 sticky top-0 bg-white z-10">
-          <h3 className="font-bold text-slate-800">Borrowed Vehicles Report Preview</h3>
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+      <div className="max-h-[90vh] w-full max-w-4xl overflow-y-auto rounded-2xl border border-slate-200 bg-white shadow-xl">
+        <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-200 bg-white p-4">
+          <h3 className="font-bold text-slate-800">
+            Borrowed Vehicles Report Preview
+          </h3>
           <div className="flex gap-2">
             <button
               type="button"
               onClick={handlePrint}
-              className="flex items-center gap-2 bg-purple-600 text-white px-4 py-2 rounded-xl hover:bg-purple-700 font-bold text-sm"
+              className="flex items-center gap-2 rounded-xl bg-purple-600 px-4 py-2 text-sm font-bold text-white hover:bg-purple-700"
             >
-              <Printer className="w-4 h-4" /> Print / Save PDF
+              <Printer className="h-4 w-4" /> Print / Save PDF
             </button>
             <button
               type="button"
               onClick={onClose}
-              className="px-4 py-2 border border-slate-300 rounded-xl hover:bg-slate-100 font-bold text-slate-700 text-sm"
+              className="rounded-xl border border-slate-300 px-4 py-2 text-sm font-bold text-slate-700 hover:bg-slate-100"
             >
               Close
             </button>
@@ -838,26 +1287,33 @@ function BorrowedVehiclesReportModal({
         </div>
 
         <div className="p-8 text-slate-800">
-          <div className="text-center mb-8 border-b pb-6 border-slate-200">
-            <h1 className="text-2xl font-bold text-slate-900">BORROWED VEHICLES DISPATCH REPORT</h1>
-            <p className="text-sm text-slate-500 mt-2">Generated: {now}</p>
-            <p className="text-xs text-slate-400 mt-1">
-              Filters: {filterSummary ? `${filterSummary.vehicle} | ${filterSummary.status}` : 'All data'}
+          <div className="mb-8 border-b border-slate-200 pb-6 text-center">
+            <h1 className="text-2xl font-bold text-slate-900">
+              BORROWED VEHICLES DISPATCH REPORT
+            </h1>
+            <p className="mt-2 text-sm text-slate-500">Generated: {now}</p>
+            <p className="mt-1 text-xs text-slate-400">
+              Filters:{" "}
+              {filterSummary
+                ? `${filterSummary.vehicle} | ${filterSummary.status}`
+                : "All data"}
             </p>
           </div>
 
           <div className="mb-8">
-            <h2 className="font-bold text-slate-800 mb-3">Report Summary</h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <h2 className="mb-3 font-bold text-slate-800">Report Summary</h2>
+            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
               {summaryCards.map((card, i) => (
-                <div key={i} className={`p-4 rounded-xl border ${card.color}`}>
+                <div key={i} className={`rounded-xl border p-4 ${card.color}`}>
                   <div className="flex items-center justify-between">
                     <div>
-                      <p className="text-xs font-bold opacity-70">{card.label}</p>
-                      <p className="text-2xl font-bold mt-1">{card.value}</p>
+                      <p className="text-xs font-bold opacity-70">
+                        {card.label}
+                      </p>
+                      <p className="mt-1 text-2xl font-bold">{card.value}</p>
                       <p className="text-xs opacity-70">{card.pct}% of total</p>
                     </div>
-                    <card.icon className="w-6 h-6 opacity-70" />
+                    <card.icon className="h-6 w-6 opacity-70" />
                   </div>
                 </div>
               ))}
@@ -865,18 +1321,31 @@ function BorrowedVehiclesReportModal({
           </div>
 
           <div className="mb-8">
-            <h2 className="font-bold text-slate-800 mb-3">Breakdown by Vehicle &amp; Status</h2>
+            <h2 className="mb-3 font-bold text-slate-800">
+              Breakdown by Vehicle &amp; Status
+            </h2>
             {data.length === 0 ? (
-              <p className="text-sm text-slate-500">No data available for this report.</p>
+              <p className="text-sm text-slate-500">
+                No data available for this report.
+              </p>
             ) : (
-              <table className="w-full text-sm border-collapse">
+              <table className="w-full border-collapse text-sm">
                 <thead>
                   <tr className="bg-slate-100">
-                    <th className="p-2 text-left font-bold border border-slate-200 text-slate-700">Vehicle</th>
+                    <th className="border border-slate-200 p-2 text-left font-bold text-slate-700">
+                      Vehicle
+                    </th>
                     {statusCols.map((s) => (
-                      <th key={s} className="p-2 text-center font-bold border border-slate-200 text-slate-700">{s}</th>
+                      <th
+                        key={s}
+                        className="border border-slate-200 p-2 text-center font-bold text-slate-700"
+                      >
+                        {s}
+                      </th>
                     ))}
-                    <th className="p-2 text-center font-bold border border-slate-200 text-slate-700">Total</th>
+                    <th className="border border-slate-200 p-2 text-center font-bold text-slate-700">
+                      Total
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -884,28 +1353,49 @@ function BorrowedVehiclesReportModal({
                     const m = vehicleStatusMatrix[v] || {};
                     return (
                       <tr key={v} className="border-b border-slate-100">
-                        <td className="p-2 border border-slate-200 font-semibold text-slate-700">{vehicleLabel(v)}</td>
+                        <td className="border border-slate-200 p-2 font-semibold text-slate-700">
+                          {vehicleLabel(v)}
+                        </td>
                         {statusCols.map((s) => (
-                          <td key={s} className="p-2 border border-slate-200 text-center text-slate-600">{m[s] || 0}</td>
+                          <td
+                            key={s}
+                            className="border border-slate-200 p-2 text-center text-slate-600"
+                          >
+                            {m[s] || 0}
+                          </td>
                         ))}
-                        <td className="p-2 border border-slate-200 text-center font-bold text-slate-700">{vehicleCounts[v]}</td>
+                        <td className="border border-slate-200 p-2 text-center font-bold text-slate-700">
+                          {vehicleCounts[v]}
+                        </td>
                       </tr>
                     );
                   })}
                   <tr className="bg-slate-50 font-bold">
-                    <td className="p-2 border border-slate-200 text-slate-700">All Vehicles</td>
+                    <td className="border border-slate-200 p-2 text-slate-700">
+                      All Vehicles
+                    </td>
                     {statusCols.map((s) => (
-                      <td key={s} className="p-2 border border-slate-200 text-center text-slate-700">{statusCounts[s] || 0}</td>
+                      <td
+                        key={s}
+                        className="border border-slate-200 p-2 text-center text-slate-700"
+                      >
+                        {statusCounts[s] || 0}
+                      </td>
                     ))}
-                    <td className="p-2 border border-slate-200 text-center text-slate-800">{data.length}</td>
+                    <td className="border border-slate-200 p-2 text-center text-slate-800">
+                      {data.length}
+                    </td>
                   </tr>
                 </tbody>
               </table>
             )}
           </div>
 
-          <div className="mt-8 pt-4 border-t border-slate-200 text-center text-xs text-slate-500">
-            <p>This report is system-generated and reflects current filtered data.</p>
+          <div className="mt-8 border-t border-slate-200 pt-4 text-center text-xs text-slate-500">
+            <p>
+              This report is system-generated and reflects current filtered
+              data.
+            </p>
             <p className="mt-1">© {new Date().getFullYear()} E-MDRRMO</p>
           </div>
         </div>

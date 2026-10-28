@@ -441,7 +441,7 @@ const IncidentReported = () => {
       {/* ===== ANALYZE / RESPOND MODAL ===== */}
       {selected && (
         <div
-          className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-3 sm:p-4"
+          className="fixed inset-0 bg-black/60 flex items-center justify-center z-5000 p-3 sm:p-4"
           onClick={() => setSelected(null)}
         >
           <div

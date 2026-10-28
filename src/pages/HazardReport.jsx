@@ -1,12 +1,7 @@
 "use client";
+
 import { Link, useNavigate } from "react-router-dom";
-
-import {
-  useCallback,
-  useEffect,
-  useState,
-} from "react";
-
+import { useCallback, useEffect, useState } from "react";
 import {
   AlertCircle,
   Camera,
@@ -23,7 +18,6 @@ import {
   UserRound,
 } from "lucide-react";
 
-
 import reportImg from "../Images/photo-icon.png";
 import { supabase } from "../createClient";
 import {
@@ -33,7 +27,6 @@ import {
   isOtherNaturalHazard,
 } from "../utils/HazardTaxonomy";
 import { useSettings } from "./SettingsContext";
-
 import RequestFormShell, {
   FORM_INPUT_CLASS,
   FormField,
@@ -44,35 +37,40 @@ const MAX_PHOTOS = 4;
 const MAX_FILE_BYTES = 8 * 1024 * 1024;
 const HAZARD_BUCKET = "hazard-photos";
 
+/** Philippine mobile: 09XXXXXXXXX (11) or +639XXXXXXXXX (13) */
+function normalizePHMobile(raw) {
+  if (raw == null) return null;
+  let v = String(raw).trim().replace(/[\s\-()]/g, "");
+
+  if (v.startsWith("+639") && /^\+639\d{9}$/.test(v)) return v;
+  if (v.startsWith("639") && /^639\d{9}$/.test(v)) return `+${v}`;
+  if (v.startsWith("09") && /^09\d{9}$/.test(v)) return v;
+  // bare 9XXXXXXXXX (10 digits) → 09XXXXXXXXX
+  if (/^9\d{9}$/.test(v)) return `0${v}`;
+
+  return null;
+}
+
+function isValidPHMobile(raw) {
+  return normalizePHMobile(raw) !== null;
+}
+
 function localDateKey() {
   const date = new Date();
-
   return [
     date.getFullYear(),
-    String(date.getMonth() + 1).padStart(
-      2,
-      "0",
-    ),
+    String(date.getMonth() + 1).padStart(2, "0"),
     String(date.getDate()).padStart(2, "0"),
   ].join("-");
 }
 
-const PhotoPreview = ({
-  file,
-  index,
-}) => {
-  const [url, setUrl] =
-    useState(null);
+const PhotoPreview = ({ file, index }) => {
+  const [url, setUrl] = useState(null);
 
   useEffect(() => {
-    const objectUrl =
-      URL.createObjectURL(file);
-
+    const objectUrl = URL.createObjectURL(file);
     setUrl(objectUrl);
-
-    return () => {
-      URL.revokeObjectURL(objectUrl);
-    };
+    return () => URL.revokeObjectURL(objectUrl);
   }, [file]);
 
   if (!url) {
@@ -88,7 +86,6 @@ const PhotoPreview = ({
         alt={`Photo preview ${index + 1}`}
         className="h-full w-full rounded-xl border-2 border-white object-cover shadow-md dark:border-slate-600"
       />
-
       <span className="absolute -right-2 -top-2 flex h-6 w-6 items-center justify-center rounded-full bg-gradient-to-r from-blue-600 to-purple-600 text-[10px] font-black text-white shadow-md ring-2 ring-white dark:ring-slate-900">
         {index + 1}
       </span>
@@ -117,58 +114,26 @@ const initialForm = {
 
 export default function HazardReport() {
   const { prefs, setPref } = useSettings();
-  
-const navigate = useNavigate();
+  const navigate = useNavigate();
 
-  const [realName, setRealName] =
-    useState("");
+  const [realName, setRealName] = useState("");
+  const [identity, setIdentity] = useState("resident");
+  const [resolving, setResolving] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [success, setSuccess] = useState(false);
+  const [error, setError] = useState("");
+  const [geoError, setGeoError] = useState(null);
+  const [geoLoading, setGeoLoading] = useState(true);
+  const [form, setForm] = useState(initialForm);
+  const [submittedPhotoCount, setSubmittedPhotoCount] = useState(0);
+  const [uploadWarning, setUploadWarning] = useState("");
 
-  const [identity, setIdentity] =
-    useState("resident");
-
-  const [resolving, setResolving] =
-    useState(true);
-
-  const [submitting, setSubmitting] =
-    useState(false);
-
-  const [success, setSuccess] =
-    useState(false);
-
-  const [error, setError] =
-    useState("");
-
-  const [geoError, setGeoError] =
-    useState(null);
-
-  const [geoLoading, setGeoLoading] =
-    useState(true);
-
-  const [form, setForm] =
-    useState(initialForm);
-
-  const [submittedPhotoCount, setSubmittedPhotoCount] =
-    useState(0);
-
-  const [uploadWarning, setUploadWarning] =
-    useState("");
-
-  const nameIsMasked =
-    prefs.public_name === false;
-
-  const locationEnabled =
-    prefs.location_access !== false;
-
+  const nameIsMasked = prefs.public_name === false;
+  const locationEnabled = prefs.location_access !== false;
   const todayStr = localDateKey();
 
-  const showOtherInput = isOtherNaturalHazard(
-    form.hazardCategory,
-  );
-
-  const specificOptions = getTypesForCategory(
-    form.hazardCategory,
-  );
-
+  const showOtherInput = isOtherNaturalHazard(form.hazardCategory);
+  const specificOptions = getTypesForCategory(form.hazardCategory);
   const showSpecificSelect =
     Boolean(form.hazardCategory) &&
     !showOtherInput &&
@@ -186,28 +151,21 @@ const navigate = useNavigate();
         } = await supabase.auth.getUser();
 
         if (supabaseUser && !cancelled) {
-          const { data: profile } =
-            await supabase
-              .from("profiles")
-              .select(
-                "full_name, first_name, last_name",
-              )
-              .eq("id", supabaseUser.id)
-              .maybeSingle();
+          const { data: profile } = await supabase
+            .from("profiles")
+            .select("full_name, first_name, last_name")
+            .eq("id", supabaseUser.id)
+            .maybeSingle();
 
           if (!cancelled) {
             setRealName(
               profile?.full_name ||
-                [
-                  profile?.first_name,
-                  profile?.last_name,
-                ]
+                [profile?.first_name, profile?.last_name]
                   .filter(Boolean)
                   .join(" ") ||
                 supabaseUser.email ||
                 "User",
             );
-
             setIdentity("resident");
             resolved = true;
           }
@@ -221,29 +179,19 @@ const navigate = useNavigate();
         return;
       }
 
-      const rawUser =
-        localStorage.getItem(
-          "currentUser",
-        );
-
+      const rawUser = localStorage.getItem("currentUser");
       if (rawUser) {
         try {
-          const parsed =
-            JSON.parse(rawUser);
-
+          const parsed = JSON.parse(rawUser);
           if (!cancelled) {
             setRealName(
               parsed.full_name ||
-                [
-                  parsed.first_name,
-                  parsed.last_name,
-                ]
+                [parsed.first_name, parsed.last_name]
                   .filter(Boolean)
                   .join(" ") ||
                 parsed.email ||
                 "User",
             );
-
             setIdentity("resident");
             resolved = true;
           }
@@ -257,16 +205,10 @@ const navigate = useNavigate();
         return;
       }
 
-      const rawStaff =
-        localStorage.getItem(
-          "currentStaff",
-        );
-
+      const rawStaff = localStorage.getItem("currentStaff");
       if (rawStaff) {
         try {
-          const staff =
-            JSON.parse(rawStaff);
-
+          const staff = JSON.parse(rawStaff);
           if (!cancelled) {
             setRealName(
               staff.full_name ||
@@ -274,7 +216,6 @@ const navigate = useNavigate();
                 staff.user_id ||
                 "Staff Member",
             );
-
             setIdentity("staff");
             resolved = true;
           }
@@ -295,7 +236,6 @@ const navigate = useNavigate();
     };
 
     resolveIdentity();
-
     return () => {
       cancelled = true;
     };
@@ -304,196 +244,126 @@ const navigate = useNavigate();
   useEffect(() => {
     setForm((previous) => ({
       ...previous,
-      reporterName: nameIsMasked
-        ? "Anonymous"
-        : realName,
+      reporterName: nameIsMasked ? "Anonymous" : realName,
     }));
   }, [nameIsMasked, realName]);
 
-  const fetchLocation =
-    useCallback(() => {
-      return new Promise((resolve) => {
-        setGeoLoading(true);
-        setGeoError(null);
+  const fetchLocation = useCallback(() => {
+    return new Promise((resolve) => {
+      setGeoLoading(true);
+      setGeoError(null);
 
-        if (!navigator.geolocation) {
+      if (!navigator.geolocation) {
+        setGeoLoading(false);
+        setGeoError("Geolocation is not supported by this browser.");
+        resolve(false);
+        return;
+      }
+
+      navigator.geolocation.getCurrentPosition(
+        (position) => {
+          setForm((previous) => ({
+            ...previous,
+            latitude: position.coords.latitude,
+            longitude: position.coords.longitude,
+          }));
           setGeoLoading(false);
-
-          setGeoError(
-            "Geolocation is not supported by this browser.",
-          );
-
+          resolve(true);
+        },
+        (locationError) => {
+          setGeoLoading(false);
+          if (locationError.code === locationError.PERMISSION_DENIED) {
+            setGeoError(
+              "Location permission was denied. Enable location for this site, then tap Retry.",
+            );
+            setPref("location_access", false);
+          } else {
+            setGeoError(
+              "Unable to retrieve GPS location. Check your connection and tap Retry.",
+            );
+          }
           resolve(false);
-
-          return;
-        }
-
-        navigator.geolocation.getCurrentPosition(
-          (position) => {
-            setForm((previous) => ({
-              ...previous,
-              latitude:
-                position.coords.latitude,
-              longitude:
-                position.coords.longitude,
-            }));
-
-            setGeoLoading(false);
-            resolve(true);
-          },
-          (locationError) => {
-            setGeoLoading(false);
-
-            if (
-              locationError.code ===
-              locationError.PERMISSION_DENIED
-            ) {
-              setGeoError(
-                "Location permission was denied. Enable location for this site, then tap Retry.",
-              );
-
-              setPref(
-                "location_access",
-                false,
-              );
-            } else {
-              setGeoError(
-                "Unable to retrieve GPS location. Check your connection and tap Retry.",
-              );
-            }
-
-            resolve(false);
-          },
-          {
-            enableHighAccuracy: true,
-            timeout: 10000,
-            maximumAge: 0,
-          },
-        );
-      });
-    }, [setPref]);
+        },
+        {
+          enableHighAccuracy: true,
+          timeout: 10000,
+          maximumAge: 0,
+        },
+      );
+    });
+  }, [setPref]);
 
   useEffect(() => {
     if (!locationEnabled) {
       setGeoLoading(false);
       setGeoError(null);
-
       setForm((previous) => ({
         ...previous,
         latitude: null,
         longitude: null,
       }));
-
       return;
     }
-
     fetchLocation();
   }, [locationEnabled, fetchLocation]);
 
-  const handleEnableLocation =
-    useCallback(() => {
-      setPref(
-        "location_access",
-        true,
-      );
-    }, [setPref]);
+  const handleEnableLocation = useCallback(() => {
+    setPref("location_access", true);
+  }, [setPref]);
 
-  const uploadPhotos = async (
-    files,
-  ) => {
+  const uploadPhotos = async (files) => {
     const uploadedPaths = [];
     const failures = [];
 
     for (const file of files) {
       if (file.size > MAX_FILE_BYTES) {
-        failures.push(
-          `${file.name} is larger than 8 MB`,
-        );
-
+        failures.push(`${file.name} is larger than 8 MB`);
         continue;
       }
-
       if (!file.type.startsWith("image/")) {
-        failures.push(
-          `${file.name} is not an image`,
-        );
-
+        failures.push(`${file.name} is not an image`);
         continue;
       }
 
-      const fileExt =
-        (
-          file.name
-            .split(".")
-            .pop() || "jpg"
-        ).toLowerCase();
+      const fileExt = (file.name.split(".").pop() || "jpg").toLowerCase();
+      const filePath = `${Date.now()}_${Math.random()
+        .toString(36)
+        .slice(2, 10)}.${fileExt}`;
 
-      const filePath =
-        `${Date.now()}_${Math.random()
-          .toString(36)
-          .slice(2, 10)}.${fileExt}`;
-
-      const { error: uploadError } =
-        await supabase.storage
-          .from(HAZARD_BUCKET)
-          .upload(
-            filePath,
-            file,
-            {
-              cacheControl: "3600",
-              upsert: false,
-            },
-          );
+      const { error: uploadError } = await supabase.storage
+        .from(HAZARD_BUCKET)
+        .upload(filePath, file, {
+          cacheControl: "3600",
+          upsert: false,
+        });
 
       if (uploadError) {
-        console.error(
-          "Upload error:",
-          uploadError,
-        );
-
-        failures.push(
-          `${file.name}: ${uploadError.message}`,
-        );
-
+        console.error("Upload error:", uploadError);
+        failures.push(`${file.name}: ${uploadError.message}`);
         continue;
       }
 
       uploadedPaths.push(filePath);
     }
 
-    return {
-      uploadedPaths,
-      failures,
-    };
+    return { uploadedPaths, failures };
   };
 
   const handleChange = (event) => {
-    const {
-      name,
-      value,
-      type,
-      files,
-    } = event.target;
+    const { name, value, type, files } = event.target;
 
     if (type === "file") {
       setForm((previous) => ({
         ...previous,
-        hazardPhotos:
-          Array.from(files)
-            .slice(0, MAX_PHOTOS),
+        hazardPhotos: Array.from(files).slice(0, MAX_PHOTOS),
       }));
-
       return;
     }
 
-    if (
-      name === "reporterName" &&
-      nameIsMasked
-    ) {
+    if (name === "reporterName" && nameIsMasked) {
       return;
     }
 
-    // Reset specific type and other text when main category changes
     if (name === "hazardCategory") {
       setForm((previous) => ({
         ...previous,
@@ -505,22 +375,34 @@ const navigate = useNavigate();
       return;
     }
 
+    // Contact: only digits + optional leading +, length-capped
+    if (name === "reporterContact") {
+      let next = value.replace(/[^\d+]/g, "");
+      if (next.includes("+")) {
+        next = "+" + next.replace(/\+/g, "").replace(/[^\d]/g, "");
+      }
+      if (next.startsWith("+")) {
+        next = next.slice(0, 13); // +639XXXXXXXXX
+      } else {
+        next = next.slice(0, 11); // 09XXXXXXXXX
+      }
+      setForm((previous) => ({ ...previous, reporterContact: next }));
+      setError("");
+      return;
+    }
+
     setForm((previous) => ({
       ...previous,
       [name]: value,
     }));
-
     setError("");
   };
 
   const handleResetForm = () => {
     setError("");
-
     setForm({
       ...initialForm,
-      reporterName: nameIsMasked
-        ? "Anonymous"
-        : realName,
+      reporterName: nameIsMasked ? "Anonymous" : realName,
       department: form.department,
       latitude: form.latitude,
       longitude: form.longitude,
@@ -532,171 +414,127 @@ const navigate = useNavigate();
     setError("");
     setUploadWarning("");
     setSubmittedPhotoCount(0);
-
     setForm({
       ...initialForm,
-      reporterName: nameIsMasked
-        ? "Anonymous"
-        : realName,
+      reporterName: nameIsMasked ? "Anonymous" : realName,
       department: form.department,
       latitude: form.latitude,
       longitude: form.longitude,
     });
   };
 
-  const createHazardReport =
-    async (event) => {
-      event.preventDefault();
+  const createHazardReport = async (event) => {
+    event.preventDefault();
+    if (submitting) return;
 
-      if (submitting) {
-        return;
+    setSubmitting(true);
+    setError("");
+    setUploadWarning("");
+
+    try {
+      if (
+        showOtherInput &&
+        !String(form.otherHazardType || "").trim()
+      ) {
+        throw new Error(
+          "Please describe the natural hazard type when choosing Other Natural Disaster.",
+        );
       }
 
-      setSubmitting(true);
-      setError("");
-      setUploadWarning("");
-
-      try {
-        if (
-          showOtherInput &&
-          !String(form.otherHazardType || "").trim()
-        ) {
+      // Contact validation (optional field, but must be valid if provided)
+      const contactRaw = String(form.reporterContact || "").trim();
+      let normalizedContact = "";
+      if (contactRaw) {
+        normalizedContact = normalizePHMobile(contactRaw);
+        if (!normalizedContact) {
           throw new Error(
-            "Please describe the natural hazard type when choosing Other Natural Disaster.",
+            "Contact number must be a valid Philippine mobile: 09XXXXXXXXX (11 digits) or +639XXXXXXXXX.",
           );
         }
-
-        let photoPaths = [];
-
-        if (form.hazardPhotos.length > 0) {
-          const {
-            uploadedPaths,
-            failures,
-          } = await uploadPhotos(
-            form.hazardPhotos,
-          );
-
-          photoPaths = uploadedPaths;
-
-          if (uploadedPaths.length === 0) {
-            throw new Error(
-              `None of the selected photos could be uploaded. ${
-                failures.join("; ") ||
-                "Please try again."
-              }`,
-            );
-          }
-
-          if (failures.length > 0) {
-            setUploadWarning(
-              `${failures.length} photo(s) were skipped: ${failures.join("; ")}. The successfully uploaded photos were attached.`,
-            );
-          }
-        }
-
-        const {
-          data: { user: supabaseUser },
-        } = await supabase.auth.getUser();
-
-        const hasValidUser =
-          typeof supabaseUser?.id ===
-            "string" &&
-          supabaseUser.id.length > 10;
-
-        const typeForDescription = showOtherInput
-          ? String(form.otherHazardType || "").trim()
-          : form.hazardType;
-
-        const reportData = {
-          reporter_name:
-            nameIsMasked
-              ? "Anonymous"
-              : form.reporterName ||
-                "Anonymous",
-
-          reporter_contact:
-            form.reporterContact || "",
-
-          address: form.address,
-          landmark: form.landMark || "",
-
-          date_observed:
-            form.dateObserved,
-
-          time_observed:
-            form.timeObserved,
-
-          hazard_category:
-            form.hazardCategory,
-
-          risk_level: form.riskLevel,
-
-          hazard_description:
-            composeHazardDescription(
-              typeForDescription,
-              form.hazardDescription,
-            ),
-
-          recommended_action:
-            form.recommendedAction || "",
-
-          hazard_photos: photoPaths,
-
-          latitude:
-            locationEnabled
-              ? form.latitude
-              : null,
-
-          longitude:
-            locationEnabled
-              ? form.longitude
-              : null,
-
-          status: "pending",
-          report_status: "pending",
-          show_on_heatmap: false,
-        };
-
-        if (hasValidUser) {
-          reportData.user_id =
-            supabaseUser.id;
-        }
-
-        const { error: insertError } =
-          await supabase
-            .from("hazard_reports")
-            .insert([reportData]);
-
-        if (insertError) {
-          throw insertError;
-        }
-
-        setSubmittedPhotoCount(
-          photoPaths.length,
-        );
-
-        setSuccess(true);
-
-        window.dispatchEvent(
-          new Event(
-            "mdrrmo:notif-refresh",
-          ),
-        );
-      } catch (submitError) {
-        console.error(
-          "Hazard report submit error:",
-          submitError,
-        );
-
-        setError(
-          submitError?.message
-            ? `Failed to submit report: ${submitError.message}`
-            : "Failed to submit the hazard report. Please try again.",
-        );
-      } finally {
-        setSubmitting(false);
       }
-    };
+
+      let photoPaths = [];
+      if (form.hazardPhotos.length > 0) {
+        const { uploadedPaths, failures } = await uploadPhotos(
+          form.hazardPhotos,
+        );
+        photoPaths = uploadedPaths;
+
+        if (uploadedPaths.length === 0) {
+          throw new Error(
+            `None of the selected photos could be uploaded. ${
+              failures.join("; ") || "Please try again."
+            }`,
+          );
+        }
+
+        if (failures.length > 0) {
+          setUploadWarning(
+            `${failures.length} photo(s) were skipped: ${failures.join("; ")}. The successfully uploaded photos were attached.`,
+          );
+        }
+      }
+
+      const {
+        data: { user: supabaseUser },
+      } = await supabase.auth.getUser();
+
+      const hasValidUser =
+        typeof supabaseUser?.id === "string" &&
+        supabaseUser.id.length > 10;
+
+      const typeForDescription = showOtherInput
+        ? String(form.otherHazardType || "").trim()
+        : form.hazardType;
+
+      const reportData = {
+        reporter_name: nameIsMasked
+          ? "Anonymous"
+          : form.reporterName || "Anonymous",
+        reporter_contact: normalizedContact,
+        address: form.address,
+        landmark: form.landMark || "",
+        date_observed: form.dateObserved,
+        time_observed: form.timeObserved,
+        hazard_category: form.hazardCategory,
+        risk_level: form.riskLevel,
+        hazard_description: composeHazardDescription(
+          typeForDescription,
+          form.hazardDescription,
+        ),
+        recommended_action: form.recommendedAction || "",
+        hazard_photos: photoPaths,
+        latitude: locationEnabled ? form.latitude : null,
+        longitude: locationEnabled ? form.longitude : null,
+        status: "pending",
+        report_status: "pending",
+        show_on_heatmap: false,
+      };
+
+      if (hasValidUser) {
+        reportData.user_id = supabaseUser.id;
+      }
+
+      const { error: insertError } = await supabase
+        .from("hazard_reports")
+        .insert([reportData]);
+
+      if (insertError) throw insertError;
+
+      setSubmittedPhotoCount(photoPaths.length);
+      setSuccess(true);
+      window.dispatchEvent(new Event("mdrrmo:notif-refresh"));
+    } catch (submitError) {
+      console.error("Hazard report submit error:", submitError);
+      setError(
+        submitError?.message
+          ? `Failed to submit report: ${submitError.message}`
+          : "Failed to submit the hazard report. Please try again.",
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  };
 
   if (resolving) {
     return (
@@ -705,7 +543,6 @@ const navigate = useNavigate();
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-r from-blue-600 via-blue-600 to-purple-600 shadow-xl">
             <Loader2 className="h-8 w-8 animate-spin text-white" />
           </div>
-
           <p className="mt-5 text-sm font-black text-slate-700 dark:text-slate-200">
             Verifying your reporting account...
           </p>
@@ -719,20 +556,16 @@ const navigate = useNavigate();
       <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 dark:bg-slate-950">
         <div className="w-full max-w-md overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
           <div className="h-2 bg-gradient-to-r from-blue-600 via-blue-600 to-purple-600" />
-
           <div className="p-8 text-center">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-100 dark:bg-amber-950/50">
               <TriangleAlert className="h-8 w-8 text-amber-600" />
             </div>
-
             <h2 className="mt-5 text-xl font-black text-slate-900 dark:text-white">
               Sign in required
             </h2>
-
             <p className="mt-3 text-sm leading-6 text-slate-500 dark:text-slate-400">
               You need an approved account before filing a hazard report.
             </p>
-
             <Link
               to="/login"
               className="mt-6 inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 via-blue-600 to-purple-600 px-6 py-3 text-sm font-black text-white shadow-lg transition hover:brightness-105"
@@ -746,79 +579,79 @@ const navigate = useNavigate();
     );
   }
 
- if (success) {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-10 dark:bg-slate-950">
-      <div className="w-full max-w-lg overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
-        <div className="bg-gradient-to-r from-blue-600 via-blue-600 to-purple-600 px-6 py-8 text-center text-white">
-          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/20">
-            <CheckCircle2 className="h-9 w-9" />
-          </div>
-
-          <h1 className="mt-5 text-2xl font-black">
-            Hazard Report Submitted
-          </h1>
-
-          <p className="mt-2 text-sm leading-6 text-blue-50/85">
-            Your report has been received and will appear on the public map after administrator approval.
-          </p>
-        </div>
-
-        <div className="space-y-4 p-6 sm:p-8">
-          <div className="flex items-start gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800 dark:border-blue-800/70 dark:bg-blue-950/40 dark:text-blue-200">
-            <Camera className="mt-0.5 h-5 w-5 shrink-0" />
-            <p>
-              {submittedPhotoCount} photo{submittedPhotoCount === 1 ? "" : "s"} attached as evidence.
-            </p>
-          </div>
-
-          {uploadWarning && (
-            <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800/70 dark:bg-amber-950/40 dark:text-amber-200">
-              <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
-              <p>{uploadWarning}</p>
+  if (success) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-10 dark:bg-slate-950">
+        <div className="w-full max-w-lg overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+          <div className="bg-gradient-to-r from-blue-600 via-blue-600 to-purple-600 px-6 py-8 text-center text-white">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/20">
+              <CheckCircle2 className="h-9 w-9" />
             </div>
-          )}
-
-          {nameIsMasked && (
-            <p className="text-center text-xs text-slate-500 dark:text-slate-400">
-              Filed as <strong>Anonymous</strong> according to your privacy setting.
+            <h1 className="mt-5 text-2xl font-black">Hazard Report Submitted</h1>
+            <p className="mt-2 text-sm leading-6 text-blue-50/85">
+              Your report has been received and will appear on the public map
+              after administrator approval.
             </p>
-          )}
+          </div>
 
-          {!locationEnabled && (
-            <p className="text-center text-xs text-slate-500 dark:text-slate-400">
-              No GPS coordinates were attached because location access is off.
-            </p>
-          )}
+          <div className="space-y-4 p-6 sm:p-8">
+            <div className="flex items-start gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800 dark:border-blue-800/70 dark:bg-blue-950/40 dark:text-blue-200">
+              <Camera className="mt-0.5 h-5 w-5 shrink-0" />
+              <p>
+                {submittedPhotoCount} photo
+                {submittedPhotoCount === 1 ? "" : "s"} attached as evidence.
+              </p>
+            </div>
 
-          <div className="flex flex-col gap-3 sm:flex-row">
-            <button
-              type="button"
-              onClick={handleResetForAnother}
-              className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-black text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
-            >
-              Submit Another
-            </button>
+            {uploadWarning && (
+              <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800/70 dark:bg-amber-950/40 dark:text-amber-200">
+                <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
+                <p>{uploadWarning}</p>
+              </div>
+            )}
 
-            <button
-              type="button"
-              onClick={() => navigate(identity === "staff" ? "/staff/dashboard" : "/home")}
-              className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 via-blue-600 to-purple-600 px-5 py-3 text-sm font-black text-white shadow-lg transition hover:brightness-105"
-            >
-              Back to Dashboard
-            </button>
+            {nameIsMasked && (
+              <p className="text-center text-xs text-slate-500 dark:text-slate-400">
+                Filed as <strong>Anonymous</strong> according to your privacy
+                setting.
+              </p>
+            )}
+
+            {!locationEnabled && (
+              <p className="text-center text-xs text-slate-500 dark:text-slate-400">
+                No GPS coordinates were attached because location access is
+                off.
+              </p>
+            )}
+
+            <div className="flex flex-col gap-3 sm:flex-row">
+              <button
+                type="button"
+                onClick={handleResetForAnother}
+                className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-black text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
+              >
+                Submit Another
+              </button>
+              <button
+                type="button"
+                onClick={() =>
+                  navigate(
+                    identity === "staff" ? "/staff/dashboard" : "/home",
+                  )
+                }
+                className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 via-blue-600 to-purple-600 px-5 py-3 text-sm font-black text-white shadow-lg transition hover:brightness-105"
+              >
+                Back to Dashboard
+              </button>
+            </div>
           </div>
         </div>
       </div>
-    </div>
-  );
-}
-  const bannerName =
-    realName || "User";
+    );
+  }
 
-  const hasCoords =
-    form.latitude != null &&
-    form.longitude != null;
+  const bannerName = realName || "User";
+  const hasCoords = form.latitude != null && form.longitude != null;
 
   return (
     <RequestFormShell
@@ -831,9 +664,7 @@ const navigate = useNavigate();
         detail: nameIsMasked
           ? "Your public report will be submitted as Anonymous"
           : "Your verified account will be attached to this report",
-        badge: identity === "staff"
-          ? "Staff"
-          : "Resident",
+        badge: identity === "staff" ? "Staff" : "Resident",
       }}
       onSubmit={createHazardReport}
       onReset={handleResetForm}
@@ -847,9 +678,9 @@ const navigate = useNavigate();
       {nameIsMasked && (
         <div className="mb-7 flex items-start gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800 dark:border-blue-800/70 dark:bg-blue-950/40 dark:text-blue-200">
           <ShieldCheck className="mt-0.5 h-5 w-5 shrink-0" />
-
           <p className="text-xs leading-6">
-            Your name will be submitted as <strong>Anonymous</strong>. You can change this preference in Settings.
+            Your name will be submitted as <strong>Anonymous</strong>. You can
+            change this preference in Settings.
           </p>
         </div>
       )}
@@ -875,7 +706,6 @@ const navigate = useNavigate();
           >
             <div className="relative">
               <UserRound className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-
               <input
                 id="reporterName"
                 name="reporterName"
@@ -895,21 +725,25 @@ const navigate = useNavigate();
 
           <FormField
             id="reporterContact"
-            label="Contact Details"
+            label="Contact Number"
             hint={
               nameIsMasked
-                ? "Consider leaving this blank because a contact number may identify you."
-                : "Optional phone number or email address"
+                ? "Consider leaving this blank because a contact number may identify you. Format: 09XXXXXXXXX or +639XXXXXXXXX"
+                : "Philippine mobile only: 09XXXXXXXXX (11 digits) or +639XXXXXXXXX"
             }
           >
             <input
               id="reporterContact"
               name="reporterContact"
-              type="text"
+              type="tel"
+              inputMode="tel"
+              autoComplete="tel"
               value={form.reporterContact}
               onChange={handleChange}
-              placeholder="Phone number or email"
-              autoComplete="tel"
+              placeholder="09XXXXXXXXX or +639XXXXXXXXX"
+              maxLength={13}
+              pattern="^(09\d{9}|\+639\d{9})$"
+              title="Use 09 + 9 digits, or +639 + 9 digits"
               className={FORM_INPUT_CLASS}
             />
           </FormField>
@@ -927,11 +761,7 @@ const navigate = useNavigate();
         />
 
         <div className="grid gap-5 md:grid-cols-2">
-          <FormField
-            id="hazardCategory"
-            label="Hazard Category"
-            required
-          >
+          <FormField id="hazardCategory" label="Hazard Category" required>
             <select
               id="hazardCategory"
               name="hazardCategory"
@@ -941,9 +771,7 @@ const navigate = useNavigate();
               required
               aria-describedby="hazardCategory-hint"
             >
-              <option value="">
-                Select a main category
-              </option>
+              <option value="">Select a main category</option>
               {HAZARD_CATEGORIES.map((cat) => (
                 <option key={cat.id} value={cat.id}>
                   {cat.icon} {cat.label}
@@ -954,15 +782,13 @@ const navigate = useNavigate();
               id="hazardCategory-hint"
               className="mt-1.5 text-xs text-slate-500 dark:text-slate-400"
             >
-              Natural disaster category used for map filters after admin verification.
+              Natural disaster category used for map filters after admin
+              verification.
             </p>
           </FormField>
 
           {showSpecificSelect && (
-            <FormField
-              id="hazardType"
-              label="Hazard Type (specific)"
-            >
+            <FormField id="hazardType" label="Hazard Type (specific)">
               <select
                 id="hazardType"
                 name="hazardType"
@@ -971,9 +797,7 @@ const navigate = useNavigate();
                 className={FORM_INPUT_CLASS}
                 aria-describedby="hazardType-hint"
               >
-                <option value="">
-                  Select a specific type (optional)
-                </option>
+                <option value="">Select a specific type (optional)</option>
                 {specificOptions.map((t) => (
                   <option key={t} value={t}>
                     {t}
@@ -984,7 +808,8 @@ const navigate = useNavigate();
                 id="hazardType-hint"
                 className="mt-1.5 text-xs text-slate-500 dark:text-slate-400"
               >
-                Optional detail (e.g. Flash flood). Helps MDRRMO verify and map the hazard.
+                Optional detail (e.g. Flash flood). Helps MDRRMO verify and map
+                the hazard.
               </p>
             </FormField>
           )}
@@ -1010,16 +835,13 @@ const navigate = useNavigate();
                 id="otherHazardType-hint"
                 className="mt-1.5 text-xs text-slate-500 dark:text-slate-400"
               >
-                Required when Other Natural Disaster is selected so the report can be classified correctly.
+                Required when Other Natural Disaster is selected so the report
+                can be classified correctly.
               </p>
             </FormField>
           )}
 
-          <FormField
-            id="riskLevel"
-            label="Severity / Risk Level"
-            required
-          >
+          <FormField id="riskLevel" label="Severity / Risk Level" required>
             <select
               id="riskLevel"
               name="riskLevel"
@@ -1028,21 +850,11 @@ const navigate = useNavigate();
               className={FORM_INPUT_CLASS}
               required
             >
-              <option value="">
-                Select severity level
-              </option>
-              <option value="low">
-                Low
-              </option>
-              <option value="medium">
-                Moderate
-              </option>
-              <option value="high">
-                High
-              </option>
-              <option value="critical">
-                Critical
-              </option>
+              <option value="">Select severity level</option>
+              <option value="low">Low</option>
+              <option value="medium">Moderate</option>
+              <option value="high">High</option>
+              <option value="critical">Critical</option>
             </select>
           </FormField>
         </div>
@@ -1059,14 +871,9 @@ const navigate = useNavigate();
         />
 
         <div className="grid gap-5">
-          <FormField
-            id="address"
-            label="Location / Address"
-            required
-          >
+          <FormField id="address" label="Location / Address" required>
             <div className="relative">
               <MapPin className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-
               <input
                 id="address"
                 name="address"
@@ -1081,10 +888,7 @@ const navigate = useNavigate();
           </FormField>
 
           <div className="grid gap-5 md:grid-cols-2">
-            <FormField
-              id="landMark"
-              label="Nearby Landmark"
-            >
+            <FormField id="landMark" label="Nearby Landmark">
               <input
                 id="landMark"
                 name="landMark"
@@ -1112,14 +916,9 @@ const navigate = useNavigate();
           </div>
 
           <div className="grid gap-5 md:grid-cols-2">
-            <FormField
-              id="dateObserved"
-              label="Date Observed"
-              required
-            >
+            <FormField id="dateObserved" label="Date Observed" required>
               <div className="relative">
                 <CalendarDays className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-
                 <input
                   id="dateObserved"
                   name="dateObserved"
@@ -1133,14 +932,9 @@ const navigate = useNavigate();
               </div>
             </FormField>
 
-            <FormField
-              id="timeObserved"
-              label="Time Observed"
-              required
-            >
+            <FormField id="timeObserved" label="Time Observed" required>
               <div className="relative">
                 <Clock3 className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-
                 <input
                   id="timeObserved"
                   name="timeObserved"
@@ -1183,10 +977,7 @@ const navigate = useNavigate();
             />
           </FormField>
 
-          <FormField
-            id="recommendedAction"
-            label="Recommended Action"
-          >
+          <FormField id="recommendedAction" label="Recommended Action">
             <textarea
               id="recommendedAction"
               name="recommendedAction"
@@ -1209,33 +1000,22 @@ const navigate = useNavigate();
           description={`Upload up to ${MAX_PHOTOS} images. Each image must be smaller than 8 MB.`}
         />
 
-        <FormField
-          id="hazardPhotos"
-          label="Hazard Photos"
-          required
-        >
+        <FormField id="hazardPhotos" label="Hazard Photos" required>
           <label
             htmlFor="hazardPhotos"
             className="group flex min-h-32 cursor-pointer flex-col items-center justify-center rounded-2xl border-2 border-dashed border-indigo-200 bg-indigo-50/60 p-6 text-center transition hover:border-purple-400 hover:bg-indigo-50 focus-within:ring-4 focus-within:ring-purple-500/10 dark:border-indigo-800 dark:bg-indigo-950/20"
           >
             <div className="flex h-12 w-12 items-center justify-center rounded-xl bg-white text-blue-600 shadow-sm dark:bg-slate-900">
-              <img
-                src={reportImg}
-                alt=""
-                className="h-8 w-8"
-              />
+              <img src={reportImg} alt="" className="h-8 w-8" />
             </div>
-
             <p className="mt-3 text-sm font-black text-slate-700 dark:text-slate-200">
               {form.hazardPhotos.length > 0
                 ? `${form.hazardPhotos.length} image(s) selected`
                 : "Tap to take a photo or select files"}
             </p>
-
             <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
               PNG, JPG, or other supported image formats
             </p>
-
             <input
               id="hazardPhotos"
               name="hazardPhotos"
@@ -1251,15 +1031,13 @@ const navigate = useNavigate();
 
         {form.hazardPhotos.length > 0 && (
           <div className="mt-4 flex flex-wrap gap-3">
-            {form.hazardPhotos.map(
-              (file, index) => (
-                <PhotoPreview
-                  key={`${file.name}-${file.lastModified}-${index}`}
-                  file={file}
-                  index={index}
-                />
-              ),
-            )}
+            {form.hazardPhotos.map((file, index) => (
+              <PhotoPreview
+                key={`${file.name}-${file.lastModified}-${index}`}
+                file={file}
+                index={index}
+              />
+            ))}
           </div>
         )}
       </section>
@@ -1288,16 +1066,13 @@ const navigate = useNavigate();
           {!locationEnabled ? (
             <>
               <MapPin className="h-5 w-5 shrink-0" />
-
               <p className="flex-1 text-xs leading-5">
-                Location access is off. This report will be submitted without GPS coordinates.
+                Location access is off. This report will be submitted without
+                GPS coordinates.
               </p>
-
               <button
                 type="button"
-                onClick={
-                  handleEnableLocation
-                }
+                onClick={handleEnableLocation}
                 className="rounded-xl bg-gradient-to-r from-blue-600 via-blue-600 to-purple-600 px-4 py-2 text-xs font-black text-white shadow-sm"
               >
                 Enable Location
@@ -1306,7 +1081,6 @@ const navigate = useNavigate();
           ) : hasCoords ? (
             <>
               <CheckCircle2 className="h-5 w-5 shrink-0" />
-
               <p className="flex-1 text-xs leading-5">
                 GPS acquired:{" "}
                 <strong>
@@ -1314,7 +1088,6 @@ const navigate = useNavigate();
                   {Number(form.longitude).toFixed(5)}
                 </strong>
               </p>
-
               <button
                 type="button"
                 onClick={fetchLocation}
@@ -1327,25 +1100,20 @@ const navigate = useNavigate();
           ) : geoLoading ? (
             <>
               <Loader2 className="h-5 w-5 shrink-0 animate-spin" />
-
               <p className="flex-1 text-xs leading-5">
-                Acquiring your GPS location. Please allow location access when prompted.
+                Acquiring GPS location…
               </p>
             </>
           ) : (
             <>
               <AlertCircle className="h-5 w-5 shrink-0" />
-
               <p className="flex-1 text-xs leading-5">
-                {geoError ||
-                  "GPS location is unavailable."}
+                {geoError || "Location not available."}
               </p>
-
               <button
                 type="button"
                 onClick={fetchLocation}
-                disabled={geoLoading}
-                className="rounded-xl bg-gradient-to-r from-blue-600 via-blue-600 to-purple-600 px-4 py-2 text-xs font-black text-white disabled:opacity-50"
+                className="rounded-xl border border-amber-300 bg-white px-3 py-2 text-xs font-black text-amber-700 dark:bg-amber-950 dark:text-amber-300"
               >
                 Retry
               </button>
@@ -1353,33 +1121,6 @@ const navigate = useNavigate();
           )}
         </div>
       </section>
-
-      <div className="my-8 h-px bg-slate-200 dark:bg-slate-700" />
-
-      <label
-        htmlFor="termsAgree"
-        className="flex cursor-pointer items-start gap-3 rounded-2xl border border-slate-200 bg-slate-50 p-4 text-sm leading-6 text-slate-600 dark:border-slate-700 dark:bg-slate-800/50 dark:text-slate-300"
-      >
-        <input
-          id="termsAgree"
-          type="checkbox"
-          required
-          className="mt-1 h-5 w-5 shrink-0 cursor-pointer accent-purple-600"
-        />
-
-        <span>
-          I confirm that the information provided is accurate. I agree to the{" "}
-          <Link
-            to="/about"
-            className="font-bold text-blue-700 underline dark:text-blue-300"
-          >
-            Terms and Conditions
-          </Link>{" "}
-          {locationEnabled
-            ? " and authorize the use of my GPS coordinates for report verification."
-            : " and understand that GPS coordinates will not be attached because location access is disabled."}
-        </span>
-      </label>
     </RequestFormShell>
   );
 }

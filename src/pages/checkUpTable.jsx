@@ -1039,7 +1039,7 @@ export default function CheckUpTable() {
 
       {selectedCheckup && (
         <div
-          className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/50 p-4"
+          className="fixed inset-0 z-5000 flex items-center justify-center overflow-y-auto bg-black/50 p-4"
           onClick={() => setSelectedId(null)}
         >
           <div
@@ -1333,15 +1333,7 @@ export default function CheckUpTable() {
 
             {/* Modal footer */}
 
-            <div className="flex items-center justify-end rounded-b-2xl border-t border-slate-200 bg-slate-50 px-6 py-4 dark:border-slate-700 dark:bg-slate-900">
-              <button
-                type="button"
-                onClick={() => setSelectedId(null)}
-                className="rounded-lg bg-slate-200 px-4 py-2 text-sm font-bold text-slate-700 transition hover:bg-slate-300 dark:bg-slate-700 dark:text-slate-100 dark:hover:bg-slate-600"
-              >
-                Close
-              </button>
-            </div>
+          
           </div>
         </div>
       )}

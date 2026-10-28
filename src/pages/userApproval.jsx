@@ -53,6 +53,22 @@ import {
   YAxis,
 } from "recharts";
 import { useDialog } from "../components/AppDialog";
+
+/** Philippine mobile: 09XXXXXXXXX (11) or +639XXXXXXXXX (13) */
+function normalizePHMobile(raw) {
+  if (raw == null) return null;
+  let v = String(raw).trim().replace(/[\s\-()]/g, "");
+  if (v.startsWith("+639") && /^\+639\d{9}$/.test(v)) return v;
+  if (v.startsWith("639") && /^639\d{9}$/.test(v)) return `+${v}`;
+  if (v.startsWith("09") && /^09\d{9}$/.test(v)) return v;
+  if (/^9\d{9}$/.test(v)) return `0${v}`;
+  return null;
+}
+
+function isValidPHMobile(raw) {
+  return normalizePHMobile(raw) !== null;
+}
+
 /* =============================================================
  * CONSTANTS
  * ============================================================= */
@@ -628,6 +644,16 @@ function AdminUserManagement() {
   const [createError, setCreateError] = useState("");
   const [createSuccess, setCreateSuccess] = useState("");
 
+  /* ── Account deletion requests ───────────────────────────────── */
+  const [deletionRequests, setDeletionRequests] = useState([]);
+  const [deletionLoading, setDeletionLoading] = useState(false);
+  const [deletionSavingId, setDeletionSavingId] = useState(null);
+
+  /* ── Deleted accounts archive ────────────────────────────────── */
+  const [deletedAccounts, setDeletedAccounts] = useState([]);
+  const [deletedLoading, setDeletedLoading] = useState(false);
+  const [restoreSavingId, setRestoreSavingId] = useState(null);
+
   /* ── Approve modal state ─────────────────────────────────────── */
   const [showApproveModal, setShowApproveModal] = useState(false);
   const [approveTarget, setApproveTarget] = useState(null);
@@ -823,6 +849,442 @@ function AdminUserManagement() {
   useEffect(() => {
     fetchAllUsers(true);
   }, [fetchAllUsers]);
+
+  const fetchDeletionRequests = useCallback(async () => {
+    setDeletionLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("account_deletion_requests")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        if (
+          String(error.message || "").includes("account_deletion_requests") ||
+          error.code === "42P01"
+        ) {
+          setDeletionRequests([]);
+          return;
+        }
+        throw error;
+      }
+
+      setDeletionRequests(data || []);
+    } catch (err) {
+      console.warn("Failed to load deletion requests:", err);
+      setDeletionRequests([]);
+    } finally {
+      setDeletionLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchDeletionRequests();
+  }, [fetchDeletionRequests]);
+
+  const fetchDeletedAccounts = useCallback(async () => {
+    setDeletedLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("deleted_accounts")
+        .select("*")
+        .order("deleted_at", { ascending: false });
+
+      if (error) {
+        if (
+          String(error.message || "").includes("deleted_accounts") ||
+          error.code === "42P01"
+        ) {
+          setDeletedAccounts([]);
+          return;
+        }
+        throw error;
+      }
+
+      setDeletedAccounts(data || []);
+    } catch (err) {
+      console.warn("Failed to load deleted accounts:", err);
+      setDeletedAccounts([]);
+    } finally {
+      setDeletedLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchDeletedAccounts();
+  }, [fetchDeletedAccounts]);
+
+  const buildRestoreRow = (archived) => {
+    const snapshot = archived?.snapshot || {};
+    const liveRow = snapshot.liveRow || null;
+    const table = archived.original_table;
+
+    if (liveRow && typeof liveRow === "object") {
+      const row = { ...liveRow };
+      // Avoid identity conflicts if id was identity-generated with different sequence — keep original id when present
+      return { table, row };
+    }
+
+    // Fallback reconstruction from archive columns
+    if (table === "profiles") {
+      return {
+        table,
+        row: {
+          id: archived.auth_uid || archived.original_id || undefined,
+          email: archived.email || null,
+          full_name: archived.full_name || null,
+          mobile_number: archived.mobile_number || null,
+          role: archived.role || "user",
+          user_id: archived.work_id || null,
+          is_active: true,
+        },
+      };
+    }
+
+    if (table === "staff_users") {
+      return {
+        table,
+        row: {
+          id: archived.original_id ? Number(archived.original_id) : undefined,
+          user_id: archived.work_id || null,
+          email: archived.email || null,
+          full_name: archived.full_name || null,
+          mobile_number: archived.mobile_number || null,
+          role: archived.role || "staff",
+          password: snapshot.user?.password || "RESTORE_REQUIRED",
+          is_active: true,
+        },
+      };
+    }
+
+    if (table === "admin_users") {
+      return {
+        table,
+        row: {
+          id: archived.auth_uid || archived.original_id || undefined,
+          email: archived.email || null,
+          full_name: archived.full_name || null,
+          role: archived.role || "admin",
+          custom_id: archived.work_id || null,
+          user_id: archived.auth_uid || null,
+        },
+      };
+    }
+
+    if (table === "pending_registrations") {
+      return {
+        table,
+        row: {
+          id: archived.original_id || undefined,
+          email: archived.email || null,
+          first_name: (archived.full_name || "").split(" ")[0] || "Restored",
+          last_name: (archived.full_name || "").split(" ").slice(1).join(" ") || "User",
+          mobile_number: archived.mobile_number || null,
+          status: "pending",
+          role: archived.role || "user",
+          user_id: archived.work_id || null,
+        },
+      };
+    }
+
+    return { table, row: liveRow || null };
+  };
+
+  const handleRestoreDeletedAccount = async (archived) => {
+    const label = archived.full_name || archived.email || "this account";
+    const ok = await showConfirmation(
+      `Restore ${label}?\n\nTable: ${archived.original_table || "—"}\nEmail: ${archived.email || "—"}\n\nThe account will be inserted back into ${archived.original_table} and removed from deleted_accounts.`,
+    );
+    if (!ok) return;
+
+    setRestoreSavingId(archived.id);
+    setError("");
+
+    try {
+      const { table, row } = buildRestoreRow(archived);
+
+      if (!table || !row) {
+        throw new Error(
+          "This archive entry does not contain enough data to restore the account.",
+        );
+      }
+
+      // Strip undefined keys
+      const insertRow = Object.fromEntries(
+        Object.entries(row).filter(([, value]) => value !== undefined),
+      );
+
+      const { error: insertError } = await supabase.from(table).insert(insertRow);
+
+      if (insertError) {
+        // Retry without primary key if conflict
+        if (
+          String(insertError.message || "").toLowerCase().includes("duplicate") ||
+          insertError.code === "23505"
+        ) {
+          throw new Error(
+            "An account with the same identity already exists. Remove the existing row before restoring.",
+          );
+        }
+        throw insertError;
+      }
+
+      const { error: removeArchiveError } = await supabase
+        .from("deleted_accounts")
+        .delete()
+        .eq("id", archived.id);
+
+      if (removeArchiveError) {
+        console.warn("Restored account but failed to remove archive row:", removeArchiveError);
+      }
+
+      if (archived.auth_uid) {
+        try {
+          await supabase.from("notifications").insert({
+            user_id: archived.auth_uid,
+            title: "Account restored",
+            message:
+              "Your account was restored by an administrator. You can sign in again.",
+            type: "success",
+            related_id: archived.id,
+          });
+        } catch {
+          /* ignore */
+        }
+      }
+
+      await fetchDeletedAccounts();
+      await fetchAllUsers(false);
+      window.dispatchEvent(new Event("mdrrmo:notif-refresh"));
+      setCreateSuccess(`Account restored: ${label}`);
+    } catch (err) {
+      console.error("Restore failed:", err);
+      setError(err?.message || "Failed to restore the account.");
+    } finally {
+      setRestoreSavingId(null);
+    }
+  };
+
+  const notifyUser = async (userId, title, message, type = "info", relatedId = null) => {
+    if (!userId) return;
+    try {
+      await supabase.from("notifications").insert({
+        user_id: userId,
+        title,
+        message,
+        type,
+        related_id: relatedId,
+      });
+    } catch (err) {
+      console.warn("Notification failed:", err);
+    }
+  };
+
+  const archiveAndDeleteAccount = async (request, adminActor) => {
+    const email = String(request.requester_email || "").trim().toLowerCase();
+    const linkedIds = Array.isArray(request.requester_linked_ids)
+      ? request.requester_linked_ids
+      : [];
+
+    let liveRow = null;
+    const sourceTable = request.requester_source || "profiles";
+    try {
+      if (request.requester_profile_id && sourceTable === "profiles") {
+        const { data } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", request.requester_profile_id)
+          .maybeSingle();
+        liveRow = data;
+      } else if (email) {
+        const { data } = await supabase
+          .from(sourceTable === "staff_users" ? "staff_users" : "profiles")
+          .select("*")
+          .eq("email", email)
+          .maybeSingle();
+        liveRow = data;
+      }
+    } catch {
+      /* best effort */
+    }
+
+    const snapshot = {
+      request,
+      liveRow,
+      archived_at: new Date().toISOString(),
+    };
+
+    // Archive first
+    const archivePayload = {
+      original_table: request.requester_source || "profiles",
+      original_id: request.requester_profile_id || request.requester_work_id || null,
+      email: email || null,
+      full_name: request.requester_name || null,
+      mobile_number: request.requester_mobile || null,
+      role: request.requester_role || null,
+      work_id: request.requester_work_id || null,
+      account_type: request.requester_account_type || null,
+      auth_uid: request.requester_auth_id || null,
+      linked_ids: linkedIds,
+      snapshot,
+      deletion_request_id: request.id,
+      deleted_by: adminActor?.id || null,
+      deleted_by_name: adminActor?.fullName || adminActor?.full_name || "Administrator",
+      reason: request.reason || "Approved account deletion request",
+    };
+
+    const { error: archiveError } = await supabase
+      .from("deleted_accounts")
+      .insert(archivePayload);
+
+    if (archiveError) {
+      if (
+        String(archiveError.message || "").includes("deleted_accounts") ||
+        archiveError.code === "42P01"
+      ) {
+        throw new Error(
+          "deleted_accounts table is missing. Run account_deletion_tables.sql in Supabase.",
+        );
+      }
+      throw archiveError;
+    }
+
+    // Best-effort delete from live tables
+    if (request.requester_profile_id) {
+      await supabase
+        .from("profiles")
+        .delete()
+        .eq("id", request.requester_profile_id);
+    }
+
+    if (email) {
+      await supabase.from("pending_registrations").delete().eq("email", email);
+      await supabase.from("profiles").delete().eq("email", email);
+    }
+
+    if (request.requester_work_id) {
+      await supabase
+        .from("staff_users")
+        .delete()
+        .eq("user_id", request.requester_work_id);
+    }
+
+    // Mark request approved
+    const { error: updateError } = await supabase
+      .from("account_deletion_requests")
+      .update({
+        status: "approved",
+        reviewed_at: new Date().toISOString(),
+        reviewed_by: adminActor?.id || null,
+        reviewed_by_name:
+          adminActor?.fullName || adminActor?.full_name || "Administrator",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", request.id);
+
+    if (updateError) throw updateError;
+
+    if (request.requester_auth_id) {
+      await notifyUser(
+        request.requester_auth_id,
+        "Account deleted",
+        "Your account deletion request was approved. Your personal account data has been removed.",
+        "info",
+        request.id,
+      );
+    }
+  };
+
+  const handleApproveDeletionRequest = async (request) => {
+    const label = request.requester_name || request.requester_email || "this account";
+    const ok = await showConfirmation(
+      `Approve deletion for ${label}?\n\nEmail: ${request.requester_email || "—"}\nRole: ${request.requester_role || "—"}\n\nThe account will be removed and archived in deleted_accounts.`,
+    );
+    if (!ok) return;
+
+    setDeletionSavingId(request.id);
+    setError("");
+
+    try {
+      const staff = (() => {
+        try {
+          return JSON.parse(localStorage.getItem("currentStaff") || "null");
+        } catch {
+          return null;
+        }
+      })();
+
+      await archiveAndDeleteAccount(request, {
+        id: staff?.id || staff?.user_id || null,
+        fullName: staff?.full_name || staff?.username || "Administrator",
+      });
+
+      await fetchDeletionRequests();
+      await fetchDeletedAccounts();
+      await fetchAllUsers(false);
+      window.dispatchEvent(new Event("mdrrmo:notif-refresh"));
+      setCreateSuccess(`Deletion approved and archived for ${label}.`);
+    } catch (err) {
+      console.error("Approve deletion failed:", err);
+      setError(err?.message || "Failed to approve the deletion request.");
+    } finally {
+      setDeletionSavingId(null);
+    }
+  };
+
+  const handleRejectDeletionRequest = async (request) => {
+    const label = request.requester_name || request.requester_email || "this account";
+    const ok = await showConfirmation(
+      `Reject deletion request for ${label}? The account will remain active.`,
+    );
+    if (!ok) return;
+
+    setDeletionSavingId(request.id);
+    setError("");
+
+    try {
+      const staff = (() => {
+        try {
+          return JSON.parse(localStorage.getItem("currentStaff") || "null");
+        } catch {
+          return null;
+        }
+      })();
+
+      const { error: updateError } = await supabase
+        .from("account_deletion_requests")
+        .update({
+          status: "rejected",
+          reviewed_at: new Date().toISOString(),
+          reviewed_by: staff?.id || staff?.user_id || null,
+          reviewed_by_name: staff?.full_name || staff?.username || "Administrator",
+          admin_notes: "Rejected by administrator",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", request.id);
+
+      if (updateError) throw updateError;
+
+      if (request.requester_auth_id) {
+        await notifyUser(
+          request.requester_auth_id,
+          "Deletion request rejected",
+          "Your account deletion request was rejected. Contact MDRRMO if you still need assistance.",
+          "warning",
+          request.id,
+        );
+      }
+
+      await fetchDeletionRequests();
+      window.dispatchEvent(new Event("mdrrmo:notif-refresh"));
+      setCreateSuccess(`Deletion request rejected for ${label}.`);
+    } catch (err) {
+      console.error("Reject deletion failed:", err);
+      setError(err?.message || "Failed to reject the deletion request.");
+    } finally {
+      setDeletionSavingId(null);
+    }
+  };
 
   /* ===========================================================
      DERIVED FILTERS
@@ -1205,8 +1667,18 @@ function AdminUserManagement() {
       return;
     }
 
+    const accountSummary = [
+      `Name: ${user.full_name || userName}`,
+      `Email: ${user.email || "—"}`,
+      `Mobile: ${user.mobile_number || user.mobile || "—"}`,
+      `Role: ${user.role || "—"}`,
+      `Work ID: ${user.workId || user.user_id || "—"}`,
+      `Source: ${user.sourceTable || "—"}`,
+      `Record ID: ${user.sourceId || "—"}`,
+    ].join("\n");
+
     const firstConfirmation = await showConfirmation(
-      `Delete ${userName}?\n\nThis removes the record from the ${user.sourceTable} table.`,
+      `Delete this account?\n\n${accountSummary}\n\nThis removes the record from the ${user.sourceTable} table.`,
     );
 
     if (!firstConfirmation) return;
@@ -1221,6 +1693,77 @@ function AdminUserManagement() {
     setError("");
 
     try {
+      const staff = (() => {
+        try {
+          return JSON.parse(localStorage.getItem("currentStaff") || "null");
+        } catch {
+          return null;
+        }
+      })();
+
+      // Load the live database row so restore can put it back later
+      let liveRow = null;
+      try {
+        const { data: fetchedRow, error: fetchLiveError } = await supabase
+          .from(user.sourceTable)
+          .select("*")
+          .eq("id", user.sourceId)
+          .maybeSingle();
+
+        if (fetchLiveError) {
+          console.warn("Could not fetch live row before delete:", fetchLiveError);
+        } else {
+          liveRow = fetchedRow;
+        }
+      } catch (fetchErr) {
+        console.warn("Live row fetch failed:", fetchErr);
+      }
+
+      // Archive into deleted_accounts before removing live row
+      const archivePayload = {
+        original_table: user.sourceTable,
+        original_id: String(user.sourceId ?? ""),
+        email: user.email || liveRow?.email || null,
+        full_name: user.full_name || liveRow?.full_name || userName,
+        mobile_number:
+          user.mobile_number ||
+          user.mobile ||
+          liveRow?.mobile_number ||
+          null,
+        role: user.role || user.displayRole || liveRow?.role || null,
+        work_id:
+          user.workId ||
+          user.user_id ||
+          liveRow?.user_id ||
+          liveRow?.custom_id ||
+          null,
+        account_type: user.displayRole || user.role || liveRow?.role || null,
+        auth_uid: liveRow?.id && user.sourceTable === "profiles" ? liveRow.id : liveRow?.user_id || null,
+        linked_ids: [String(user.sourceId ?? "")].filter(Boolean),
+        snapshot: { user, liveRow },
+        deletion_request_id: null,
+        deleted_by: staff?.id || staff?.user_id || null,
+        deleted_by_name: staff?.full_name || staff?.username || "Administrator",
+        reason: "Deleted by administrator from User Management",
+      };
+
+      const { error: archiveError } = await supabase
+        .from("deleted_accounts")
+        .insert(archivePayload);
+
+      if (archiveError) {
+        console.warn("Archive failed:", archiveError);
+        if (
+          String(archiveError.message || "").includes("deleted_accounts") ||
+          archiveError.code === "42P01"
+        ) {
+          throw new Error(
+            "deleted_accounts table is missing. Run account_deletion_tables.sql before deleting accounts.",
+          );
+        }
+        throw archiveError;
+      }
+
       const { error: deleteError } = await supabase
         .from(user.sourceTable)
         .delete()
@@ -1228,6 +1771,9 @@ function AdminUserManagement() {
 
       if (deleteError) throw deleteError;
       await fetchAllUsers(false);
+      await fetchDeletionRequests();
+      await fetchDeletedAccounts();
+      setCreateSuccess(`Account deleted and archived: ${userName}`);
     } catch (err) {
       console.error("Delete user error:", err);
       setError(err?.message || "Failed to delete the user.");
@@ -1289,6 +1835,17 @@ function AdminUserManagement() {
         throw new Error("Enter your current administrator password.");
       }
 
+      const mobileRaw = rawText(createForm.mobile_number);
+      let mobileNormalized = null;
+      if (mobileRaw) {
+        mobileNormalized = normalizePHMobile(mobileRaw);
+        if (!mobileNormalized) {
+          throw new Error(
+            "Contact number must be a valid Philippine mobile: 09XXXXXXXXX (11 digits) or +639XXXXXXXXX.",
+          );
+        }
+      }
+
       const currentStaffData = readCurrentStaff();
 
       if (!currentStaffData) {
@@ -1308,7 +1865,7 @@ function AdminUserManagement() {
             email,
             password,
             department: rawText(createForm.department) || null,
-            mobile_number: rawText(createForm.mobile_number) || null,
+            mobile_number: mobileNormalized,
             requester_work_id:
               currentStaffData.user_id || currentStaffData.id || null,
             requester_username: currentStaffData.username || null,
@@ -1522,6 +2079,225 @@ function AdminUserManagement() {
             <p className="text-sm font-medium text-red-700">{error}</p>
           </div>
         )}
+
+        {/* Account deletion requests */}
+        <div className="mb-6 overflow-hidden rounded-2xl border border-rose-200 bg-white shadow-sm dark:border-rose-900 dark:bg-slate-900">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-rose-100 bg-rose-50 px-4 py-3 dark:border-rose-900 dark:bg-rose-950/40">
+            <div className="flex items-center gap-2">
+              <Trash2 className="h-5 w-5 text-rose-600" />
+              <div>
+                <h2 className="text-sm font-black text-rose-900 dark:text-rose-100">
+                  Account Deletion Requests
+                </h2>
+                <p className="text-xs text-rose-700/80 dark:text-rose-300/80">
+                  Approve to delete the account and save a copy in deleted_accounts
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={fetchDeletionRequests}
+              disabled={deletionLoading}
+              className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-white px-3 py-1.5 text-xs font-bold text-rose-700 transition hover:bg-rose-50 disabled:opacity-50 dark:border-rose-800 dark:bg-slate-900 dark:text-rose-300"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${deletionLoading ? "animate-spin" : ""}`} />
+              Refresh
+            </button>
+          </div>
+
+          <div className="overflow-x-auto">
+            {deletionLoading && deletionRequests.length === 0 ? (
+              <p className="p-6 text-center text-sm text-slate-500">Loading deletion requests...</p>
+            ) : deletionRequests.filter((r) => r.status === "pending").length === 0 ? (
+              <p className="p-6 text-center text-sm text-slate-500">
+                No pending account deletion requests.
+              </p>
+            ) : (
+              <table className="w-full min-w-[720px]">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-bold uppercase tracking-wide text-slate-500 dark:border-slate-700 dark:bg-slate-800">
+                    <th className="px-4 py-3">Requester</th>
+                    <th className="px-4 py-3">Contact</th>
+                    <th className="px-4 py-3">Role</th>
+                    <th className="px-4 py-3">Requested</th>
+                    <th className="px-4 py-3">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {deletionRequests
+                    .filter((r) => r.status === "pending")
+                    .map((request) => {
+                      const busy = deletionSavingId === request.id;
+                      return (
+                        <tr
+                          key={request.id}
+                          className="border-b border-slate-100 dark:border-slate-800"
+                        >
+                          <td className="px-4 py-3">
+                            <p className="text-sm font-bold text-slate-800 dark:text-slate-100">
+                              {request.requester_name || "—"}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              ID: {request.requester_work_id || "—"}
+                            </p>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
+                            <p>{request.requester_email || "—"}</p>
+                            <p className="text-xs text-slate-400">
+                              {request.requester_mobile || "No mobile"}
+                            </p>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
+                            {request.requester_role || request.requester_account_type || "—"}
+                          </td>
+                          <td className="px-4 py-3 text-xs text-slate-500">
+                            {request.created_at
+                              ? new Date(request.created_at).toLocaleString()
+                              : "—"}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                disabled={busy}
+                                onClick={() => handleApproveDeletionRequest(request)}
+                                className="inline-flex items-center gap-1 rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-rose-700 disabled:opacity-50"
+                              >
+                                {busy ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <CheckCircle className="h-3 w-3" />
+                                )}
+                                Approve & Delete
+                              </button>
+                              <button
+                                type="button"
+                                disabled={busy}
+                                onClick={() => handleRejectDeletionRequest(request)}
+                                className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
+                              >
+                                <X className="h-3 w-3" />
+                                Reject
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+
+        {/* Deleted accounts archive */}
+        <div className="mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/80">
+            <div className="flex items-center gap-2">
+              <Trash2 className="h-5 w-5 text-slate-600 dark:text-slate-300" />
+              <div>
+                <h2 className="text-sm font-black text-slate-800 dark:text-slate-100">
+                  Deleted Accounts
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Archived accounts from admin delete or approved deletion requests. You can restore them.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={fetchDeletedAccounts}
+              disabled={deletedLoading}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${deletedLoading ? "animate-spin" : ""}`} />
+              Refresh
+            </button>
+          </div>
+
+          <div className="overflow-x-auto">
+            {deletedLoading && deletedAccounts.length === 0 ? (
+              <p className="p-6 text-center text-sm text-slate-500">Loading deleted accounts...</p>
+            ) : deletedAccounts.length === 0 ? (
+              <p className="p-6 text-center text-sm text-slate-500">
+                No deleted accounts archived yet.
+              </p>
+            ) : (
+              <table className="w-full min-w-[900px]">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-bold uppercase tracking-wide text-slate-500 dark:border-slate-700 dark:bg-slate-800">
+                    <th className="px-4 py-3">Name</th>
+                    <th className="px-4 py-3">Contact</th>
+                    <th className="px-4 py-3">Role / Table</th>
+                    <th className="px-4 py-3">Deleted</th>
+                    <th className="px-4 py-3">Deleted By</th>
+                    <th className="px-4 py-3">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {deletedAccounts.map((row) => {
+                    const busy = restoreSavingId === row.id;
+                    return (
+                      <tr
+                        key={row.id}
+                        className="border-b border-slate-100 dark:border-slate-800"
+                      >
+                        <td className="px-4 py-3">
+                          <p className="text-sm font-bold text-slate-800 dark:text-slate-100">
+                            {row.full_name || "—"}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            Work ID: {row.work_id || "—"}
+                          </p>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
+                          <p>{row.email || "—"}</p>
+                          <p className="text-xs text-slate-400">
+                            {row.mobile_number || "No mobile"}
+                          </p>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
+                          <p>{row.role || row.account_type || "—"}</p>
+                          <p className="text-xs text-slate-400">
+                            {row.original_table || "—"}
+                          </p>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-slate-500">
+                          {row.deleted_at
+                            ? new Date(row.deleted_at).toLocaleString()
+                            : "—"}
+                          {row.reason ? (
+                            <p className="mt-1 max-w-[200px] truncate text-[11px] text-slate-400" title={row.reason}>
+                              {row.reason}
+                            </p>
+                          ) : null}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
+                          {row.deleted_by_name || "—"}
+                        </td>
+                        <td className="px-4 py-3">
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => handleRestoreDeletedAccount(row)}
+                            className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-emerald-700 disabled:opacity-50"
+                          >
+                            {busy ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <RefreshCw className="h-3 w-3" />
+                            )}
+                            Restore
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
 
         {/* Statistics */}
         <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">

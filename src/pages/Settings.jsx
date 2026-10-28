@@ -1093,7 +1093,7 @@ export default function Settings() {
   ------------------------------------------------------------ */
 
   const handleReset = useCallback(async () => {
-    const confirmed = await showConfirmonfirm(
+    const confirmed = await showConfirm(
       "Reset every preference to its default value?\n\nThis does not delete your account, reports, or requests.",
     );
 
@@ -1840,21 +1840,243 @@ export default function Settings() {
       ? "Edit Profile"
       : "View Profile";
 
+  const accountFields = useMemo(() => {
+    if (!account) {
+      return {
+        name: "",
+        email: "",
+        mobile: "",
+        role: "",
+        accountType: "",
+        source: "",
+        workId: "",
+        department: "",
+        ids: [],
+        authUid: authUid || "",
+      };
+    }
+
+    return {
+      name: account.displayName || "",
+      email: account.email || "",
+      mobile: account.mobile || "",
+      role: account.role || "",
+      accountType: account.accountType || "",
+      source: account.source || "",
+      workId: account.workId || "",
+      department: account.department || "",
+      ids: Array.isArray(account.ids) ? account.ids : [],
+      authUid: authUid || "",
+    };
+  }, [account, authUid]);
+
   const deletionSubject = encodeURIComponent(
     "Data Deletion Request — RA 10173",
   );
 
   const deletionBody = encodeURIComponent(
     [
-      `Name: ${account?.displayName || ""}`,
-      `Email: ${account?.email || ""}`,
-      `Account ID: ${account?.workId || ""}`,
+      "Account deletion / data erasure request",
       "",
-      "I request the deletion of my personal data held by the MDRRMO SafeResponse system.",
+      `Name: ${accountFields.name}`,
+      `Email: ${accountFields.email}`,
+      `Mobile: ${accountFields.mobile || "—"}`,
+      `Role: ${accountFields.role || "—"}`,
+      `Account type: ${accountFields.accountType || "—"}`,
+      `Source table: ${accountFields.source || "—"}`,
+      `Work / account ID: ${accountFields.workId || "—"}`,
+      `Department: ${accountFields.department || "—"}`,
+      `Linked IDs: ${(accountFields.ids || []).join(", ") || "—"}`,
+      `Auth UID: ${accountFields.authUid || "—"}`,
+      "",
+      "I request the deletion of my personal data held by the MDRRMO SafeResponse system under RA 10173.",
       "",
       "Please confirm receipt and advise on the retention period for any records that must be kept.",
     ].join("\n"),
   );
+
+  const handleRequestAccountDeletion = useCallback(async () => {
+    if (!account || account.accountType === "guest") {
+      notify(
+        "error",
+        "Sign in required",
+        "You must be signed in before requesting account deletion.",
+      );
+      return;
+    }
+
+    const summary = [
+      `Name: ${accountFields.name || "—"}`,
+      `Email: ${accountFields.email || "—"}`,
+      `Mobile: ${accountFields.mobile || "—"}`,
+      `Role: ${accountFields.role || "—"}`,
+      `Account ID: ${accountFields.workId || "—"}`,
+    ].join("\n");
+
+    const confirmed = await showConfirm(
+      `Request deletion of this account?\n\n${summary}\n\nAn administrator will be notified. Your account stays active until an admin approves the deletion.`,
+    );
+
+    if (!confirmed) {
+      return;
+    }
+
+    setSaving(true);
+
+    try {
+      const email = String(accountFields.email || "").trim().toLowerCase();
+      if (!email || email === "—") {
+        throw new Error("Your account email is missing. Update your profile first.");
+      }
+
+      // Prevent duplicate pending requests for the same account
+      let pendingQuery = supabase
+        .from("account_deletion_requests")
+        .select("id, status, created_at")
+        .eq("status", "pending");
+
+      if (accountFields.authUid) {
+        pendingQuery = pendingQuery.eq(
+          "requester_auth_id",
+          accountFields.authUid,
+        );
+      } else {
+        pendingQuery = pendingQuery.eq("requester_email", email);
+      }
+
+      const { data: existing, error: existingError } = await pendingQuery
+        .limit(1)
+        .maybeSingle();
+
+      if (existingError && existingError.code !== "PGRST116") {
+        // Table may not exist yet
+        if (
+          String(existingError.message || "").includes(
+            "account_deletion_requests",
+          ) ||
+          existingError.code === "42P01"
+        ) {
+          throw new Error(
+            "Deletion requests are not set up yet. Ask an administrator to run the account_deletion_tables.sql migration.",
+          );
+        }
+        throw existingError;
+      }
+
+      if (existing?.id) {
+        notify(
+          "error",
+          "Request already pending",
+          "You already have an open deletion request. An administrator will review it.",
+        );
+        return;
+      }
+
+      const profileId =
+        account.accountType === "user"
+          ? account.ids?.find((id) =>
+              String(id).includes("-") && String(id).length > 20,
+            ) || null
+          : null;
+
+      const payload = {
+        status: "pending",
+        requester_auth_id: accountFields.authUid || null,
+        requester_email: email,
+        requester_name: accountFields.name || null,
+        requester_mobile: accountFields.mobile || null,
+        requester_role: accountFields.role || null,
+        requester_account_type: accountFields.accountType || null,
+        requester_source: accountFields.source || null,
+        requester_work_id: accountFields.workId || null,
+        requester_profile_id: profileId,
+        requester_linked_ids: accountFields.ids || [],
+        reason:
+          "User requested account deletion from Settings (RA 10173).",
+        updated_at: new Date().toISOString(),
+      };
+
+      const { data: inserted, error: insertError } = await supabase
+        .from("account_deletion_requests")
+        .insert(payload)
+        .select("id")
+        .single();
+
+      if (insertError) {
+        if (
+          String(insertError.message || "").includes(
+            "account_deletion_requests",
+          ) ||
+          insertError.code === "42P01"
+        ) {
+          throw new Error(
+            "Deletion requests are not set up yet. Ask an administrator to run the account_deletion_tables.sql migration.",
+          );
+        }
+        throw insertError;
+      }
+
+      // Notify administrators
+      try {
+        const { data: admins } = await supabase
+          .from("admin_users")
+          .select("id, full_name, email");
+
+        const adminRows = admins || [];
+        if (adminRows.length > 0) {
+          const notifications = adminRows
+            .filter((admin) => admin?.id)
+            .map((admin) => ({
+              user_id: admin.id,
+              title: "Account deletion request",
+              message: `${accountFields.name || email} requested account deletion. Review it under User Approval.`,
+              type: "warning",
+              related_id: inserted?.id ?? null,
+            }));
+
+          if (notifications.length > 0) {
+            await supabase.from("notifications").insert(notifications);
+          }
+        }
+      } catch (notifyError) {
+        console.warn("Admin notification failed:", notifyError);
+      }
+
+      window.dispatchEvent(new Event("mdrrmo:notif-refresh"));
+
+      notify(
+        "success",
+        "Deletion request submitted",
+        "Administrators have been notified. Your account remains active until an admin approves the request.",
+      );
+
+      // Optional: also open formal email copy for records
+      try {
+        const href = `mailto:${DATA_OFFICE_EMAIL}?subject=${deletionSubject}&body=${deletionBody}`;
+        // Do not force navigation; user already has in-app request
+        void href;
+      } catch {
+        /* ignore */
+      }
+    } catch (requestError) {
+      console.error("Account deletion request failed:", requestError);
+      notify(
+        "error",
+        "Could not submit request",
+        requestError?.message ||
+          "Failed to submit the account deletion request.",
+      );
+    } finally {
+      setSaving(false);
+    }
+  }, [
+    account,
+    accountFields,
+    deletionBody,
+    deletionSubject,
+    notify,
+    showConfirm,
+  ]);
 
   /* ------------------------------------------------------------
      LOADING
@@ -2045,23 +2267,7 @@ export default function Settings() {
             />
 
             <div className="space-y-5 p-4 sm:p-6 lg:p-8">
-              {/* Sync messages */}
-              {!authUid && (
-                <div className="flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800/70 dark:bg-amber-950/40 dark:text-amber-200">
-                  <Smartphone className="mt-0.5 h-5 w-5 shrink-0" />
-
-                  <div>
-                    <p className="font-black">
-                      Local account mode
-                    </p>
-
-                    <p className="mt-1 text-xs leading-6">
-                      Preferences are stored on this device. Sign in using a Supabase Auth account to synchronize settings across devices.
-                    </p>
-                  </div>
-                </div>
-              )}
-
+            
               {syncError && (
                 <div className="flex items-start gap-3 rounded-2xl border border-rose-200 bg-rose-50 p-4 text-sm text-rose-800 dark:border-rose-800/70 dark:bg-rose-950/40 dark:text-rose-200">
                   <AlertCircle className="mt-0.5 h-5 w-5 shrink-0" />
@@ -2079,31 +2285,6 @@ export default function Settings() {
                 description="Review your identity and manage your profile information."
                 tone="blue"
               >
-                <div className="mb-5 flex items-center gap-4 rounded-2xl border border-blue-200 bg-blue-50 p-4 dark:border-blue-900/70 dark:bg-blue-950/40">
-                  <div
-                    className={`${GRADIENT_CLASS} flex h-16 w-16 shrink-0 items-center justify-center rounded-2xl text-lg font-black text-white shadow-lg`}
-                  >
-                    {initials}
-                  </div>
-
-                  <div className="min-w-0 flex-1">
-                    <h3 className="truncate text-base font-black text-slate-900 dark:text-white">
-                      {account?.displayName}
-                    </h3>
-
-                    <p className="mt-1 truncate text-sm text-slate-600 dark:text-slate-300">
-                      {account?.email}
-                    </p>
-
-                    <p className="mt-1 text-[10px] font-black uppercase tracking-[0.12em] text-blue-600 dark:text-blue-300">
-                      {roleLabel}
-                      {account?.workId
-                        ? ` · ${account.workId}`
-                        : ""}{" "}
-                      · Naic, Cavite
-                    </p>
-                  </div>
-                </div>
 
                 <SettingRow
                   icon={User}
@@ -2244,18 +2425,6 @@ export default function Settings() {
                   </ActionButton>
                 </SettingRow>
 
-                <SettingRow
-                  icon={Mail}
-                  title="Request Data Deletion"
-                  description="Send a formal privacy request to the MDRRMO data officer."
-                >
-                  <ActionButton
-                    href={`mailto:${DATA_OFFICE_EMAIL}?subject=${deletionSubject}&body=${deletionBody}`}
-                    danger
-                  >
-                    Request
-                  </ActionButton>
-                </SettingRow>
               </SettingsSection>
 
             
@@ -2264,19 +2433,23 @@ export default function Settings() {
               <SettingsSection
                 icon={Shield}
                 title="Account Actions"
-                description="Sign out or restore all settings to their defaults."
+                description="Sign out, restore preferences, or request permanent account deletion using your verified account details."
                 tone="red"
               >
                 <SettingRow
                   icon={LogOut}
                   title="Sign Out"
-                  description="Ends your resident and personnel sessions on this device."
+                  description={
+                    account
+                      ? `Ends the session for ${account.displayName || account.email || "this account"} on this device.`
+                      : "Ends your resident and personnel sessions on this device."
+                  }
                   danger
                 >
                   <button
                     type="button"
                     onClick={handleSignOut}
-                    disabled={saving}
+                    disabled={saving || !account || account.accountType === "guest"}
                     className="inline-flex min-h-10 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-red-600 to-rose-700 px-5 py-2.5 text-sm font-black text-white shadow-md transition hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
                   >
                     {saving ? (
@@ -2302,6 +2475,30 @@ export default function Settings() {
                   >
                     <Trash2 className="h-4 w-4" />
                     Reset
+                  </ActionButton>
+                </SettingRow>
+
+                <SettingRow
+                  icon={Mail}
+                  title="Request Account Deletion"
+                  description={
+                    account && account.accountType !== "guest"
+                      ? `Submits a deletion request for ${account.displayName || "—"} (${account.email || "—"}) to administrators for approval. A copy is archived in deleted accounts after approval.`
+                      : "Sign in to request deletion of your personal data under RA 10173."
+                  }
+                  danger
+                >
+                  <ActionButton
+                    onClick={handleRequestAccountDeletion}
+                    disabled={
+                      saving ||
+                      !account ||
+                      account.accountType === "guest"
+                    }
+                    danger
+                  >
+                    <Trash2 className="h-4 w-4" />
+                    Delete Account
                   </ActionButton>
                 </SettingRow>
               </SettingsSection>

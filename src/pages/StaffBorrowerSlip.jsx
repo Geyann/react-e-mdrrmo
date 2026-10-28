@@ -43,10 +43,23 @@ import { supabase } from "../createClient";
 const cleanText = (value) =>
   String(value ?? "").trim();
 
-const getPhoneDigits = (value) =>
-  String(value ?? "")
-    .trim()
-    .replace(/\D/g, "");
+/** Philippine mobile: 09XXXXXXXXX (11) or +639XXXXXXXXX (13) */
+function normalizePHMobile(raw) {
+  if (raw == null) return null;
+  let v = String(raw).trim().replace(/[\s\-()]/g, "");
+
+  if (v.startsWith("+639") && /^\+639\d{9}$/.test(v)) return v;
+  if (v.startsWith("639") && /^639\d{9}$/.test(v)) return `+${v}`;
+  if (v.startsWith("09") && /^09\d{9}$/.test(v)) return v;
+  // bare 9XXXXXXXXX (10 digits) → 09XXXXXXXXX
+  if (/^9\d{9}$/.test(v)) return `0${v}`;
+
+  return null;
+}
+
+function isValidPHMobile(raw) {
+  return normalizePHMobile(raw) !== null;
+}
 
 const getLocalDateKey = () => {
   const date = new Date();
@@ -701,18 +714,14 @@ export default function BorrowerSlip() {
         "Borrower residence is required.";
     }
 
-    const contactDigits = getPhoneDigits(
-      slip.contactNum,
-    );
+    const contactRaw = cleanText(slip.contactNum);
 
-    if (!contactDigits) {
+    if (!contactRaw) {
       errors.contactNum =
         "Contact number is required.";
-    } else if (
-      !/^0\d{10}$/.test(contactDigits)
-    ) {
+    } else if (!isValidPHMobile(contactRaw)) {
       errors.contactNum =
-        "Enter a valid Philippine mobile number, such as 09171234567.";
+        "Contact number must be a valid Philippine mobile: 09XXXXXXXXX (11 digits) or +639XXXXXXXXX.";
     }
 
     if (!cleanText(slip.hospital)) {
@@ -807,6 +816,16 @@ export default function BorrowerSlip() {
       setSubmitting(true);
 
       try {
+        const normalizedContact = normalizePHMobile(
+          slip.contactNum,
+        );
+
+        if (!normalizedContact) {
+          throw new Error(
+            "Contact number must be a valid Philippine mobile: 09XXXXXXXXX (11 digits) or +639XXXXXXXXX.",
+          );
+        }
+
         const payload = {
           date: cleanText(slip.date),
           time: cleanText(slip.time),
@@ -822,8 +841,7 @@ export default function BorrowerSlip() {
           resident_of:
             cleanText(slip.residentOf),
 
-          contact_num:
-            getPhoneDigits(slip.contactNum),
+          contact_num: normalizedContact,
 
           hospital:
             cleanText(slip.hospital),
@@ -1377,7 +1395,7 @@ export default function BorrowerSlip() {
                     id="contactNum"
                     label="Borrower's Contact Number"
                     required
-                    hint="Use an active Philippine mobile number."
+                    hint="Philippine mobile only: 09XXXXXXXXX (11 digits) or +639XXXXXXXXX."
                     error={fieldErrors.contactNum}
                   >
                     <div className="relative">
@@ -1388,9 +1406,10 @@ export default function BorrowerSlip() {
                         name="contactNum"
                         type="tel"
                         inputMode="tel"
+                        maxLength={13}
                         value={slip.contactNum}
                         onChange={handleChange}
-                        placeholder="e.g. 0917 123 4567"
+                        placeholder="e.g. 09171234567 or +639171234567"
                         className={`${FORM_INPUT_CLASS} pl-11`}
                         autoComplete="tel"
                         required
