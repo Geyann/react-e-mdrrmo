@@ -14,7 +14,7 @@ import {
   MapPin,
   Navigation,
   ShieldCheck,
-  TriangleAlert,
+  AlertTriangle,
   UserRound,
 } from "lucide-react";
 
@@ -262,12 +262,17 @@ export default function HazardReport() {
 
       navigator.geolocation.getCurrentPosition(
         (position) => {
+          // Match table columns: numeric(10,8) / numeric(11,8)
+          const lat = Number(position.coords.latitude.toFixed(8));
+          const lng = Number(position.coords.longitude.toFixed(8));
+
           setForm((previous) => ({
             ...previous,
-            latitude: position.coords.latitude,
-            longitude: position.coords.longitude,
+            latitude: lat,
+            longitude: lng,
           }));
           setGeoLoading(false);
+          setGeoError(null);
           resolve(true);
         },
         (locationError) => {
@@ -504,11 +509,23 @@ export default function HazardReport() {
         ),
         recommended_action: form.recommendedAction || "",
         hazard_photos: photoPaths,
-        latitude: locationEnabled ? form.latitude : null,
-        longitude: locationEnabled ? form.longitude : null,
+        // Coordinates – match table: numeric(10,8) / numeric(11,8)
+        latitude:
+          locationEnabled &&
+          form.latitude != null &&
+          Number.isFinite(Number(form.latitude))
+            ? Number(Number(form.latitude).toFixed(8))
+            : null,
+        longitude:
+          locationEnabled &&
+          form.longitude != null &&
+          Number.isFinite(Number(form.longitude))
+            ? Number(Number(form.longitude).toFixed(8))
+            : null,
         status: "pending",
         report_status: "pending",
         show_on_heatmap: false,
+        review_status: "pending",
       };
 
       if (hasValidUser) {
@@ -558,7 +575,7 @@ export default function HazardReport() {
           <div className="h-2 bg-gradient-to-r from-blue-600 via-blue-600 to-purple-600" />
           <div className="p-8 text-center">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-amber-100 dark:bg-amber-950/50">
-              <TriangleAlert className="h-8 w-8 text-amber-600" />
+              <AlertTriangle className="h-8 w-8 text-amber-600" />
             </div>
             <h2 className="mt-5 text-xl font-black text-slate-900 dark:text-white">
               Sign in required
@@ -655,7 +672,7 @@ export default function HazardReport() {
 
   return (
     <RequestFormShell
-      icon={TriangleAlert}
+      icon={AlertTriangle}
       eyebrow="Community Safety"
       title="Report Natural Disaster Hazard & Risk"
       description="Report a dangerous condition, Natural Disaster risk, or safety concern in your community."
@@ -671,7 +688,7 @@ export default function HazardReport() {
       error={error}
       submitting={submitting}
       submitLabel="Submit Hazard Report"
-      submitIcon={TriangleAlert}
+      submitIcon={AlertTriangle}
       resetLabel="Clear Form"
       footerNote="Hazard reports are reviewed before public publication. Only approved reports that are enabled for the public heatmap appear on the public map."
     >
@@ -754,7 +771,7 @@ export default function HazardReport() {
 
       <section>
         <FormSectionHeading
-          icon={TriangleAlert}
+          icon={AlertTriangle}
           step="02"
           title="Natural Disaster Classification"
           description="Report a natural hazard for verification and mapping. For medical, fire, accident, or other emergencies that need immediate response, use Incident Report instead."
