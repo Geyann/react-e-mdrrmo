@@ -830,8 +830,6 @@ const rowBelongsTo = (row, who) => {
 const normalizeAppointment = (row) => {
   const status = normalizeStatus(row.status || "pending");
 
-  // Read the admin-authored decline reason. Falls back to review_notes
-  // for forward compatibility with tables that use a different name.
   const declineReason = cleanText(
     row.decline_reason || row.review_notes || "",
   );
@@ -1193,7 +1191,6 @@ function RequestCard({
   const needsAttention = ATTENTION_STATUSES.has(status);
   const isDone = DONE_STATUSES.has(status);
 
-  // Does this record have a decline reason worth surfacing?
   const hasDeclineReason =
     Boolean(record.declineReason) && needsAttention;
 
@@ -1220,7 +1217,6 @@ function RequestCard({
       />
 
       <div className="p-4 sm:p-5">
-        {/* Summary */}
         <div className="flex items-start gap-3 sm:gap-4">
           <div
             className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br text-white shadow-md sm:h-12 sm:w-12 ${kind.gradient}`}
@@ -1319,7 +1315,6 @@ function RequestCard({
           </button>
         </div>
 
-        {/* PROMINENT DECLINE REASON BANNER */}
         {hasDeclineReason && (
           <div className="mt-4 rounded-2xl border border-rose-300 bg-rose-50 p-4 dark:border-rose-800 dark:bg-rose-950/40">
             <div className="flex items-start gap-3">
@@ -1340,7 +1335,6 @@ function RequestCard({
           </div>
         )}
 
-        {/* Existing note */}
         {record.detail && (
           <div className={`mt-4 rounded-2xl border p-4 ${noteTone}`}>
             <p className="text-[10px] font-black uppercase tracking-[0.16em] opacity-75">
@@ -1353,7 +1347,6 @@ function RequestCard({
           </div>
         )}
 
-        {/* Expanded content */}
         {expanded && (
           <div className="mt-4 space-y-4 border-t border-slate-200 pt-4 dark:border-slate-800">
             {record.photo && (
@@ -1486,10 +1479,6 @@ export default function MyRequests() {
 
   const loadSequenceRef = useRef(0);
 
-  /* ------------------------------------------------------------
-     LOAD REQUESTS
-  ------------------------------------------------------------ */
-
   const load = useCallback(async (who) => {
     if (!who) {
       return;
@@ -1572,10 +1561,6 @@ export default function MyRequests() {
     }
   }, []);
 
-  /* ------------------------------------------------------------
-     INITIAL LOAD
-  ------------------------------------------------------------ */
-
   useEffect(() => {
     let cancelled = false;
 
@@ -1617,10 +1602,6 @@ export default function MyRequests() {
       loadSequenceRef.current += 1;
     };
   }, [load, navigate]);
-
-  /* ------------------------------------------------------------
-     REALTIME + PERIODIC REFRESH
-  ------------------------------------------------------------ */
 
   useEffect(() => {
     if (!identity) {
@@ -1672,10 +1653,6 @@ export default function MyRequests() {
     };
   }, [identity, load]);
 
-  /* ------------------------------------------------------------
-     NOTICE TIMEOUT
-  ------------------------------------------------------------ */
-
   useEffect(() => {
     if (!notice) {
       return undefined;
@@ -1689,10 +1666,6 @@ export default function MyRequests() {
       window.clearTimeout(timeout);
     };
   }, [notice]);
-
-  /* ------------------------------------------------------------
-     DERIVED COUNTS
-  ------------------------------------------------------------ */
 
   const counts = useMemo(() => {
     const nextCounts = {
@@ -1728,10 +1701,7 @@ export default function MyRequests() {
     return nextCounts;
   }, [records]);
 
-  /* ------------------------------------------------------------
-     FILTERED RECORDS
-  ------------------------------------------------------------ */
-
+  /* ── SEARCH NOW INCLUDES REQUEST # ── */
   const filtered = useMemo(() => {
     const search = query.trim().toLowerCase();
 
@@ -1765,6 +1735,10 @@ export default function MyRequests() {
           return true;
         }
 
+        const idStr = String(record.id ?? "");
+        const requestNumber = `request #${idStr}`;
+        const hashNumber = `#${idStr}`;
+
         const values = [
           record.title,
           record.subject,
@@ -1773,6 +1747,9 @@ export default function MyRequests() {
           record.declineReason,
           record.status,
           record.dateText,
+          idStr,
+          requestNumber,
+          hashNumber,
           KIND_META[record.kind].label,
           ...record.fields.map(
             (field) => `${field.label} ${field.value}`,
@@ -1786,20 +1763,12 @@ export default function MyRequests() {
       });
   }, [records, tab, statusFilter, query]);
 
-  /* ------------------------------------------------------------
-     CARD EXPANSION
-  ------------------------------------------------------------ */
-
   const toggleExpanded = (key) => {
     setExpanded((previous) => ({
       ...previous,
       [key]: !previous[key],
     }));
   };
-
-  /* ------------------------------------------------------------
-     CANCEL / DISMISS REQUEST
-  ------------------------------------------------------------ */
 
   const handleCancel = async (record) => {
     if (cancellingId) {
@@ -1900,10 +1869,6 @@ export default function MyRequests() {
     }
   };
 
-  /* ------------------------------------------------------------
-     LOADING SCREEN
-  ------------------------------------------------------------ */
-
   if (loading) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 dark:bg-slate-950">
@@ -1925,10 +1890,6 @@ export default function MyRequests() {
       </div>
     );
   }
-
-  /* ------------------------------------------------------------
-     TABS
-  ------------------------------------------------------------ */
 
   const tabs = [
     {
@@ -1995,10 +1956,6 @@ export default function MyRequests() {
     statusFilter !== "all" ||
     tab !== "all";
 
-  /* ------------------------------------------------------------
-     RENDER
-  ------------------------------------------------------------ */
-
   return (
     <div className="relative isolate min-h-screen overflow-hidden bg-slate-50 px-4 py-8 sm:px-6 sm:py-10 dark:bg-slate-950">
       <div
@@ -2012,7 +1969,6 @@ export default function MyRequests() {
       />
 
       <div className="mx-auto max-w-7xl">
-        {/* Hero */}
         <section
           className={`${REQUEST_GRADIENT} relative overflow-hidden rounded-[2rem] px-5 py-7 shadow-2xl shadow-blue-950/20 sm:px-8 sm:py-8`}
         >
@@ -2048,20 +2004,9 @@ export default function MyRequests() {
             </div>
 
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <div className="inline-flex items-center justify-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-bold text-white backdrop-blur-sm">
-                <ShieldCheck className="h-4 w-4" />
-                Status Updates Enabled
-              </div>
+              
 
-              <div className="rounded-full bg-white px-4 py-2 text-center shadow-lg">
-                <p className="text-[10px] font-black uppercase tracking-wide text-blue-600">
-                  Total Requests
-                </p>
-
-                <p className="text-xl font-black text-slate-900">
-                  {counts.all}
-                </p>
-              </div>
+             
             </div>
           </div>
 
@@ -2086,7 +2031,6 @@ export default function MyRequests() {
           </div>
         </section>
 
-        {/* Main card */}
         <section className="relative z-10 -mt-5 sm:-mt-6">
           <div className="overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-2xl shadow-slate-900/10 dark:border-slate-700 dark:bg-slate-900 dark:shadow-black/30">
             <div
@@ -2095,7 +2039,6 @@ export default function MyRequests() {
             />
 
             <div className="space-y-6 p-4 sm:p-6 lg:p-8">
-              {/* Statistics */}
               <section>
                 <div className="mb-4 flex items-center gap-2">
                   <SlidersHorizontal className="h-5 w-5 text-blue-600" />
@@ -2144,7 +2087,6 @@ export default function MyRequests() {
                 </div>
               </section>
 
-              {/* Error */}
               {error && (
                 <div
                   role="alert"
@@ -2158,7 +2100,6 @@ export default function MyRequests() {
                 </div>
               )}
 
-              {/* Notice */}
               {notice && (
                 <div
                   role="status"
@@ -2182,7 +2123,6 @@ export default function MyRequests() {
                 </div>
               )}
 
-              {/* Search and filters */}
               <section className="rounded-2xl border border-slate-200 bg-slate-50 p-4 dark:border-slate-700 dark:bg-slate-950/50">
                 <div className="flex flex-col gap-3 lg:flex-row">
                   <div className="relative min-w-0 flex-1">
@@ -2202,7 +2142,7 @@ export default function MyRequests() {
                       onChange={(event) =>
                         setQuery(event.target.value)
                       }
-                      placeholder="Search purpose, status, hospital, address..."
+                      placeholder="Search by request #, purpose, status, hospital, address..."
                       className="min-h-12 w-full rounded-xl border border-slate-300 bg-white py-3 pl-12 pr-4 text-sm text-slate-800 shadow-sm outline-none transition placeholder:text-slate-400 hover:border-indigo-300 focus:border-purple-500 focus:ring-4 focus:ring-purple-500/10 dark:border-slate-700 dark:bg-slate-900 dark:text-white"
                     />
                   </div>
@@ -2255,7 +2195,6 @@ export default function MyRequests() {
                 </div>
               </section>
 
-              {/* Request type tabs */}
               <section>
                 <div
                   className="no-scrollbar flex gap-2 overflow-x-auto pb-2"
@@ -2298,7 +2237,6 @@ export default function MyRequests() {
                 </div>
               </section>
 
-              {/* Result heading */}
               <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                 <div>
                   <h2 className="flex items-center gap-2 text-base font-black text-slate-800 dark:text-white">
@@ -2316,7 +2254,6 @@ export default function MyRequests() {
                 </span>
               </div>
 
-              {/* Request list */}
               {filtered.length === 0 ? (
                 <div className="rounded-2xl border border-dashed border-slate-300 bg-slate-50 px-6 py-14 text-center dark:border-slate-700 dark:bg-slate-950/40">
                   <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-blue-100 to-purple-100 dark:from-blue-950 dark:to-purple-950">
@@ -2364,7 +2301,6 @@ export default function MyRequests() {
                 </div>
               )}
 
-              {/* Quick actions */}
               <section className="border-t border-slate-200 pt-6 dark:border-slate-800">
                 <div className="mb-4 flex items-center gap-2">
                   <div

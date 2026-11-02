@@ -589,12 +589,7 @@ export default function Borrow() {
         </div>
       </section>
 
-      <div className="mt-7 flex items-start gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-blue-800 dark:border-blue-800/70 dark:bg-blue-950/40 dark:text-blue-200">
-        <UserRound className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" />
-        <p className="text-xs leading-6">
-          The request will be automatically linked to {requester.fullName}. Review the odometer readings and destination before submitting.
-        </p>
-      </div>
+      
     </RequestFormShell>
   );
 }

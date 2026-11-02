@@ -663,6 +663,86 @@ function ChartTooltip({ active, payload, label }) {
   );
 }
 
+/** Short labels for tight mobile x-axis */
+const SHORT_LABELS = {
+  Incident: "Incident",
+  Hazard: "Hazard",
+  Appointment: "Appt",
+  Vehicle: "Vehicle",
+  "Check-Up": "OPD",
+};
+
+/**
+ * Responsive bar chart — keeps category labels readable on mobile
+ * by rotating ticks, increasing bottom margin, and shortening names.
+ */
+function AverageBarChart({ data, seriesName = "Average" }) {
+  const [isMobile, setIsMobile] = useState(
+    typeof window !== "undefined" ? window.innerWidth < 640 : true,
+  );
+
+  useEffect(() => {
+    const onResize = () => setIsMobile(window.innerWidth < 640);
+    onResize();
+    window.addEventListener("resize", onResize);
+    return () => window.removeEventListener("resize", onResize);
+  }, []);
+
+  const chartData = useMemo(
+    () =>
+      (data || []).map((entry) => ({
+        ...entry,
+        displayName: isMobile
+          ? SHORT_LABELS[entry.name] || entry.name
+          : entry.name,
+      })),
+    [data, isMobile],
+  );
+
+  const margin = isMobile
+    ? { top: 8, right: 4, left: 0, bottom: 36 }
+    : { top: 8, right: 12, left: 4, bottom: 8 };
+
+  return (
+    <div className="h-80 w-full min-h-[20rem] sm:h-80">
+      <ResponsiveContainer width="100%" height="100%">
+        <BarChart data={chartData} margin={margin} barCategoryGap={isMobile ? "18%" : "22%"}>
+          <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
+          <XAxis
+            dataKey="displayName"
+            stroke="#64748b"
+            interval={0}
+            tick={{
+              fontSize: isMobile ? 10 : 11,
+              fontWeight: 600,
+              fill: "#64748b",
+            }}
+            tickLine={false}
+            axisLine={{ stroke: "#cbd5e1" }}
+            angle={isMobile ? -28 : 0}
+            textAnchor={isMobile ? "end" : "middle"}
+            height={isMobile ? 48 : 30}
+          />
+          <YAxis
+            allowDecimals
+            stroke="#64748b"
+            width={isMobile ? 32 : 40}
+            tick={{ fontSize: isMobile ? 10 : 11, fill: "#64748b" }}
+            tickLine={false}
+            axisLine={false}
+          />
+          <Tooltip content={<ChartTooltip />} />
+          <Bar dataKey="average" name={seriesName} radius={[8, 8, 0, 0]} maxBarSize={isMobile ? 40 : 48}>
+            {chartData.map((entry) => (
+              <Cell key={entry.key} fill={entry.color} />
+            ))}
+          </Bar>
+        </BarChart>
+      </ResponsiveContainer>
+    </div>
+  );
+}
+
 /* =============================================================
  * SMALL UI
  * ============================================================= */
@@ -743,6 +823,113 @@ function EmptyState({ icon: Icon = CircleSlash, title, description }) {
           {description}
         </p>
       )}
+    </div>
+  );
+}
+
+
+function formatRecordDate(record) {
+  if (record?.date?.date instanceof Date && !Number.isNaN(record.date.date.getTime())) {
+    return record.date.date.toLocaleDateString("en-US", {
+      year: "numeric",
+      month: "short",
+      day: "numeric",
+    });
+  }
+  return "—";
+}
+
+function prettyStatusLabel(value) {
+  const status = normalizeStatus(value);
+  if (!status) return "Unknown";
+  return status
+    .split(" ")
+    .map((w) => w.charAt(0).toUpperCase() + w.slice(1))
+    .join(" ");
+}
+
+function sourceMeta(kind) {
+  return SOURCES.find((s) => s.key === kind) || SOURCES[0];
+}
+
+/**
+ * Breakdown table of the user's own approved reports that feed the personal averages.
+ */
+function MyReportsBreakdown({ records, emptyTitle, emptyDescription }) {
+  if (!records || records.length === 0) {
+    return (
+      <EmptyState
+        icon={UserRound}
+        title={emptyTitle || "No personal reports"}
+        description={emptyDescription || "Your approved submissions will appear here."}
+      />
+    );
+  }
+
+  const sorted = [...records].sort((a, b) => b.ts - a.ts);
+
+  return (
+    <div className="mt-6 overflow-hidden rounded-2xl border border-slate-200 dark:border-slate-700">
+      <div className="border-b border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-950/50">
+        <p className="text-sm font-black text-slate-800 dark:text-white">
+          Breakdown of your reports
+        </p>
+        <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
+          {sorted.length} approved record{sorted.length === 1 ? "" : "s"} included in your averages
+        </p>
+      </div>
+
+      <div className="max-h-[28rem] overflow-auto">
+        <table className="min-w-full text-left text-sm">
+          <thead className="sticky top-0 z-10 bg-white text-[10px] font-black uppercase tracking-[0.12em] text-slate-500 dark:bg-slate-900 dark:text-slate-400">
+            <tr>
+              <th className="px-4 py-3">Type</th>
+              <th className="px-4 py-3">Category / Subject</th>
+              <th className="px-4 py-3">Status</th>
+              <th className="px-4 py-3">Date</th>
+              <th className="px-4 py-3 text-right">ID</th>
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
+            {sorted.map((record) => {
+              const meta = sourceMeta(record.kind);
+              const Icon = meta.icon;
+              return (
+                <tr
+                  key={`${record.kind}-${record.id}`}
+                  className="bg-white transition hover:bg-slate-50 dark:bg-slate-900 dark:hover:bg-slate-950/60"
+                >
+                  <td className="px-4 py-3">
+                    <span className="inline-flex items-center gap-2 font-bold text-slate-700 dark:text-slate-200">
+                      <span
+                        className="flex h-7 w-7 items-center justify-center rounded-lg text-white"
+                        style={{ backgroundColor: meta.color }}
+                      >
+                        <Icon className="h-3.5 w-3.5" />
+                      </span>
+                      {meta.label}
+                    </span>
+                  </td>
+                  <td className="max-w-[14rem] truncate px-4 py-3 text-slate-600 dark:text-slate-300">
+                    {record.category || "—"}
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className="inline-flex rounded-full border border-slate-200 bg-slate-50 px-2.5 py-1 text-[11px] font-bold text-slate-600 dark:border-slate-700 dark:bg-slate-800 dark:text-slate-300">
+                      {prettyStatusLabel(record.status)}
+                    </span>
+                  </td>
+                  <td className="whitespace-nowrap px-4 py-3 text-slate-600 dark:text-slate-300">
+                    {formatRecordDate(record)}
+                  </td>
+                  <td className="px-4 py-3 text-right font-mono text-xs font-bold text-slate-400">
+                    #{record.id}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
@@ -925,14 +1112,7 @@ export default function IncidentTrends() {
 
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
              
-              <div className="rounded-full bg-white px-4 py-2 text-center shadow-lg">
-                <p className="text-[10px] font-black uppercase tracking-wide text-blue-600">
-                  Records
-                </p>
-                <p className="text-xl font-black text-slate-900">
-                  {communitySummary.total}
-                </p>
-              </div>
+             
             </div>
           </div>
 
@@ -1083,21 +1263,7 @@ export default function IncidentTrends() {
                           <p className="mb-3 text-sm font-black text-slate-700 dark:text-slate-200">
                             Average by Report Type
                           </p>
-                          <div className="h-72 w-full sm:h-80">
-                            <ResponsiveContainer width="100%" height="100%">
-                              <BarChart data={communityMonthlyChart} margin={{ top: 8, right: 12, left: -10, bottom: 0 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                                <XAxis dataKey="name" stroke="#64748b" tick={{ fontSize: 11, fontWeight: 600 }} />
-                                <YAxis allowDecimals stroke="#64748b" tick={{ fontSize: 11 }} />
-                                <Tooltip content={<ChartTooltip />} />
-                                <Bar dataKey="average" name="Avg / month" radius={[8, 8, 0, 0]} maxBarSize={48}>
-                                  {communityMonthlyChart.map((entry) => (
-                                    <Cell key={entry.key} fill={entry.color} />
-                                  ))}
-                                </Bar>
-                              </BarChart>
-                            </ResponsiveContainer>
-                          </div>
+                          <AverageBarChart data={communityMonthlyChart} seriesName="Avg / month" />
                         </div>
 
                         <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
@@ -1158,21 +1324,7 @@ export default function IncidentTrends() {
                             <p className="mb-3 text-sm font-black text-slate-700 dark:text-slate-200">
                               My Average by Report Type
                             </p>
-                            <div className="h-72 w-full sm:h-80">
-                              <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={myMonthlyChart} margin={{ top: 8, right: 12, left: -10, bottom: 0 }}>
-                                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                                  <XAxis dataKey="name" stroke="#64748b" tick={{ fontSize: 11, fontWeight: 600 }} />
-                                  <YAxis allowDecimals stroke="#64748b" tick={{ fontSize: 11 }} />
-                                  <Tooltip content={<ChartTooltip />} />
-                                  <Bar dataKey="average" name="Avg / month" radius={[8, 8, 0, 0]} maxBarSize={48}>
-                                    {myMonthlyChart.map((entry) => (
-                                      <Cell key={entry.key} fill={entry.color} />
-                                    ))}
-                                  </Bar>
-                                </BarChart>
-                              </ResponsiveContainer>
-                            </div>
+                            <AverageBarChart data={myMonthlyChart} seriesName="Avg / month" />
                           </div>
 
                           <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
@@ -1188,6 +1340,12 @@ export default function IncidentTrends() {
                               );
                             })}
                           </div>
+
+                          <MyReportsBreakdown
+                            records={myYearScoped}
+                            emptyTitle="No personal reports for this year"
+                            emptyDescription="You have no approved submissions in the selected year."
+                          />
                         </>
                       )}
                     </Panel>
@@ -1233,21 +1391,7 @@ export default function IncidentTrends() {
                           <p className="mb-3 text-sm font-black text-slate-700 dark:text-slate-200">
                             Average by Report Type (per year)
                           </p>
-                          <div className="h-72 w-full sm:h-80">
-                            <ResponsiveContainer width="100%" height="100%">
-                              <BarChart data={communityYearlyChart} margin={{ top: 8, right: 12, left: -10, bottom: 0 }}>
-                                <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                                <XAxis dataKey="name" stroke="#64748b" tick={{ fontSize: 11, fontWeight: 600 }} />
-                                <YAxis allowDecimals stroke="#64748b" tick={{ fontSize: 11 }} />
-                                <Tooltip content={<ChartTooltip />} />
-                                <Bar dataKey="average" name="Avg / year" radius={[8, 8, 0, 0]} maxBarSize={48}>
-                                  {communityYearlyChart.map((entry) => (
-                                    <Cell key={entry.key} fill={entry.color} />
-                                  ))}
-                                </Bar>
-                              </BarChart>
-                            </ResponsiveContainer>
-                          </div>
+                          <AverageBarChart data={communityYearlyChart} seriesName="Avg / year" />
                         </div>
 
                         <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
@@ -1303,21 +1447,7 @@ export default function IncidentTrends() {
                             <p className="mb-3 text-sm font-black text-slate-700 dark:text-slate-200">
                               My Average by Report Type (per year)
                             </p>
-                            <div className="h-72 w-full sm:h-80">
-                              <ResponsiveContainer width="100%" height="100%">
-                                <BarChart data={myYearlyChart} margin={{ top: 8, right: 12, left: -10, bottom: 0 }}>
-                                  <CartesianGrid strokeDasharray="3 3" stroke="#e2e8f0" vertical={false} />
-                                  <XAxis dataKey="name" stroke="#64748b" tick={{ fontSize: 11, fontWeight: 600 }} />
-                                  <YAxis allowDecimals stroke="#64748b" tick={{ fontSize: 11 }} />
-                                  <Tooltip content={<ChartTooltip />} />
-                                  <Bar dataKey="average" name="Avg / year" radius={[8, 8, 0, 0]} maxBarSize={48}>
-                                    {myYearlyChart.map((entry) => (
-                                      <Cell key={entry.key} fill={entry.color} />
-                                    ))}
-                                  </Bar>
-                                </BarChart>
-                              </ResponsiveContainer>
-                            </div>
+                            <AverageBarChart data={myYearlyChart} seriesName="Avg / year" />
                           </div>
 
                           <div className="grid grid-cols-2 gap-3 lg:grid-cols-5">
@@ -1333,6 +1463,12 @@ export default function IncidentTrends() {
                               );
                             })}
                           </div>
+
+                          <MyReportsBreakdown
+                            records={myRecords}
+                            emptyTitle="No personal reports yet"
+                            emptyDescription="Your approved submissions will appear here once they are processed."
+                          />
                         </>
                       )}
                     </Panel>

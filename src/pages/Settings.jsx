@@ -2214,22 +2214,9 @@ export default function Settings() {
             </div>
 
             <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
-              <div className="inline-flex items-center justify-center gap-2 rounded-full border border-white/20 bg-white/10 px-4 py-2 text-xs font-bold text-white backdrop-blur-sm">
-                <ShieldCheck className="h-4 w-4" />
-                Secure Settings
-              </div>
+              
 
-              <div className="rounded-full bg-white px-4 py-2 text-center shadow-lg">
-                <p className="text-[10px] font-black uppercase tracking-wide text-blue-600">
-                  Sync Status
-                </p>
-
-                <p className="text-sm font-black text-slate-900">
-                  {authUid
-                    ? "Cloud Synced"
-                    : "This Device"}
-                </p>
-              </div>
+             
             </div>
           </div>
 
@@ -2508,11 +2495,7 @@ export default function Settings() {
                   SafeResponse · Preferences save automatically
                 </p>
 
-                <p className="text-xs font-bold text-slate-400 dark:text-slate-500">
-                  {authUid
-                    ? "Synchronized across your devices"
-                    : "Stored on this device"}
-                </p>
+                
               </div>
             </div>
           </div>

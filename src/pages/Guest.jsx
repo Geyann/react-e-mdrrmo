@@ -190,11 +190,7 @@ export default function Home() {
           {/* Hero copy */}
           <div className="relative z-20 text-center lg:text-left">
             <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-blue-300/25 bg-blue-400/10 px-4 py-2 text-[10px] font-extrabold uppercase tracking-[0.2em] text-blue-100 backdrop-blur-md sm:text-xs">
-              <span className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-70" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
-              </span>
-
+            
               Naic, Cavite
             </div>
 
@@ -264,19 +260,7 @@ export default function Home() {
 
                 <div className="absolute inset-0 bg-gradient-to-t from-[#071426] via-[#071426]/15 to-transparent" />
 
-                <div className="absolute left-5 right-5 top-5 flex items-center justify-between gap-3">
-                  <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-slate-950/65 px-3 py-1.5 text-[9px] font-extrabold uppercase tracking-[0.16em] text-white backdrop-blur-md">
-                    <Radio
-                      className="h-3.5 w-3.5 text-red-400"
-                      aria-hidden="true"
-                    />
-                    Community Safety
-                  </span>
-
-                  <span className="rounded-full bg-blue-600 px-3 py-1.5 text-[9px] font-extrabold uppercase tracking-[0.16em] text-white shadow-lg">
-                    Naic
-                  </span>
-                </div>
+               
 
                 <div className="absolute bottom-0 left-0 right-0 p-6">
                   <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-blue-300">
@@ -352,101 +336,7 @@ export default function Home() {
         </div>
       </section>
 
-      {/* ══════════════════════════════════════════════════════════
-          PREPAREDNESS
-      ══════════════════════════════════════════════════════════ */}
-
-      <section className="bg-slate-50 py-20 dark:bg-slate-950 sm:py-24">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-            <div className="max-w-2xl">
-              <div className="inline-flex items-center gap-2 rounded-full border border-orange-200 bg-orange-50 px-4 py-2 text-[10px] font-extrabold uppercase tracking-[0.18em] text-orange-700 dark:border-orange-800 dark:bg-orange-900/30 dark:text-orange-300">
-                <AlertTriangle
-                  className="h-4 w-4"
-                  aria-hidden="true"
-                />
-                Disaster Preparedness
-              </div>
-
-              <h2 className="mt-5 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl dark:text-white">
-                Build awareness before an emergency
-              </h2>
-
-              <p className="mt-3 text-base leading-7 text-slate-600 dark:text-slate-300">
-                Learn how different hazards affect communities
-                and recognize the importance of preparation.
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-10 grid gap-6 lg:grid-cols-2">
-            {/* Earthquake */}
-            <article className="group relative min-h-[390px] overflow-hidden rounded-[1.75rem] bg-slate-900 shadow-xl">
-              <img
-                src={earthquakeImg}
-                alt="Earthquake preparedness"
-                className="absolute inset-0 h-full w-full object-cover transition duration-700 group-hover:scale-105"
-              />
-
-              <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/50 to-slate-950/10" />
-
-              <div className="relative flex min-h-[390px] flex-col justify-end p-6 sm:p-8">
-                <div className="flex items-center gap-2">
-                  <span className="rounded-full bg-orange-500 px-3 py-1.5 text-[9px] font-extrabold uppercase tracking-[0.16em] text-white">
-                    Earthquake
-                  </span>
-
-                  <span className="rounded-full border border-white/20 bg-slate-950/50 px-3 py-1.5 text-[9px] font-extrabold uppercase tracking-[0.16em] text-white backdrop-blur-md">
-                    Preparedness
-                  </span>
-                </div>
-
-                <h3 className="mt-4 text-2xl font-black text-white sm:text-3xl">
-                  Know what to do during ground shaking
-                </h3>
-
-                <p className="mt-3 max-w-lg text-sm leading-6 text-slate-200">
-                  Stay calm, protect yourself, and follow
-                  official instructions from local authorities.
-                </p>
-              </div>
-            </article>
-
-            {/* Flooding */}
-            <article className="group relative min-h-[390px] overflow-hidden rounded-[1.75rem] bg-slate-900 shadow-xl">
-              <img
-                src={floodingImg}
-                alt="Flood preparedness"
-                className="absolute inset-0 h-full w-full object-cover transition duration-700 group-hover:scale-105"
-              />
-
-              <div className="absolute inset-0 bg-gradient-to-t from-blue-950 via-blue-950/55 to-blue-950/10" />
-
-              <div className="relative flex min-h-[390px] flex-col justify-end p-6 sm:p-8">
-                <div className="flex items-center gap-2">
-                  <span className="rounded-full bg-blue-500 px-3 py-1.5 text-[9px] font-extrabold uppercase tracking-[0.16em] text-white">
-                    Flooding
-                  </span>
-
-                  <span className="rounded-full border border-white/20 bg-slate-950/50 px-3 py-1.5 text-[9px] font-extrabold uppercase tracking-[0.16em] text-white backdrop-blur-md">
-                    Preparedness
-                  </span>
-                </div>
-
-                <h3 className="mt-4 text-2xl font-black text-white sm:text-3xl">
-                  Avoid flooded roads and unsafe areas
-                </h3>
-
-                <p className="mt-3 max-w-lg text-sm leading-6 text-slate-200">
-                  Monitor official advisories and move to
-                  safer areas when evacuation is advised.
-                </p>
-              </div>
-            </article>
-          </div>
-        </div>
-      </section>
-
+    
       {/* ══════════════════════════════════════════════════════════
           ANALYTICS
       ══════════════════════════════════════════════════════════ */}

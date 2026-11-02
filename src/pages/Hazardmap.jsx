@@ -22,7 +22,7 @@ const VIEW_OPTIONS = [
     description: "Standard streets, road names, and local landmarks.",
     url: "https://tile.openstreetmap.org/{z}/{x}/{y}.png",
     maxZoom: 19,
-    attribution: "&copy; OpenStreetMap contributors",
+    attribution: "OpenStreetMap contributors",
   },
   {
     id: "satellite",
@@ -772,6 +772,7 @@ export default function Hazardmap() {
   const [viewMenuOpen, setViewMenuOpen] = useState(false);
   const [categoryMenuOpen, setCategoryMenuOpen] = useState(false);
   const [riskMenuOpen, setRiskMenuOpen] = useState(false);
+  const [mobileFiltersOpen, setMobileFiltersOpen] = useState(false);
 
   const [selectedCategory, setSelectedCategory] = useState("all");
   const [selectedRisk, setSelectedRisk] = useState("all");
@@ -811,6 +812,7 @@ export default function Hazardmap() {
         setViewMenuOpen(false);
         setCategoryMenuOpen(false);
         setRiskMenuOpen(false);
+        setMobileFiltersOpen(false);
       }
     };
 
@@ -1102,11 +1104,17 @@ export default function Hazardmap() {
     loadHotspots();
   }, [loadHotspots, reloadVersion]);
 
-  /* ── Render ─────────────────────────────────────────────────── */
+  /* ── Render ───────────────────────────────────────────────────
+     PortalNavbar layout:
+     - Header: fixed top-0 h-16 z-[1000]
+     - Sidebar: fixed top-16, width --portal-sidebar-width (17rem / 5rem)
+     - Map content clears header (pt-16 / top-16) and sidebar (lg:pl / lg:left)
+     - Map z-0 so navbar stays fully interactive
+  ─────────────────────────────────────────────────────────────── */
 
   return (
     <div
-      className={`hazard-map-page fixed inset-0 z-0 h-[100dvh] w-screen overflow-hidden bg-slate-950 ${
+      className={`hazard-map-page relative z-0 h-[calc(100dvh-4rem)] w-full overflow-hidden bg-slate-950 pt-16 lg:pl-[var(--portal-sidebar-width,17rem)] ${
         viewMode === "satellite"
           ? "satellite-mode"
           : viewMode === "terrain"
@@ -1116,19 +1124,50 @@ export default function Hazardmap() {
     >
       <style>{MAP_STYLES}</style>
 
+      {/* Map fills the content area under header + beside sidebar */}
       <div
         ref={mapContainerRef}
         role="application"
         aria-label="Naic hazard hotspot map"
-        className="h-full w-full"
+        className="absolute inset-0 top-0 left-0 right-0 bottom-0 "
       />
 
-      {/* ═══════════════ TOP CONTROLS (responsive) ═══════════════ */}
-      <div className="pointer-events-none absolute inset-x-0 top-20 z-[1000] p-3 sm:p-4">
-        <div className="mx-auto flex max-w-7xl flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-          {/* LEFT: Category + Risk */}
-          <div className="pointer-events-auto flex flex-col gap-2 sm:flex-row sm:gap-3">
-            {/* Natural Hazard Category */}
+      {/* ═══════════════ TOP CONTROLS ═══════════════
+          Mobile: single Filters button → bottom sheet
+          Desktop (sm+): three separate dropdowns
+      ═══════════════════════════════════════════════ */}
+      <div className="pointer-events-none absolute inset-x-0 top-5 z-[500] p-3 sm:p-4 ">
+        <div className="mx-auto flex max-w-7xl items-start justify-between gap-2">
+          {/* ── MOBILE: single Filters button ── */}
+          <div className="pointer-events-auto sm:hidden">
+            <button
+              type="button"
+              onClick={() => setMobileFiltersOpen(true)}
+              aria-haspopup="dialog"
+              aria-expanded={mobileFiltersOpen}
+              aria-label="Open map filters"
+              className="flex min-h-12 items-center gap-2.5 rounded-xl border border-slate-700/80 bg-slate-950/95 px-4 py-2.5 shadow-2xl backdrop-blur-md"
+            >
+              <svg className="h-5 w-5 shrink-0 text-purple-400" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M3 4a1 1 0 0 1 1-1h16a1 1 0 0 1 1 1v2.586a1 1 0 0 1-.293.707l-6.414 6.414a1 1 0 0 0-.293.707V17l-4 4v-6.586a1 1 0 0 0-.293-.707L3.293 7.293A1 1 0 0 1 3 6.586V4z" />
+              </svg>
+              <span className="min-w-0 text-left">
+                <span className="block text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                  Filters
+                </span>
+                <span className="mt-0.5 block max-w-[11rem] truncate text-sm font-bold text-white">
+                  {selectedCategoryLabel} · {selectedRiskLabel}
+                </span>
+              </span>
+              <svg className="h-4 w-4 shrink-0 text-slate-300" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="m6 9 6 6 6-6" />
+              </svg>
+            </button>
+          </div>
+
+          {/* ── DESKTOP: Category + Risk ── */}
+          <div className="pointer-events-auto hidden flex-col gap-2 sm:flex sm:flex-row sm:gap-3">
+            {/* Hazard Category */}
             <div ref={categoryMenuRef} className="relative">
               <button
                 type="button"
@@ -1140,7 +1179,7 @@ export default function Hazardmap() {
                 aria-haspopup="listbox"
                 aria-expanded={categoryMenuOpen}
                 aria-label="Filter natural hazards by category"
-                className="flex min-h-[52px] w-full min-w-[180px] max-w-[min(100vw-1.5rem,280px)] items-center justify-between gap-3 rounded-xl border border-slate-700/80 bg-slate-950/95 px-3.5 py-2.5 text-left shadow-2xl backdrop-blur-md transition hover:bg-slate-900/95 sm:min-w-[200px]"
+                className="flex min-h-[52px] min-w-[200px] max-w-[280px] items-center justify-between gap-3 rounded-xl border border-slate-700/80 bg-slate-950/95 px-3.5 py-2.5 text-left shadow-2xl backdrop-blur-md transition hover:bg-slate-900/95"
               >
                 <span className="min-w-0">
                   <span className="block text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
@@ -1195,7 +1234,7 @@ export default function Hazardmap() {
               )}
             </div>
 
-            {/* Risk Level (interactive) */}
+            {/* Risk Level */}
             <div ref={riskMenuRef} className="relative">
               <button
                 type="button"
@@ -1207,7 +1246,7 @@ export default function Hazardmap() {
                 aria-haspopup="listbox"
                 aria-expanded={riskMenuOpen}
                 aria-label="Filter by risk level"
-                className="flex min-h-[52px] w-full min-w-[160px] max-w-[min(100vw-1.5rem,240px)] items-center justify-between gap-3 rounded-xl border border-slate-700/80 bg-slate-950/95 px-3.5 py-2.5 text-left shadow-2xl backdrop-blur-md transition hover:bg-slate-900/95 sm:min-w-[180px]"
+                className="flex min-h-[52px] min-w-[180px] max-w-[240px] items-center justify-between gap-3 rounded-xl border border-slate-700/80 bg-slate-950/95 px-3.5 py-2.5 text-left shadow-2xl backdrop-blur-md transition hover:bg-slate-900/95"
               >
                 <span className="min-w-0">
                   <span className="block text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
@@ -1271,8 +1310,8 @@ export default function Hazardmap() {
             </div>
           </div>
 
-          {/* RIGHT: Map View */}
-          <div ref={viewMenuRef} className="pointer-events-auto relative self-end sm:self-start">
+          {/* ── DESKTOP: Map View ── */}
+          <div ref={viewMenuRef} className="pointer-events-auto relative hidden sm:block">
             <button
               type="button"
               onClick={() => {
@@ -1283,7 +1322,7 @@ export default function Hazardmap() {
               aria-haspopup="listbox"
               aria-expanded={viewMenuOpen}
               aria-label="Choose map view"
-              className="flex min-h-[52px] w-full min-w-[180px] max-w-[min(100vw-1.5rem,280px)] items-center justify-between gap-3 rounded-xl border border-slate-700/80 bg-slate-950/95 px-3.5 py-2.5 text-left shadow-2xl backdrop-blur-md transition hover:bg-slate-900/95 sm:min-w-[220px]"
+              className="flex min-h-[52px] min-w-[220px] max-w-[280px] items-center justify-between gap-3 rounded-xl border border-slate-700/80 bg-slate-950/95 px-3.5 py-2.5 text-left shadow-2xl backdrop-blur-md transition hover:bg-slate-900/95"
             >
               <span className="min-w-0">
                 <span className="block text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
@@ -1341,8 +1380,142 @@ export default function Hazardmap() {
         </div>
       </div>
 
+      {/* ── MOBILE FILTERS BOTTOM SHEET ── */}
+      {mobileFiltersOpen && (
+        <div className="fixed inset-0 z-[1200] sm:hidden" role="dialog" aria-modal="true" aria-label="Map filters">
+          <button
+            type="button"
+            aria-label="Close filters"
+            className="absolute inset-0 bg-slate-950/70 backdrop-blur-sm"
+            onClick={() => setMobileFiltersOpen(false)}
+          />
+          <div className="absolute inset-x-0 bottom-0 max-h-[min(85dvh,640px)] overflow-y-auto rounded-t-3xl border-t border-slate-700/80 bg-slate-950 shadow-2xl">
+            <div className="sticky top-0 z-10 flex items-center justify-between border-b border-slate-800 bg-slate-950/95 px-4 py-3 backdrop-blur">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-slate-400">
+                  Map filters
+                </p>
+                <p className="text-sm font-black text-white">
+                  Category · Risk · View
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setMobileFiltersOpen(false)}
+                className="flex h-10 w-10 items-center justify-center rounded-xl border border-slate-700 bg-slate-900 text-slate-200"
+                aria-label="Close"
+              >
+                <svg className="h-5 w-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M6 18 18 6M6 6l12 12" />
+                </svg>
+              </button>
+            </div>
+
+            <div className="space-y-6 p-4 pb-8">
+              {/* Category */}
+              <section>
+                <h3 className="mb-2 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                  Hazard Category
+                </h3>
+                <div className="grid grid-cols-1 gap-1.5">
+                  {HAZARD_FILTER_OPTIONS.filter(
+                    (o) => o.id === "all" || !String(o.label).includes("(legacy)"),
+                  ).map((option) => {
+                    const active = selectedCategory === option.id;
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        onClick={() => setSelectedCategory(option.id)}
+                        className={`flex min-h-11 items-center rounded-xl border px-3.5 py-2.5 text-left text-sm font-semibold transition ${
+                          active
+                            ? "border-purple-500 bg-purple-600/30 text-white"
+                            : "border-slate-800 bg-slate-900/80 text-slate-200"
+                        }`}
+                      >
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+
+              {/* Risk */}
+              <section>
+                <h3 className="mb-2 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                  Risk Level
+                </h3>
+                <div className="grid grid-cols-2 gap-1.5">
+                  {RISK_FILTER_OPTIONS.map((option) => {
+                    const active = selectedRisk === option.id;
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        onClick={() => setSelectedRisk(option.id)}
+                        className={`flex min-h-11 items-center gap-2 rounded-xl border px-3 py-2.5 text-left text-sm font-semibold transition ${
+                          active
+                            ? "border-purple-500 bg-purple-600/30 text-white"
+                            : "border-slate-800 bg-slate-900/80 text-slate-200"
+                        }`}
+                      >
+                        <span
+                          className="h-3 w-3 shrink-0 rounded-full border border-white/40"
+                          style={{ backgroundColor: option.color }}
+                        />
+                        {option.label}
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+
+              {/* Map view */}
+              <section>
+                <h3 className="mb-2 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-400">
+                  Map View
+                </h3>
+                <div className="space-y-1.5">
+                  {VIEW_OPTIONS.map((option) => {
+                    const active = option.id === viewMode;
+                    return (
+                      <button
+                        key={option.id}
+                        type="button"
+                        onClick={() => changeView(option.id)}
+                        className={`w-full rounded-xl border px-3.5 py-3 text-left transition ${
+                          active
+                            ? "border-purple-500 bg-purple-600 text-white"
+                            : "border-slate-800 bg-slate-900/80 text-slate-200"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="text-sm font-bold">{option.label}</span>
+                          {active && <span className="text-xs">✓</span>}
+                        </div>
+                        <p className={`mt-1 text-[11px] leading-relaxed ${active ? "text-purple-100" : "text-slate-400"}`}>
+                          {option.description}
+                        </p>
+                      </button>
+                    );
+                  })}
+                </div>
+              </section>
+
+              <button
+                type="button"
+                onClick={() => setMobileFiltersOpen(false)}
+                className="flex min-h-12 w-full items-center justify-center rounded-xl bg-gradient-to-r from-blue-600 via-blue-600 to-purple-600 text-sm font-black text-white shadow-lg"
+              >
+                Apply filters
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Attribution */}
-      <div className="absolute bottom-1 right-1 z-[1000] max-w-[calc(100%-1rem)] rounded-md bg-slate-950/80 px-2 py-1 text-[9px] text-slate-400 backdrop-blur-sm">
+      <div className="absolute bottom-1 right-1 z-[500] max-w-[calc(100%-1rem)] rounded-md bg-slate-950/80 px-2 py-1 text-[9px] text-slate-400 backdrop-blur-sm">
         {selectedView.attribution ? (
           <a
             href={
@@ -1361,14 +1534,14 @@ export default function Hazardmap() {
 
       {/* Notice */}
       {notice && (
-        <div className="pointer-events-none fixed left-1/2 top-28 z-[1100] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 rounded-xl border border-purple-400/40 bg-slate-950/95 px-4 py-3 text-center text-sm font-semibold text-slate-100 shadow-2xl backdrop-blur">
+        <div className="pointer-events-none absolute left-1/2 top-28 z-[600] w-[calc(100%-2rem)] max-w-lg -translate-x-1/2 rounded-xl border border-purple-400/40 bg-slate-950/95 px-4 py-3 text-center text-sm font-semibold text-slate-100 shadow-2xl backdrop-blur lg:left-[calc(50%+var(--portal-sidebar-width,17rem)/2)]">
           {notice}
         </div>
       )}
 
       {/* Loading */}
       {loading && (
-        <div className="pointer-events-none fixed inset-0 z-[1100] flex items-center justify-center bg-slate-950/45 backdrop-blur-sm">
+        <div className="pointer-events-none absolute inset-0 top-16 z-[600] flex items-center justify-center bg-slate-950/45 backdrop-blur-sm lg:left-[var(--portal-sidebar-width,17rem)]">
           <div className="flex flex-col items-center gap-4">
             <div className="h-12 w-12 animate-spin rounded-full border-4 border-red-600 border-t-transparent" />
             <p className="text-sm font-bold uppercase tracking-[0.2em] text-white">
@@ -1380,7 +1553,7 @@ export default function Hazardmap() {
 
       {/* Error */}
       {!loading && error && (
-        <div className="fixed left-1/2 top-28 z-[1100] w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2 rounded-xl border border-red-400/50 bg-red-950/95 px-4 py-3 text-center shadow-2xl backdrop-blur">
+        <div className="absolute left-1/2 top-28 z-[600] w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2 rounded-xl border border-red-400/50 bg-red-950/95 px-4 py-3 text-center shadow-2xl backdrop-blur lg:left-[calc(50%+var(--portal-sidebar-width,17rem)/2)]">
           <p className="text-sm font-semibold text-red-100">{error}</p>
           <button
             type="button"

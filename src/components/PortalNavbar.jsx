@@ -24,7 +24,6 @@ import Notification from "./notification";
 
 const SIDEBAR_STORAGE_KEY =
   "mdrrmo_portal_sidebar_collapsed";
-
 const SIDEBAR_EXPANDED_WIDTH = "17rem";
 const SIDEBAR_COLLAPSED_WIDTH = "5rem";
 
@@ -32,7 +31,6 @@ function readSidebarPreference() {
   if (typeof window === "undefined") {
     return false;
   }
-
   try {
     return (
       window.localStorage.getItem(
@@ -67,20 +65,16 @@ export default function PortalNavbar({
   const navigate = useNavigate();
   const location = useLocation();
   const { showAlert, showConfirm } = useDialog();
-
   const [collapsed, setCollapsed] =
     useState(readSidebarPreference);
-
   const [mobileOpen, setMobileOpen] =
     useState(false);
-
   const [loggingOut, setLoggingOut] =
     useState(false);
 
   const activeLink = links.find(
     (link) => link.to === location.pathname,
   );
-
   const pageTitle =
     location.pathname === profilePath
       ? "Profile"
@@ -89,24 +83,20 @@ export default function PortalNavbar({
   /* =========================================================
      SIDEBAR PREFERENCE AND CONTENT WIDTH
   ========================================================= */
-
   useLayoutEffect(() => {
     const width = collapsed
       ? SIDEBAR_COLLAPSED_WIDTH
       : SIDEBAR_EXPANDED_WIDTH;
-
     document.documentElement.style.setProperty(
       "--portal-sidebar-width",
       width,
     );
-
     saveSidebarPreference(collapsed);
   }, [collapsed]);
 
   /* =========================================================
      CLOSE MOBILE DRAWER AFTER NAVIGATION
   ========================================================= */
-
   useEffect(() => {
     setMobileOpen(false);
   }, [location.pathname]);
@@ -114,23 +104,19 @@ export default function PortalNavbar({
   /* =========================================================
      CLOSE MOBILE DRAWER WITH ESCAPE
   ========================================================= */
-
   useEffect(() => {
     if (!mobileOpen) {
       return undefined;
     }
-
     const handleEscape = (event) => {
       if (event.key === "Escape") {
         setMobileOpen(false);
       }
     };
-
     window.addEventListener(
       "keydown",
       handleEscape,
     );
-
     return () => {
       window.removeEventListener(
         "keydown",
@@ -142,36 +128,29 @@ export default function PortalNavbar({
   /* =========================================================
      LOGOUT
   ========================================================= */
-
   const handleLogout = async () => {
     if (loggingOut) {
       return;
     }
-
     const confirmed = await showConfirm(
       `Sign out of the ${portalTitle.toLowerCase()}?`,
     );
-
     if (!confirmed) {
       return;
     }
-
     setLoggingOut(true);
     setMobileOpen(false);
-
     try {
       await supabase.auth.signOut();
     } catch {
       // Manual staff sessions may not have a Supabase
       // Auth session.
     }
-
     try {
       window.localStorage.removeItem(sessionKey);
     } catch {
       // Ignore local storage errors.
     }
-
     navigate(logoutPath, {
       replace: true,
     });
@@ -180,7 +159,6 @@ export default function PortalNavbar({
   /* =========================================================
      NAVIGATION CLASSES
   ========================================================= */
-
   const getNavigationClass = ({ isActive }) =>
     [
       "group relative flex min-h-11 w-full items-center gap-3 rounded-xl text-sm font-bold transition",
@@ -209,7 +187,6 @@ export default function PortalNavbar({
       {/* =====================================================
           TOP NAVIGATION
       ===================================================== */}
-
       <header className="fixed inset-x-0 top-0 z-[1000] h-16 border-b border-white/20 bg-gradient-to-r from-blue-600 via-blue-600 to-purple-600 shadow-xl shadow-purple-950/15">
         <div className="flex h-full items-center justify-between gap-3 px-3 sm:px-5">
           {/* Left side */}
@@ -249,7 +226,6 @@ export default function PortalNavbar({
               }
               aria-expanded={!collapsed}
               aria-controls="portal-navigation-sidebar"
-             
               className="hidden h-10 shrink-0 items-center gap-2 rounded-xl border border-white/15 bg-white/10 px-3 text-xs font-bold text-white transition hover:bg-white/20 lg:inline-flex"
             >
               {collapsed ? (
@@ -257,7 +233,6 @@ export default function PortalNavbar({
               ) : (
                 <PanelLeftClose className="h-4 w-4" />
               )}
-
               <span className="hidden xl:inline">
                
               </span>
@@ -275,13 +250,10 @@ export default function PortalNavbar({
                   className="h-13 w-13 object-contain"
                 />
               </div>
-
               <div className="min-w-0">
                 <p className="truncate text-sm font-black text-white sm:text-base">
                   {pageTitle}
                 </p>
-
-               
               </div>
             </Link>
           </div>
@@ -289,7 +261,6 @@ export default function PortalNavbar({
           {/* Right side */}
           <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
             <Notification />
-
             <Link
               to={profilePath}
               title="Open profile"
@@ -298,7 +269,6 @@ export default function PortalNavbar({
             >
               <UserRound className="h-5 w-5" />
             </Link>
-
             <button
               type="button"
               onClick={handleLogout}
@@ -306,7 +276,6 @@ export default function PortalNavbar({
               className="hidden items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-50 sm:flex"
             >
               <LogOut className="h-4 w-4" />
-
               {loggingOut
                 ? "Signing out..."
                 : "Sign out"}
@@ -318,7 +287,6 @@ export default function PortalNavbar({
       {/* =====================================================
           MOBILE OVERLAY
       ===================================================== */}
-
       {mobileOpen && (
         <button
           type="button"
@@ -331,7 +299,6 @@ export default function PortalNavbar({
       {/* =====================================================
           COLLAPSIBLE SIDEBAR
       ===================================================== */}
-
       <aside
         id="portal-navigation-sidebar"
         aria-label={`${portalTitle} navigation`}
@@ -346,11 +313,8 @@ export default function PortalNavbar({
         ].join(" ")}
       >
         {/* Mobile drawer heading */}
-        <div className="mb-4 rounded-2xl border border-white/20 bg-white/10 p-4 text-white lg:hidden">
-          <p className="text-[10px] font-bold uppercase tracking-[0.18em] text-blue-100">
-            Navigation
-          </p>
-
+        <div className="mb-4 rounded-2xl border border-white/20 bg-white/10 p-4 text-white text-center lg:hidden">
+         
           <p className="mt-1 text-sm font-black">
             {portalTitle}
           </p>
@@ -360,7 +324,6 @@ export default function PortalNavbar({
         <nav className="flex-1 space-y-1.5">
           {links.map((link) => {
             const Icon = link.icon;
-
             return (
               <NavLink
                 key={link.to}
@@ -368,39 +331,45 @@ export default function PortalNavbar({
                 onClick={() =>
                   setMobileOpen(false)
                 }
-                className={
-                  getNavigationClass
-                }
+                className={getNavigationClass}
                 title={link.label}
                 aria-label={link.label}
               >
                 <Icon className="h-5 w-5 shrink-0" />
-
                 {/* Mobile label */}
-                <span className="truncate lg:hidden">
+                <span className="truncate lg-hidden">
                   {link.label}
                 </span>
-
-                {/* Expanded desktop label */}
-                <span
-                  className={
-                    collapsed
-                      ? "hidden"
-                      : "hidden lg:inline"
-                  }
-                >
-                  {link.label}
-                </span>
+               
+             
               </NavLink>
             );
           })}
         </nav>
 
-        {/* Profile and logout */}
+        {/* Profile and logout — visible in mobile drawer; also useful when sidebar is expanded on desktop */}
         <div className="mt-5 space-y-1.5 border-t border-white/15 pt-4">
-
-
+          {/* Profile link (mobile + expanded desktop) */}
         
+
+          {/* Logout button — always visible in mobile drawer; on desktop only when sidebar expanded */}
+          <button
+            type="button"
+            onClick={handleLogout}
+            disabled={loggingOut}
+            className={[
+              getUtilityClass(),
+              // On large screens hide when collapsed so it doesn't look awkward as an icon-only button
+              collapsed ? "lg:hidden" : "",
+            ].join(" ")}
+            title="Sign out"
+            aria-label="Sign out"
+          >
+            <LogOut className="h-5 w-5 shrink-0" />
+            <span className="truncate">
+              {loggingOut ? "Signing out..." : "Sign out"}
+            </span>
+          </button>
         </div>
       </aside>
     </>

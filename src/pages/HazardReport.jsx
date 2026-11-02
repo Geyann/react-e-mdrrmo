@@ -1,7 +1,7 @@
 "use client";
 
 import { Link, useNavigate } from "react-router-dom";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle,
   Camera,
@@ -62,6 +62,32 @@ function localDateKey() {
     String(date.getMonth() + 1).padStart(2, "0"),
     String(date.getDate()).padStart(2, "0"),
   ].join("-");
+}
+
+/** Current local time as HH:MM (24h) for <input type="time" max> */
+function localTimeKey() {
+  const date = new Date();
+  return [
+    String(date.getHours()).padStart(2, "0"),
+    String(date.getMinutes()).padStart(2, "0"),
+  ].join(":");
+}
+
+/**
+ * Returns true if dateObserved + timeObserved is in the future.
+ * timeObserved is expected as "HH:MM" or "HH:MM:SS".
+ */
+function isFutureDateTime(dateStr, timeStr) {
+  if (!dateStr || !timeStr) return false;
+
+  const today = localDateKey();
+  if (dateStr < today) return false;
+  if (dateStr > today) return true;
+
+  // Same day — compare time
+  const nowTime = localTimeKey();
+  const selected = String(timeStr).slice(0, 5); // HH:MM
+  return selected > nowTime;
 }
 
 const PhotoPreview = ({ file, index }) => {
@@ -131,6 +157,16 @@ export default function HazardReport() {
   const nameIsMasked = prefs.public_name === false;
   const locationEnabled = prefs.location_access !== false;
   const todayStr = localDateKey();
+
+  // When the selected date is today, the time input must not allow future times.
+  const maxTimeForSelectedDate = useMemo(() => {
+    if (!form.dateObserved) return undefined;
+    if (form.dateObserved === todayStr) {
+      return localTimeKey();
+    }
+    // Past dates: no max restriction
+    return undefined;
+  }, [form.dateObserved, todayStr]);
 
   const showOtherInput = isOtherNaturalHazard(form.hazardCategory);
   const specificOptions = getTypesForCategory(form.hazardCategory);
@@ -247,6 +283,21 @@ export default function HazardReport() {
       reporterName: nameIsMasked ? "Anonymous" : realName,
     }));
   }, [nameIsMasked, realName]);
+
+  // If the user switches the date to today and the previously chosen time
+  // is now in the future, clear the time so they must pick a valid one.
+  useEffect(() => {
+    if (
+      form.dateObserved === todayStr &&
+      form.timeObserved &&
+      isFutureDateTime(form.dateObserved, form.timeObserved)
+    ) {
+      setForm((previous) => ({
+        ...previous,
+        timeObserved: "",
+      }));
+    }
+  }, [form.dateObserved, form.timeObserved, todayStr]);
 
   const fetchLocation = useCallback(() => {
     return new Promise((resolve) => {
@@ -396,6 +447,48 @@ export default function HazardReport() {
       return;
     }
 
+    // Date changed: if switching to today, clear time when it would be future
+    if (name === "dateObserved") {
+      setForm((previous) => {
+        const next = { ...previous, dateObserved: value };
+        if (
+          value === todayStr &&
+          previous.timeObserved &&
+          isFutureDateTime(value, previous.timeObserved)
+        ) {
+          next.timeObserved = "";
+        }
+        return next;
+      });
+      setError("");
+      return;
+    }
+
+    // Time changed: reject future time when date is today
+    if (name === "timeObserved") {
+      if (
+        form.dateObserved === todayStr &&
+        value &&
+        isFutureDateTime(form.dateObserved, value)
+      ) {
+        setError(
+          "Time Observed cannot be in the future. Please select a time that has already passed.",
+        );
+        // Still update so the browser control reflects the choice, but keep error visible
+        setForm((previous) => ({
+          ...previous,
+          timeObserved: value,
+        }));
+        return;
+      }
+      setForm((previous) => ({
+        ...previous,
+        timeObserved: value,
+      }));
+      setError("");
+      return;
+    }
+
     setForm((previous) => ({
       ...previous,
       [name]: value,
@@ -443,6 +536,24 @@ export default function HazardReport() {
       ) {
         throw new Error(
           "Please describe the natural hazard type when choosing Other Natural Disaster.",
+        );
+      }
+
+      // Date / time must not be in the future
+      if (!form.dateObserved) {
+        throw new Error("Please select the date the hazard was observed.");
+      }
+      if (form.dateObserved > todayStr) {
+        throw new Error(
+          "Date Observed cannot be in the future. Please select today or an earlier date.",
+        );
+      }
+      if (!form.timeObserved) {
+        throw new Error("Please select the time the hazard was observed.");
+      }
+      if (isFutureDateTime(form.dateObserved, form.timeObserved)) {
+        throw new Error(
+          "Time Observed cannot be in the future. Please select a time that has already passed.",
         );
       }
 
@@ -884,7 +995,7 @@ export default function HazardReport() {
           icon={MapPin}
           step="03"
           title="Location & Observation"
-          description="Describe where and when the hazard was observed."
+          description="Describe where and when the hazard was observed. Only past dates and times are allowed."
         />
 
         <div className="grid gap-5">
@@ -949,7 +1060,18 @@ export default function HazardReport() {
               </div>
             </FormField>
 
-            <FormField id="timeObserved" label="Time Observed" required>
+            <FormField
+              id="timeObserved"
+              label="Time Observed"
+              required
+              hint={
+                form.dateObserved === todayStr
+                  ? "Today is selected — only times up to the current time are allowed."
+                  : form.dateObserved
+                    ? "Any time on this past date is allowed."
+                    : "Select a date first."
+              }
+            >
               <div className="relative">
                 <Clock3 className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 <input
@@ -958,6 +1080,7 @@ export default function HazardReport() {
                   type="time"
                   value={form.timeObserved}
                   onChange={handleChange}
+                  max={maxTimeForSelectedDate}
                   className={`${FORM_INPUT_CLASS} pl-11`}
                   required
                 />

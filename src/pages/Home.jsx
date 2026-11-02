@@ -190,11 +190,7 @@ export default function Home() {
           {/* Hero copy */}
           <div className="relative z-20 text-center lg:text-left">
             <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-blue-300/25 bg-blue-400/10 px-4 py-2 text-[10px] font-extrabold uppercase tracking-[0.2em] text-blue-100 backdrop-blur-md sm:text-xs">
-              <span className="relative flex h-2 w-2">
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-70" />
-                <span className="relative inline-flex h-2 w-2 rounded-full bg-emerald-400" />
-              </span>
-
+             
               Naic, Cavite
             </div>
 
@@ -264,19 +260,7 @@ export default function Home() {
 
                 <div className="absolute inset-0 bg-gradient-to-t from-[#071426] via-[#071426]/15 to-transparent" />
 
-                <div className="absolute left-5 right-5 top-5 flex items-center justify-between gap-3">
-                  <span className="inline-flex items-center gap-2 rounded-full border border-white/15 bg-slate-950/65 px-3 py-1.5 text-[9px] font-extrabold uppercase tracking-[0.16em] text-white backdrop-blur-md">
-                    <Radio
-                      className="h-3.5 w-3.5 text-red-400"
-                      aria-hidden="true"
-                    />
-                    Community Safety
-                  </span>
-
-                  <span className="rounded-full bg-blue-600 px-3 py-1.5 text-[9px] font-extrabold uppercase tracking-[0.16em] text-white shadow-lg">
-                    Naic
-                  </span>
-                </div>
+                
 
                 <div className="absolute bottom-0 left-0 right-0 p-6">
                   <p className="text-xs font-extrabold uppercase tracking-[0.18em] text-blue-300">

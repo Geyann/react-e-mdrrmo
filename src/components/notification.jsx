@@ -28,6 +28,8 @@ const MAX_READ_ENTRIES = 1000;
 const DISMISS_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 const MAX_DISMISS_ENTRIES = 1000;
 const QUERY_TIMEOUT_MS = 8000;
+const TOAST_DURATION_MS = 6500;
+const MAX_VISIBLE_TOASTS = 4;
 const DEBUG = import.meta.env?.DEV ?? false;
 
 const dbg = (...a) => {
@@ -381,12 +383,6 @@ const SOURCES = [
     actionable: ["pending"],
     selfKeys: ["reporter_contact", "reporterContact", "contact", "phone", "email", "reporter_email"],
     statusOf: (r) => {
-      /*
-       * Prefer explicit review workflow when past pending.
-       * Otherwise treat as approved/rejected if EITHER status
-       * column says so — do NOT let a leftover "pending"
-       * report_status hide an approved status (that blocked notifs).
-       */
       const review = String(r.review_status || "").trim().toLowerCase();
       const s = String(r.status || "").trim().toLowerCase();
       const rs = String(r.report_status || "").trim().toLowerCase();
@@ -816,6 +812,13 @@ const TONE_HEADER = {
   info: "border-blue-100 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/40",
 };
 
+const TONE_TOAST_BORDER = {
+  success: "border-l-emerald-500",
+  error: "border-l-red-500",
+  warning: "border-l-amber-500",
+  info: "border-l-blue-500",
+};
+
 /* ══════════════════════════════════════════════════════════════════
    IDENTITY
    ══════════════════════════════════════════════════════════════════ */
@@ -1042,6 +1045,7 @@ export default function Notification() {
   const [blocked, setBlocked] = useState([]);
   const [diag, setDiag] = useState({});
   const [pos, setPos] = useState(null);
+  const [toasts, setToasts] = useState([]);
 
   const btnRef = useRef(null);
   const whoRef = useRef(null);
@@ -1052,6 +1056,8 @@ export default function Notification() {
   const seededRef = useRef(false);
   const scanPromiseRef = useRef(null);
   const bootRef = useRef(null);
+  const toastTimersRef = useRef(new Map());
+  const seenToastIdsRef = useRef(new Set());
 
   const persistAll = useCallback(() => {
     const w = whoRef.current;
@@ -1067,6 +1073,34 @@ export default function Notification() {
     writeJSON(cacheKey(w.storageKey), cacheRef.current);
   }, []);
 
+  const removeToast = useCallback((id) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+    const timer = toastTimersRef.current.get(id);
+    if (timer) {
+      clearTimeout(timer);
+      toastTimersRef.current.delete(id);
+    }
+  }, []);
+
+  const enqueueToast = useCallback((item) => {
+    if (!item || !item.id) return;
+    if (seenToastIdsRef.current.has(item.id)) return;
+    if (dismissRef.current[item.id] !== undefined) return;
+
+    seenToastIdsRef.current.add(item.id);
+
+    setToasts((prev) => {
+      const next = [{ ...item, toastId: `${item.id}-${Date.now()}` }, ...prev]
+        .slice(0, MAX_VISIBLE_TOASTS);
+      return next;
+    });
+
+    const timer = setTimeout(() => {
+      removeToast(item.id);
+    }, TOAST_DURATION_MS);
+    toastTimersRef.current.set(item.id, timer);
+  }, [removeToast]);
+
   const push = useCallback((p, { silent = false } = {}) => {
     if (dismissRef.current[p.id] !== undefined) return;
     if (notifRef.current.some((x) => x.id === p.id)) return;
@@ -1078,8 +1112,13 @@ export default function Notification() {
     setNotifications(next);
     persistAll();
 
+    // Live toast only after seed and only for non-silent pushes
+    if (!silent && seededRef.current) {
+      enqueueToast(n);
+    }
+
     if (!silent) dbg("push:", n.tone, n.title, n.id);
-  }, [persistAll]);
+  }, [persistAll, enqueueToast]);
 
   const linkFor = useCallback(
     (src, w) =>
@@ -1120,8 +1159,6 @@ export default function Notification() {
     if (!w) return;
 
     const mapped = (scope === "queue" ? src.queueTones : src.selfTones)[status];
-    // Always notify on terminal / important hazard statuses even if
-    // the tone map was incomplete for a given label.
     const fallbackTone =
       status === "approved" || status === "resolved" || status === "confirmed"
         ? "success"
@@ -1455,6 +1492,10 @@ export default function Notification() {
           notifRef.current = [n, ...notifRef.current].slice(0, MAX_NOTIFICATIONS);
           setNotifications([...notifRef.current]);
           persistAll();
+
+          if (seededRef.current) {
+            enqueueToast(n);
+          }
         }
       )
       .on("postgres_changes", { event: "*", schema: "public" }, (pl) => {
@@ -1497,7 +1538,15 @@ export default function Notification() {
       .subscribe();
 
     return () => { supabase.removeChannel(ch); };
-  }, [who, booting, onCreated, onStatus, persistAll, persistCache]);
+  }, [who, booting, onCreated, onStatus, persistAll, persistCache, enqueueToast]);
+
+  // Cleanup toast timers on unmount
+  useEffect(() => {
+    return () => {
+      toastTimersRef.current.forEach((t) => clearTimeout(t));
+      toastTimersRef.current.clear();
+    };
+  }, []);
 
   const place = useCallback(() => {
     if (!open || !btnRef.current) {
@@ -1640,9 +1689,10 @@ export default function Notification() {
     setNotifications(kept);
 
     setSelected((s) => (s && s.id === id ? null : s));
+    removeToast(id);
 
     persistAll();
-  }, [persistAll]);
+  }, [persistAll, removeToast]);
 
   const dismissAll = useCallback(() => {
     const now = Date.now();
@@ -1653,6 +1703,9 @@ export default function Notification() {
 
     notifRef.current = [];
     setNotifications([]);
+    setToasts([]);
+    toastTimersRef.current.forEach((t) => clearTimeout(t));
+    toastTimersRef.current.clear();
     persistAll();
   }, [persistAll]);
 
@@ -1678,9 +1731,11 @@ export default function Notification() {
     notifRef.current = [];
     readRef.current = {};
     dismissRef.current = {};
+    seenToastIdsRef.current.clear();
     setNotifications([]);
     setReadMap({});
     setDismissMap({});
+    setToasts([]);
     setDiag({});
     setBlocked([]);
   }, []);
@@ -1865,6 +1920,70 @@ export default function Notification() {
 
       {typeof document !== "undefined" && createPortal(
         <>
+          {/* ─── LIVE TOASTS ─── */}
+          {toasts.length > 0 && (
+            <div
+              className="fixed z-[100001] flex flex-col gap-2 pointer-events-none"
+              style={{
+                top: "max(1rem, env(safe-area-inset-top))",
+                right: "max(1rem, env(safe-area-inset-right))",
+                width: "min(22rem, calc(100vw - 2rem))",
+              }}
+              aria-live="polite"
+              aria-relevant="additions"
+            >
+              {toasts.map((t) => {
+                const Icon = SOURCE_MAP[t.iconKey]?.icon || Bell;
+                const ToneIcon = TONE_ICON[t.tone] || Info;
+                return (
+                  <div
+                    key={t.toastId || t.id}
+                    className={`pointer-events-auto flex items-start gap-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-2xl border-l-4 ${TONE_TOAST_BORDER[t.tone] || "border-l-blue-500"} p-3 animate-[toastIn_0.22s_cubic-bezier(0.16,1,0.3,1)]`}
+                    role="status"
+                  >
+                    <button
+                      type="button"
+                      className="flex items-start gap-3 flex-1 min-w-0 text-left"
+                      onClick={() => {
+                        markRead(t.id);
+                        removeToast(t.id);
+                        if (t.link) navigate(t.link);
+                      }}
+                    >
+                      <span
+                        className={`mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full ${TONE_BG[t.tone]}`}
+                      >
+                        <Icon className="h-4 w-4" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center gap-1.5">
+                          <ToneIcon className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                          <span className="text-sm font-bold text-slate-800 dark:text-slate-100 leading-tight line-clamp-1">
+                            {t.title}
+                          </span>
+                        </span>
+                        <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400 line-clamp-2 whitespace-pre-line">
+                          {t.message}
+                        </span>
+                        <span className="mt-1 text-[9px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
+                          {t.label}
+                        </span>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeToast(t.id)}
+                      aria-label="Dismiss notification"
+                      className="mt-0.5 p-1 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-600 dark:hover:text-slate-200 transition shrink-0"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           {open && (
             <div
               className="fixed inset-0 z-[99998]"
@@ -2180,6 +2299,11 @@ export default function Notification() {
           to   { opacity: 1; transform: translateY(0) scale(1); }
         }
         .notif-drop { animation: notifDrop 0.16s cubic-bezier(0.16, 1, 0.3, 1); }
+
+        @keyframes toastIn {
+          from { opacity: 0; transform: translateX(24px) scale(0.96); }
+          to   { opacity: 1; transform: translateX(0) scale(1); }
+        }
       `}</style>
     </div>
   );
