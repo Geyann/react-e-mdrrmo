@@ -150,11 +150,8 @@ const prettyStatus = (status) => {
  * ============================================================= */
 
 const rawText = (value) => String(value ?? "").trim();
-
 const normalizeUsername = (value) => rawText(value).toLowerCase();
-
 const normalizeEmail = (value) => rawText(value).toLowerCase();
-
 const validUsername = (value) => USERNAME_PATTERN.test(normalizeUsername(value));
 
 const normalizeStatus = (value) =>
@@ -412,25 +409,20 @@ function StatusBadge({ user }) {
     !isInactive &&
     (status === "approved" || user.is_active === true);
 
-  let className =
-    "border border-slate-200 bg-slate-100 text-slate-700";
+  let className = "border border-slate-200 bg-slate-100 text-slate-700";
   let label = "Unknown";
 
   if (isActive) {
-    className =
-      "border border-emerald-200 bg-emerald-100 text-emerald-700";
+    className = "border border-emerald-200 bg-emerald-100 text-emerald-700";
     label = "Active";
   } else if (isPending) {
-    className =
-      "border border-yellow-200 bg-yellow-100 text-yellow-700";
+    className = "border border-yellow-200 bg-yellow-100 text-yellow-700";
     label = "Pending";
   } else if (isRejected) {
-    className =
-      "border border-red-200 bg-red-100 text-red-700";
+    className = "border border-red-200 bg-red-100 text-red-700";
     label = "Rejected";
   } else if (isInactive) {
-    className =
-      "border border-red-200 bg-red-100 text-red-700";
+    className = "border border-red-200 bg-red-100 text-red-700";
     label = "Inactive";
   }
 
@@ -606,7 +598,7 @@ function ActiveToggle({ value, onToggle, disabled = false }) {
 function AdminUserManagement() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const { showAlert, showConfirmation } = useDialog();
+  const { showAlert, showConfirm } = useDialog();
 
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
@@ -618,7 +610,7 @@ function AdminUserManagement() {
   const [detailsUser, setDetailsUser] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
   const [showPassword, setShowPassword] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
 
   const [saving, setSaving] = useState(false);
   const [approvalSavingId, setApprovalSavingId] = useState(null);
@@ -666,9 +658,6 @@ function AdminUserManagement() {
   const [declineTarget, setDeclineTarget] = useState(null);
   const [declineSaving, setDeclineSaving] = useState(false);
   const [declineError, setDeclineError] = useState("");
-
-  /* Reason the administrator typed in the decline modal. Sent to the
-   * user the next time they try to sign in. */
   const [declineReason, setDeclineReason] = useState("");
 
   const currentStaff = useMemo(() => readCurrentStaff(), []);
@@ -773,11 +762,6 @@ function AdminUserManagement() {
                 (record.is_active === false ? "inactive" : "approved"),
           is_active: isAdminRow ? true : record.is_active,
           password: null,
-          /*
-           * Track the pending_registrations row separately. When a
-           * profiles row takes precedence during merge, we still need
-           * the pending row's id so Approve/Decline can address it.
-           */
           pending_id:
             sourceTable === "pending_registrations" ? record.id : null,
           profile_id:
@@ -808,18 +792,12 @@ function AdminUserManagement() {
       results.forEach((result, index) => {
         const table = ACCOUNT_TABLES[index];
 
-        if (result.status === "rejected") {
+        if (result.status === "rejected" || result.value.error) {
           failed.push(TABLE_LABELS[table]);
           return;
         }
 
-        if (result.value.error) {
-          failed.push(TABLE_LABELS[table]);
-          return;
-        }
-
-        const rows = result.value.data || [];
-        rows.forEach((record) => addUser(record, table));
+        (result.value.data || []).forEach((record) => addUser(record, table));
       });
 
       const sortedUsers = [...accountMap.values()].sort((a, b) => {
@@ -920,12 +898,9 @@ function AdminUserManagement() {
     const table = archived.original_table;
 
     if (liveRow && typeof liveRow === "object") {
-      const row = { ...liveRow };
-      // Avoid identity conflicts if id was identity-generated with different sequence — keep original id when present
-      return { table, row };
+      return { table, row: { ...liveRow } };
     }
 
-    // Fallback reconstruction from archive columns
     if (table === "profiles") {
       return {
         table,
@@ -992,7 +967,7 @@ function AdminUserManagement() {
 
   const handleRestoreDeletedAccount = async (archived) => {
     const label = archived.full_name || archived.email || "this account";
-    const ok = await showConfirmation(
+    const ok = await showConfirm(
       `Restore ${label}?\n\nTable: ${archived.original_table || "—"}\nEmail: ${archived.email || "—"}\n\nThe account will be inserted back into ${archived.original_table} and removed from deleted_accounts.`,
     );
     if (!ok) return;
@@ -1009,7 +984,6 @@ function AdminUserManagement() {
         );
       }
 
-      // Strip undefined keys
       const insertRow = Object.fromEntries(
         Object.entries(row).filter(([, value]) => value !== undefined),
       );
@@ -1017,7 +991,6 @@ function AdminUserManagement() {
       const { error: insertError } = await supabase.from(table).insert(insertRow);
 
       if (insertError) {
-        // Retry without primary key if conflict
         if (
           String(insertError.message || "").toLowerCase().includes("duplicate") ||
           insertError.code === "23505"
@@ -1029,14 +1002,7 @@ function AdminUserManagement() {
         throw insertError;
       }
 
-      const { error: removeArchiveError } = await supabase
-        .from("deleted_accounts")
-        .delete()
-        .eq("id", archived.id);
-
-      if (removeArchiveError) {
-        console.warn("Restored account but failed to remove archive row:", removeArchiveError);
-      }
+      await supabase.from("deleted_accounts").delete().eq("id", archived.id);
 
       if (archived.auth_uid) {
         try {
@@ -1114,7 +1080,6 @@ function AdminUserManagement() {
       archived_at: new Date().toISOString(),
     };
 
-    // Archive first
     const archivePayload = {
       original_table: request.requester_source || "profiles",
       original_id: request.requester_profile_id || request.requester_work_id || null,
@@ -1149,12 +1114,8 @@ function AdminUserManagement() {
       throw archiveError;
     }
 
-    // Best-effort delete from live tables
     if (request.requester_profile_id) {
-      await supabase
-        .from("profiles")
-        .delete()
-        .eq("id", request.requester_profile_id);
+      await supabase.from("profiles").delete().eq("id", request.requester_profile_id);
     }
 
     if (email) {
@@ -1163,13 +1124,9 @@ function AdminUserManagement() {
     }
 
     if (request.requester_work_id) {
-      await supabase
-        .from("staff_users")
-        .delete()
-        .eq("user_id", request.requester_work_id);
+      await supabase.from("staff_users").delete().eq("user_id", request.requester_work_id);
     }
 
-    // Mark request approved
     const { error: updateError } = await supabase
       .from("account_deletion_requests")
       .update({
@@ -1197,7 +1154,7 @@ function AdminUserManagement() {
 
   const handleApproveDeletionRequest = async (request) => {
     const label = request.requester_name || request.requester_email || "this account";
-    const ok = await showConfirmation(
+    const ok = await showConfirm(
       `Approve deletion for ${label}?\n\nEmail: ${request.requester_email || "—"}\nRole: ${request.requester_role || "—"}\n\nThe account will be removed and archived in deleted_accounts.`,
     );
     if (!ok) return;
@@ -1234,7 +1191,7 @@ function AdminUserManagement() {
 
   const handleRejectDeletionRequest = async (request) => {
     const label = request.requester_name || request.requester_email || "this account";
-    const ok = await showConfirmation(
+    const ok = await showConfirm(
       `Reject deletion request for ${label}? The account will remain active.`,
     );
     if (!ok) return;
@@ -1370,7 +1327,7 @@ function AdminUserManagement() {
     });
 
     setShowPassword(false);
-    setShowConfirm(false);
+    setShowConfirmPassword(false);
     setError("");
     setShowEditModal(true);
   };
@@ -1450,13 +1407,6 @@ function AdminUserManagement() {
         updateData.first_name = nameParts.shift() || "";
         updateData.middle_name = nameParts.length > 1 ? nameParts.shift() : "";
         updateData.last_name = nameParts.join(" ") || "";
-
-        /*
-         * Status is NOT edited here. It changes through the Approve or
-         * Decline buttons, which call the approve-registration edge
-         * function (for approve) or update the status directly
-         * (for decline).
-         */
         updateData.email = email;
         updateData.username = username || null;
         updateData.id_type = idType || null;
@@ -1526,9 +1476,6 @@ function AdminUserManagement() {
       return;
     }
 
-    /* Decline opens the confirmation modal. Reset the reason so a
-     * stale value from a previous decline never leaks into the new
-     * one. */
     setDeclineTarget(user);
     setDeclineError("");
     setDeclineReason("");
@@ -1655,15 +1602,15 @@ function AdminUserManagement() {
 
   /* ===========================================================
      DELETE ACCOUNT
+     - Archives to deleted_accounts
+     - Removes from all login tables so the user can no longer sign in
   =========================================================== */
 
   const handleDeleteUser = async (user) => {
     const userName = user.full_name || user.email || "this account";
 
     if (isCurrentAccount(user)) {
-      setError(
-        "You cannot delete the account that is currently signed in.",
-      );
+      setError("You cannot delete the account that is currently signed in.");
       return;
     }
 
@@ -1671,26 +1618,25 @@ function AdminUserManagement() {
       `Name: ${user.full_name || userName}`,
       `Email: ${user.email || "—"}`,
       `Mobile: ${user.mobile_number || user.mobile || "—"}`,
-      `Role: ${user.role || "—"}`,
+      `Role: ${user.role || user.displayRole || "—"}`,
       `Work ID: ${user.workId || user.user_id || "—"}`,
       `Source: ${user.sourceTable || "—"}`,
       `Record ID: ${user.sourceId || "—"}`,
     ].join("\n");
 
-    const firstConfirmation = await showConfirmation(
-      `Delete this account?\n\n${accountSummary}\n\nThis removes the record from the ${user.sourceTable} table.`,
+    const firstConfirmation = await showConfirm(
+      `Delete this account?\n\n${accountSummary}\n\nThis will permanently remove the account from the login tables and move a copy to Deleted Accounts.`,
     );
-
     if (!firstConfirmation) return;
 
-    const secondConfirmation = await showConfirmation(
-      "FINAL CONFIRMATION\n\nThis action cannot be undone. Continue?",
+    const secondConfirmation = await showConfirm(
+      "FINAL CONFIRMATION\n\nThis action cannot be undone. The user will no longer be able to log in. Continue?",
     );
-
     if (!secondConfirmation) return;
 
     setSaving(true);
     setError("");
+    setCreateSuccess("");
 
     try {
       const staff = (() => {
@@ -1701,35 +1647,39 @@ function AdminUserManagement() {
         }
       })();
 
-      // Load the live database row so restore can put it back later
+      // 1. Fetch complete live row
       let liveRow = null;
       try {
-        const { data: fetchedRow, error: fetchLiveError } = await supabase
+        const { data: fetchedRow } = await supabase
           .from(user.sourceTable)
           .select("*")
           .eq("id", user.sourceId)
           .maybeSingle();
-
-        if (fetchLiveError) {
-          console.warn("Could not fetch live row before delete:", fetchLiveError);
-        } else {
-          liveRow = fetchedRow;
-        }
-      } catch (fetchErr) {
-        console.warn("Live row fetch failed:", fetchErr);
+        liveRow = fetchedRow;
+      } catch (err) {
+        console.warn("Live row fetch failed:", err);
       }
 
-      // Archive into deleted_accounts before removing live row
+      // 2. Resolve UUID for deleted_by
+      let deletedByUuid = null;
+      if (staff?.id && typeof staff.id === "string" && staff.id.length === 36) {
+        deletedByUuid = staff.id;
+      } else if (
+        staff?.user_id &&
+        typeof staff.user_id === "string" &&
+        staff.user_id.length === 36
+      ) {
+        deletedByUuid = staff.user_id;
+      }
+
+      // 3. Archive first
       const archivePayload = {
         original_table: user.sourceTable,
         original_id: String(user.sourceId ?? ""),
         email: user.email || liveRow?.email || null,
         full_name: user.full_name || liveRow?.full_name || userName,
         mobile_number:
-          user.mobile_number ||
-          user.mobile ||
-          liveRow?.mobile_number ||
-          null,
+          user.mobile_number || user.mobile || liveRow?.mobile_number || null,
         role: user.role || user.displayRole || liveRow?.role || null,
         work_id:
           user.workId ||
@@ -1738,11 +1688,18 @@ function AdminUserManagement() {
           liveRow?.custom_id ||
           null,
         account_type: user.displayRole || user.role || liveRow?.role || null,
-        auth_uid: liveRow?.id && user.sourceTable === "profiles" ? liveRow.id : liveRow?.user_id || null,
+        auth_uid:
+          user.sourceTable === "profiles"
+            ? liveRow?.id || user.sourceId
+            : liveRow?.user_id || liveRow?.id || null,
         linked_ids: [String(user.sourceId ?? "")].filter(Boolean),
-        snapshot: { user, liveRow },
+        snapshot: {
+          user,
+          liveRow,
+          archived_at: new Date().toISOString(),
+        },
         deletion_request_id: null,
-        deleted_by: staff?.id || staff?.user_id || null,
+        deleted_by: deletedByUuid,
         deleted_by_name: staff?.full_name || staff?.username || "Administrator",
         reason: "Deleted by administrator from User Management",
       };
@@ -1752,28 +1709,87 @@ function AdminUserManagement() {
         .insert(archivePayload);
 
       if (archiveError) {
-        console.warn("Archive failed:", archiveError);
         if (
           String(archiveError.message || "").includes("deleted_accounts") ||
           archiveError.code === "42P01"
         ) {
           throw new Error(
-            "deleted_accounts table is missing. Run account_deletion_tables.sql before deleting accounts.",
+            "deleted_accounts table is missing. Run the account deletion migration SQL first.",
           );
         }
         throw archiveError;
       }
 
+      // 4. Best-effort: try to disable Auth user (if Edge Function exists)
+      const authUid =
+        user.sourceTable === "profiles"
+          ? liveRow?.id || user.sourceId
+          : liveRow?.user_id || null;
+
+      if (authUid) {
+        try {
+          await supabase.functions.invoke("delete-auth-user", {
+            body: { user_id: authUid },
+          });
+        } catch (authErr) {
+          console.warn("Could not delete/disable Auth user:", authErr);
+        }
+      }
+
+      // 5. Nullify common foreign keys
+      const sourceId = user.sourceId;
+      const nullifyPromises = [];
+
+      if (user.sourceTable === "profiles") {
+        nullifyPromises.push(
+          supabase.from("reportIncident").update({ userId: null }).eq("userId", sourceId),
+          supabase.from("borrow-vehicle").update({ userId: null }).eq("userId", sourceId),
+          supabase.from("borrower_slip").update({ user_id: null }).eq("user_id", sourceId),
+        );
+      }
+
+      if (user.sourceTable === "staff_users") {
+        nullifyPromises.push(
+          supabase.from("borrow-vehicle").update({ staffId: null }).eq("staffId", sourceId),
+          supabase.from("borrower_slip").update({ staff_id: null }).eq("staff_id", sourceId),
+          supabase.from("outPatientCheckUp").update({ staffId: null }).eq("staffId", sourceId),
+          supabase.from("hazard_reports").update({ assigned_to_staff_id: null }).eq("assigned_to_staff_id", sourceId),
+          supabase.from("hazard_reports").update({ reviewed_by_staff_id: null }).eq("reviewed_by_staff_id", sourceId),
+        );
+      }
+
+      await Promise.allSettled(nullifyPromises);
+
+      // 6. Hard delete from the source table
       const { error: deleteError } = await supabase
         .from(user.sourceTable)
         .delete()
         .eq("id", user.sourceId);
 
       if (deleteError) throw deleteError;
-      await fetchAllUsers(false);
-      await fetchDeletionRequests();
-      await fetchDeletedAccounts();
-      setCreateSuccess(`Account deleted and archived: ${userName}`);
+
+      // 7. Extra cleanup by email (removes any leftover login rows)
+      const email = (user.email || liveRow?.email || "").trim().toLowerCase();
+      if (email) {
+        await Promise.allSettled([
+          supabase.from("pending_registrations").delete().eq("email", email),
+          supabase.from("profiles").delete().eq("email", email),
+          supabase.from("staff_users").delete().eq("email", email),
+          supabase.from("admin_users").delete().eq("email", email),
+        ]);
+      }
+
+      // 8. Refresh
+      await Promise.all([
+        fetchAllUsers(false),
+        fetchDeletionRequests(),
+        fetchDeletedAccounts(),
+      ]);
+
+      window.dispatchEvent(new Event("mdrrmo:notif-refresh"));
+      setCreateSuccess(
+        `Account deleted. The user can no longer log in. A copy was saved in Deleted Accounts: ${userName}`,
+      );
     } catch (err) {
       console.error("Delete user error:", err);
       setError(err?.message || "Failed to delete the user.");
@@ -1890,7 +1906,7 @@ function AdminUserManagement() {
             createRole === "admin" ? "Administrator" : "Staff"
           } account for ${fullName} was ${
             data?.created ? "created" : "updated"
-          } successfully. No duplicate was created.`,
+          } successfully.`,
       );
     } catch (err) {
       console.error("Create account error:", err);
@@ -3263,7 +3279,7 @@ function AdminUserManagement() {
                     </label>
                     <input
                       id="edit-confirm-password"
-                      type={showConfirm ? "text" : "password"}
+                      type={showConfirmPassword ? "text" : "password"}
                       value={editForm.confirmPassword}
                       onChange={(event) =>
                         setEditForm({
@@ -3278,11 +3294,11 @@ function AdminUserManagement() {
                     />
                     <button
                       type="button"
-                      onClick={() => setShowConfirm((v) => !v)}
+                      onClick={() => setShowConfirmPassword((v) => !v)}
                       aria-label="Toggle confirmation password visibility"
                       className="absolute right-3 top-[34px] text-slate-400 hover:text-slate-600"
                     >
-                      {showConfirm ? (
+                      {showConfirmPassword ? (
                         <EyeOff className="h-4 w-4" />
                       ) : (
                         <Eye className="h-4 w-4" />
@@ -4022,10 +4038,6 @@ function UserSummaryReportModal({ onClose }) {
       .replace(/"/g, "&quot;")
       .replace(/'/g, "&#39;");
 
-  /**
-   * Print only the summary report body (white page).
-   * Uses a hidden iframe — no popup blocker issues.
-   */
   const handlePrint = () => {
     if (fetching || fetchError) return;
 
@@ -4586,6 +4598,5 @@ function UserSummaryReportModal({ onClose }) {
     </div>
   );
 }
-
 
 export default AdminUserManagement;

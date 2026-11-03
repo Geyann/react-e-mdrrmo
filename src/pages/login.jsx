@@ -86,6 +86,80 @@ async function passwordMatches(plainPassword, storedPassword) {
 }
 
 /* ══════════════════════════════════════════════════════════════════
+   DELETED ACCOUNT CHECK
+   ══════════════════════════════════════════════════════════════════ */
+
+const DELETED_ACCOUNT_MESSAGE =
+  "Your account has been deleted by the admin. If you have any questions or inquiries, please contact or visit the MDRRMO - Naic office.";
+
+/**
+ * Returns the deleted_accounts row if this identifier belongs to an
+ * account that was archived (so login must be blocked).
+ */
+async function findDeletedAccount(identifier) {
+  const value = clean(identifier);
+  if (!value) return null;
+
+  const isEmail = value.includes("@");
+  const normalized = isEmail ? value.toLowerCase() : value;
+
+  try {
+    // 1. Exact email match
+    if (isEmail) {
+      const { data, error } = await supabase
+        .from("deleted_accounts")
+        .select("id, email, full_name, original_table, work_id")
+        .eq("email", normalized)
+        .limit(1)
+        .maybeSingle();
+
+      if (!error && data) return data;
+    }
+
+    // 2. Match by work_id
+    {
+      const { data, error } = await supabase
+        .from("deleted_accounts")
+        .select("id, email, full_name, original_table, work_id")
+        .eq("work_id", normalized)
+        .limit(1)
+        .maybeSingle();
+
+      if (!error && data) return data;
+    }
+
+    // 3. Case-insensitive email match (covers username-looking emails too)
+    {
+      const { data, error } = await supabase
+        .from("deleted_accounts")
+        .select("id, email, full_name, original_table, work_id")
+        .ilike("email", normalized)
+        .limit(1)
+        .maybeSingle();
+
+      if (!error && data) return data;
+    }
+
+    // 4. Try matching the local part of email if user typed a username
+    //    (e.g. user typed "juan" and email was "juan@example.com")
+    if (!isEmail) {
+      const { data, error } = await supabase
+        .from("deleted_accounts")
+        .select("id, email, full_name, original_table, work_id")
+        .ilike("email", `${normalized}@%`)
+        .limit(1)
+        .maybeSingle();
+
+      if (!error && data) return data;
+    }
+  } catch (err) {
+    console.warn("deleted_accounts lookup failed:", err);
+  }
+
+  return null;
+}
+
+/* ══════════════════════════════════════════════════════════════════
    ADMIN / STAFF LOOKUPS (silent — not advertised in the UI)
    ══════════════════════════════════════════════════════════════════ */
 
@@ -578,6 +652,12 @@ export default function LoginPage() {
     try {
       const isEmail = loginIdentifier.includes("@");
       const normalizedEmail = loginIdentifier.toLowerCase();
+
+      /* ── Block deleted accounts first ── */
+      const deleted = await findDeletedAccount(loginIdentifier);
+      if (deleted) {
+        throw new Error(DELETED_ACCOUNT_MESSAGE);
+      }
 
       /* ── Silent admin / staff check (not shown in UI) ── */
       const portalAccount =
