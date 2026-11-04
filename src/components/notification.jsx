@@ -17,11 +17,9 @@ import {
    CONFIG
    ══════════════════════════════════════════════════════════════════ */
 
-const POLL_MS_USER = 5000;
-const POLL_MS_HANDLER = 8000;
-const TOAST_DURATION_MS = 6000;
+const POLL_MS_USER = 8000;
+const POLL_MS_HANDLER = 12000;
 const MAX_NOTIFICATIONS = 80;
-const MAX_TOASTS = 4;
 const SCAN_LIMIT = 300;
 const QUEUE_BACKFILL = 10;
 const USER_BACKFILL = 12;
@@ -30,7 +28,9 @@ const MAX_READ_ENTRIES = 1000;
 const DISMISS_TTL_MS = 90 * 24 * 60 * 60 * 1000;
 const MAX_DISMISS_ENTRIES = 1000;
 const QUERY_TIMEOUT_MS = 8000;
-const DEBUG = true;
+const TOAST_DURATION_MS = 6500;
+const MAX_VISIBLE_TOASTS = 4;
+const DEBUG = import.meta.env?.DEV ?? false;
 
 const dbg = (...a) => {
   if (DEBUG) console.log("[Notif]", ...a);
@@ -57,23 +57,57 @@ const withTimeout = (promise, ms, label) =>
 const safeQuery = async (builder, fallback, label, ms = QUERY_TIMEOUT_MS) => {
   try {
     const res = await withTimeout(builder, ms, label);
-    if (res?.error) {
-      dbg(`${label} error:`, res.error.message);
-      return fallback;
-    }
+    if (res?.error) return fallback;
     return res?.data ?? fallback;
-  } catch (e) {
-    dbg(`${label} failed:`, e?.message);
+  } catch {
     return fallback;
   }
 };
 
 /* ══════════════════════════════════════════════════════════════════
+   TEXT HELPERS
+   ══════════════════════════════════════════════════════════════════ */
+
+const trimReason = (value) => {
+  if (value === null || value === undefined) return null;
+  const s = String(value).trim();
+  return s.length > 0 ? s : null;
+};
+
+const DECLINED_STATUSES = new Set([
+  "declined",
+  "rejected",
+  "cancelled",
+  "canceled",
+  "reject",
+]);
+
+const APPROVED_STATUSES = new Set([
+  "approved",
+  "confirmed",
+  "active",
+  "in progress",
+  "dispatched",
+  "ongoing",
+  "resolved",
+  "completed",
+]);
+
+const isDeclinedStatus = (value) =>
+  DECLINED_STATUSES.has(String(value || "").trim().toLowerCase());
+
+const isApprovedStatus = (value) =>
+  APPROVED_STATUSES.has(String(value || "").trim().toLowerCase());
+
+const withReason = (parts, { declined, reason, prefix = "Reason" }) => {
+  if (!declined) return parts;
+  const cleaned = trimReason(reason);
+  if (!cleaned) return parts;
+  return [...parts, `${prefix}: ${cleaned}`];
+};
+
+/* ══════════════════════════════════════════════════════════════════
    STORAGE
-     list    — notification records
-     read    — { id → timestamp }
-     dismiss — { id → timestamp }  ← prevents deleted items re-pushing
-     cache   — { table::id → last known status }
    ══════════════════════════════════════════════════════════════════ */
 
 const readJSON = (k, fb) => {
@@ -130,18 +164,48 @@ const SOURCES = [
     actionable: ["pending"],
     selfKeys: ["email", "mobile_number", "username"],
     selfTones: {
-      approved: "success", confirmed: "success",
-      rejected: "error", cancelled: "info",
+      approved: "success",
+      confirmed: "success",
+      rejected: "error",
+      declined: "error",
+      cancelled: "info",
+      canceled: "info",
     },
     queueTones: { approved: "info" },
     link: { user: "/track", staff: "/track", admin: "/admin/appointment" },
-    describe: (r) => ({
-      title: "Appointment",
-      message: [
-        r.purpose || "General visit",
-        [r.date, r.time].filter(Boolean).join(" at "),
-      ].filter(Boolean).join(" — "),
-    }),
+    describe: (r) => {
+      const status = String(r.status || "").toLowerCase();
+      const declined = isDeclinedStatus(status);
+      const approved = isApprovedStatus(status);
+      const reason = r.decline_reason || r.review_notes;
+
+      const parts = withReason(
+        [
+          r.purpose || "General visit",
+          [r.date, r.time].filter(Boolean).join(" at "),
+        ].filter(Boolean),
+        { declined, reason }
+      );
+
+      if (approved && !declined) {
+        return {
+          title: "Appointment Approved",
+          message: `Your appointment for "${r.purpose || "appointment"}" on ${r.date || ""} at ${r.time || ""} has been approved.`,
+        };
+      }
+
+      if (declined) {
+        return {
+          title: "Appointment Declined",
+          message: `Your appointment for "${r.purpose || "appointment"}" on ${r.date || ""} at ${r.time || ""} has been declined.\n\n${withReason([], { declined, reason }).join("\n") || "Reason: No reason provided."}`,
+        };
+      }
+
+      return {
+        title: "Appointment",
+        message: parts.join(" — "),
+      };
+    },
   },
   {
     table: "reportIncident",
@@ -153,20 +217,49 @@ const SOURCES = [
     actionable: ["pending"],
     selfKeys: ["reporterContact"],
     selfTones: {
-      "in progress": "info", dispatched: "info",
-      resolved: "success", rejected: "error",
+      "in progress": "info",
+      dispatched: "info",
+      resolved: "success",
+      rejected: "error",
+      declined: "error",
     },
     queueTones: {},
     link: { user: "/track", staff: "/track", admin: "/admin/report" },
-    describe: (r) => ({
-      title: "Incident Report",
-      message: [
-        r.incidentType,
-        r.priorityLevel ? `${r.priorityLevel} priority` : null,
-        r.address,
-        r.adminResponse ? `Response: ${r.adminResponse}` : null,
-      ].filter(Boolean).join(" — "),
-    }),
+    describe: (r) => {
+      const status = String(r.status || "").toLowerCase();
+      const declined = isDeclinedStatus(status);
+      const approved = isApprovedStatus(status);
+      const reason = r.review_notes || r.adminResponse;
+
+      if (approved && !declined) {
+        return {
+          title: "Incident Report Approved",
+          message: `${r.incidentType || "Incident"} has been processed. ${r.adminResponse ? `Response: ${r.adminResponse}` : ""}`.trim(),
+        };
+      }
+
+      if (declined) {
+        return {
+          title: "Incident Report Declined",
+          message: `${r.incidentType || "Incident"} was declined.\n\n${withReason([], { declined, reason }).join("\n") || "Reason: No reason provided."}`,
+        };
+      }
+
+      const parts = withReason(
+        [
+          r.incidentType,
+          r.priorityLevel ? `${r.priorityLevel} priority` : null,
+          r.address,
+          r.adminResponse ? `Response: ${r.adminResponse}` : null,
+        ].filter(Boolean),
+        { declined, reason }
+      );
+
+      return {
+        title: "Incident Report",
+        message: parts.join(" — "),
+      };
+    },
   },
   {
     table: "borrow-vehicle",
@@ -175,23 +268,54 @@ const SOURCES = [
     label: "Vehicle Dispatch",
     scopes: ["self", "queue"],
     queueRoles: ["admin", "staff"],
-    actionable: ["Pending"],
+    actionable: ["pending"],
     selfKeys: ["contactNum"],
     selfTones: {
-      approved: "success", declined: "error",
-      completed: "success", cancelled: "info",
+      approved: "success",
+      declined: "error",
+      rejected: "error",
+      completed: "success",
+      cancelled: "info",
+      canceled: "info",
+      ongoing: "info",
     },
     queueTones: { ongoing: "info", completed: "info" },
     link: { user: "/track", staff: "/staff/borrow", admin: "/admin/borrow" },
-    describe: (r) => ({
-      title: "Vehicle Dispatch",
-      message: [
-        r.vehicle ? String(r.vehicle).replace(/-/g, " ") : null,
-        r.destination,
-        r.requestedBy ? `by ${r.requestedBy}` : null,
-        r.adminNotes ? `Note: ${r.adminNotes}` : null,
-      ].filter(Boolean).join(" — "),
-    }),
+    describe: (r) => {
+      const status = String(r.status || "").toLowerCase();
+      const declined = isDeclinedStatus(status);
+      const approved = isApprovedStatus(status);
+      const reason = r.review_notes || r.adminNotes;
+
+      if (approved && !declined) {
+        return {
+          title: "Vehicle Dispatch Approved",
+          message: `Your dispatch request for ${r.vehicle ? String(r.vehicle).replace(/-/g, " ") : "a vehicle"} to ${r.destination || "your destination"} has been approved.`,
+        };
+      }
+
+      if (declined) {
+        return {
+          title: "Vehicle Dispatch Declined",
+          message: `Your dispatch request for ${r.vehicle ? String(r.vehicle).replace(/-/g, " ") : "a vehicle"} to ${r.destination || "your destination"} was declined.\n\n${withReason([], { declined, reason }).join("\n") || "Reason: No reason provided."}`,
+        };
+      }
+
+      const parts = withReason(
+        [
+          r.vehicle ? String(r.vehicle).replace(/-/g, " ") : null,
+          r.destination,
+          r.requestedBy ? `by ${r.requestedBy}` : null,
+          r.adminNotes ? `Note: ${r.adminNotes}` : null,
+        ].filter(Boolean),
+        { declined, reason }
+      );
+
+      return {
+        title: "Vehicle Dispatch",
+        message: parts.join(" — "),
+      };
+    },
   },
   {
     table: "outPatientCheckUp",
@@ -200,23 +324,54 @@ const SOURCES = [
     label: "Check-Up Request",
     scopes: ["self", "queue"],
     queueRoles: ["admin", "staff"],
-    actionable: ["Pending"],
+    actionable: ["pending"],
     selfKeys: ["contactDetails"],
     selfTones: {
-      approved: "success", confirmed: "success", completed: "success",
-      declined: "error", cancelled: "info",
+      approved: "success",
+      confirmed: "success",
+      completed: "success",
+      declined: "error",
+      rejected: "error",
+      cancelled: "info",
+      canceled: "info",
     },
     queueTones: { approved: "warning", confirmed: "info" },
     link: { user: "/track", staff: "/staff/checkupqueue", admin: "/admin/checkup" },
-    describe: (r) => ({
-      title: "Check-Up Request",
-      message: [
-        r.patientName ? `Patient: ${r.patientName}` : null,
-        r.hospitalName,
-        [r.preferredDate, r.preferredTime].filter(Boolean).join(" at "),
-        r.staffNote ? `Staff note: ${r.staffNote}` : null,
-      ].filter(Boolean).join(" — "),
-    }),
+    describe: (r) => {
+      const status = String(r.status || "").toLowerCase();
+      const declined = isDeclinedStatus(status);
+      const approved = isApprovedStatus(status);
+      const reason = r.review_notes || r.staffNote;
+
+      if (approved && !declined) {
+        return {
+          title: "Check-Up Request Approved",
+          message: `Check-up request for ${r.patientName || "your patient"} at ${r.hospitalName || "the hospital"} on ${r.preferredDate || ""} at ${r.preferredTime || ""} has been approved.`,
+        };
+      }
+
+      if (declined) {
+        return {
+          title: "Check-Up Request Declined",
+          message: `Check-up request for ${r.patientName || "your patient"} at ${r.hospitalName || "the hospital"} on ${r.preferredDate || ""} at ${r.preferredTime || ""} was declined.\n\n${withReason([], { declined, reason }).join("\n") || "Reason: No reason provided."}`,
+        };
+      }
+
+      const parts = withReason(
+        [
+          r.patientName ? `Patient: ${r.patientName}` : null,
+          r.hospitalName,
+          [r.preferredDate, r.preferredTime].filter(Boolean).join(" at "),
+          r.staffNote ? `Staff note: ${r.staffNote}` : null,
+        ].filter(Boolean),
+        { declined, reason }
+      );
+
+      return {
+        title: "Check-Up Request",
+        message: parts.join(" — "),
+      };
+    },
   },
   {
     table: "hazard_reports",
@@ -226,21 +381,123 @@ const SOURCES = [
     scopes: ["self", "queue"],
     queueRoles: ["admin", "staff"],
     actionable: ["pending"],
-    selfKeys: ["reporter_contact"],
-    statusOf: (r) =>
-      String(r.report_status || r.status || "pending").toLowerCase(),
-    selfTones: { approved: "success", rejected: "error" },
-    queueTones: {},
-    link: { user: "/track", staff: "/staff/dashboard", admin: "/admin/hazard-map" },
-    describe: (r) => ({
-      title: "Hazard Report",
-      message: [
-        r.hazard_category,
-        r.risk_level ? `${r.risk_level} risk` : null,
-        r.address,
-        r.admin_remarks ? `Remarks: ${r.admin_remarks}` : null,
-      ].filter(Boolean).join(" — "),
-    }),
+    selfKeys: ["reporter_contact", "reporterContact", "contact", "phone", "email", "reporter_email"],
+    statusOf: (r) => {
+      const review = String(r.review_status || "").trim().toLowerCase();
+      const s = String(r.status || "").trim().toLowerCase();
+      const rs = String(r.report_status || "").trim().toLowerCase();
+
+      if (review && review !== "pending") return review;
+
+      if (rs === "approved" || s === "approved") return "approved";
+      if (
+        rs === "rejected" ||
+        s === "rejected" ||
+        rs === "declined" ||
+        s === "declined"
+      ) {
+        return "rejected";
+      }
+
+      return s || rs || "pending";
+    },
+    selfTones: {
+      approved: "success",
+      under_review: "info",
+      resolved: "success",
+      rejected: "error",
+      declined: "error",
+      pending: "info",
+    },
+    queueTones: {
+      under_review: "info",
+      resolved: "success",
+      approved: "info",
+      rejected: "error",
+      declined: "error",
+      pending: "warning",
+    },
+    link: {
+      user: "/track",
+      staff: "/staff/hazard-reports",
+      admin: "/admin/hazard-map",
+    },
+    describe: (r) => {
+      const status = String(
+        r.review_status || r.report_status || r.status || "",
+      ).toLowerCase();
+      const declined = isDeclinedStatus(status);
+      const approved =
+        isApprovedStatus(status) ||
+        status === "resolved" ||
+        status === "under_review";
+
+      const reason = r.admin_remarks || r.review_notes;
+      const category = r.hazard_category || "hazard";
+      const address = r.address || "your location";
+      const assigned =
+        r.assigned_to_name ||
+        (r.assigned_to_staff_id ? `Staff #${r.assigned_to_staff_id}` : null);
+
+      if (status === "under_review") {
+        return {
+          title: "Hazard Report Under Review",
+          message: [
+            `Your ${category} report at ${address} is now under review.`,
+            assigned ? `Assigned to: ${assigned}` : null,
+            reason ? `Remarks: ${reason}` : null,
+          ]
+            .filter(Boolean)
+            .join("\n"),
+        };
+      }
+
+      if (status === "resolved" || (approved && !declined && status !== "under_review")) {
+        return {
+          title:
+            status === "resolved"
+              ? "Hazard Report Resolved"
+              : "Hazard Report Approved",
+          message: [
+            `Your ${category} report at ${address} has been ${
+              status === "resolved" ? "resolved" : "approved"
+            }.`,
+            status !== "resolved"
+              ? "It may appear on the public hazard map."
+              : null,
+            assigned ? `Handled by: ${assigned}` : null,
+            reason ? `Remarks: ${reason}` : null,
+          ]
+            .filter(Boolean)
+            .join("\n"),
+        };
+      }
+
+      if (declined) {
+        return {
+          title: "Hazard Report Declined",
+          message: `Your ${category} report at ${address} was declined.\n\n${
+            withReason([], { declined, reason, prefix: "Remarks" }).join("\n") ||
+            "Remarks: No reason provided."
+          }`,
+        };
+      }
+
+      const parts = withReason(
+        [
+          category,
+          r.risk_level ? `${r.risk_level} risk` : null,
+          address,
+          assigned ? `Assigned: ${assigned}` : null,
+        ].filter(Boolean),
+        { declined, reason, prefix: "Remarks" },
+      );
+
+      return {
+        title: "Hazard Report",
+        message: parts.join(" — "),
+      };
+    },
   },
   {
     table: "pending_registrations",
@@ -251,17 +508,45 @@ const SOURCES = [
     queueRoles: ["admin"],
     actionable: ["pending"],
     selfKeys: ["email"],
-    selfTones: { approved: "success", rejected: "error" },
+    selfTones: {
+      approved: "success",
+      rejected: "error",
+      declined: "error",
+    },
     queueTones: {},
     link: { user: "/settings", staff: "/staff/settings", admin: "/admin/pending-account" },
-    describe: (r) => ({
-      title: "Account Registration",
-      message: [
-        [r.first_name, r.last_name].filter(Boolean).join(" ") || r.username,
-        r.status === "approved" ? "You can now sign in." : null,
-        r.status === "rejected" ? "Contact the MDRRMO office." : null,
-      ].filter(Boolean).join(" — "),
-    }),
+    describe: (r) => {
+      const declined = isDeclinedStatus(r.status);
+      const approved = r.status === "approved";
+      const reason = r.review_notes;
+
+      if (approved) {
+        return {
+          title: "Account Approved",
+          message: `${[r.first_name, r.last_name].filter(Boolean).join(" ") || r.username || "Your account"} has been approved. You can now sign in.`,
+        };
+      }
+
+      if (declined) {
+        return {
+          title: "Account Declined",
+          message: `${[r.first_name, r.last_name].filter(Boolean).join(" ") || r.username || "Your account"} was declined.\n\n${withReason([], { declined, reason }).join("\n") || "Reason: No reason provided."}`,
+        };
+      }
+
+      const parts = withReason(
+        [
+          [r.first_name, r.last_name].filter(Boolean).join(" ") || r.username,
+          r.status === "approved" ? "You can now sign in." : null,
+        ].filter(Boolean),
+        { declined, reason }
+      );
+
+      return {
+        title: "Account Registration",
+        message: parts.join(" — "),
+      };
+    },
   },
   {
     table: "inventory_reports",
@@ -274,13 +559,23 @@ const SOURCES = [
     selfTones: {},
     queueTones: {},
     link: { user: "/settings", staff: "/staff/inventory", admin: "/admin/inventory" },
-    describe: (r) => ({
-      title: "Inventory Report",
-      message: [
-        r.title,
-        r.generated_by_name ? `by ${r.generated_by_name}` : null,
-      ].filter(Boolean).join(" — "),
-    }),
+    describe: (r) => {
+      const declined = isDeclinedStatus(r.status);
+      const reason = r.admin_notes || r.review_notes;
+
+      const parts = withReason(
+        [
+          r.title,
+          r.generated_by_name ? `by ${r.generated_by_name}` : null,
+        ].filter(Boolean),
+        { declined, reason, prefix: "Notes" }
+      );
+
+      return {
+        title: "Inventory Report",
+        message: parts.join(" — "),
+      };
+    },
   },
   {
     table: "borrower_slip",
@@ -372,6 +667,129 @@ const statusOf = (src, row) =>
 const idOf = (src, row) => row[src.idKey] ?? "unknown";
 
 /* ══════════════════════════════════════════════════════════════════
+   NOTIFICATIONS TABLE MAPPING
+   ══════════════════════════════════════════════════════════════════ */
+
+const NOTIF_TONE_MAP = {
+  success: "success",
+  error: "error",
+  warning: "warning",
+  info: "info",
+};
+
+const guessFromNotification = (row, w) => {
+  const title = String(row.title || "").toLowerCase();
+
+  if (title.includes("appointment")) {
+    return {
+      iconKey: "appointments",
+      label: "Appointment",
+      link: w.isAdminRole
+        ? "/admin/appointment"
+        : w.isStaffRole
+          ? "/track"
+          : "/track",
+      tone: NOTIF_TONE_MAP[row.type] || "info",
+    };
+  }
+
+  if (title.includes("incident")) {
+    return {
+      iconKey: "reportIncident",
+      label: "Incident Report",
+      link: w.isAdminRole ? "/admin/report" : "/track",
+      tone: NOTIF_TONE_MAP[row.type] || "info",
+    };
+  }
+
+  if (title.includes("vehicle") || title.includes("dispatch")) {
+    return {
+      iconKey: "borrow-vehicle",
+      label: "Vehicle Dispatch",
+      link: w.isAdminRole
+        ? "/admin/borrow"
+        : w.isStaffRole
+          ? "/staff/borrow"
+          : "/track",
+      tone: NOTIF_TONE_MAP[row.type] || "info",
+    };
+  }
+
+  if (title.includes("check")) {
+    return {
+      iconKey: "outPatientCheckUp",
+      label: "Check-Up Request",
+      link: w.isAdminRole
+        ? "/admin/checkup"
+        : w.isStaffRole
+          ? "/staff/checkupqueue"
+          : "/track",
+      tone: NOTIF_TONE_MAP[row.type] || "info",
+    };
+  }
+
+  if (title.includes("hazard")) {
+    return {
+      iconKey: "hazard_reports",
+      label: "Hazard Report",
+      link: w.isAdminRole ? "/admin/hazard-map" : "/track",
+      tone: NOTIF_TONE_MAP[row.type] || "info",
+    };
+  }
+
+  if (title.includes("account") || title.includes("registration")) {
+    return {
+      iconKey: "pending_registrations",
+      label: "Account",
+      link: w.isAdminRole
+        ? "/admin/pending-account"
+        : "/settings",
+      tone: NOTIF_TONE_MAP[row.type] || "info",
+    };
+  }
+
+  if (title.includes("inventory")) {
+    return {
+      iconKey: "inventory_reports",
+      label: "Inventory Report",
+      link: w.isAdminRole
+        ? "/admin/inventory"
+        : "/staff/inventory",
+      tone: NOTIF_TONE_MAP[row.type] || "info",
+    };
+  }
+
+  return {
+    iconKey: null,
+    label: "Notification",
+    link: "/home",
+    tone: NOTIF_TONE_MAP[row.type] || "info",
+  };
+};
+
+const notifRowToItem = (row, w) => {
+  if (!row || !row.id) return null;
+
+  const meta = guessFromNotification(row, w);
+
+  return {
+    id: `notification::${row.id}`,
+    table: "notifications",
+    recordId: String(row.id),
+    scope: "self",
+    kind: "status",
+    tone: meta.tone,
+    label: meta.label,
+    iconKey: meta.iconKey,
+    title: row.title || meta.label,
+    message: row.message || "",
+    link: meta.link,
+    createdAt: row.created_at || new Date().toISOString(),
+    dbRead: row.is_read === true,
+  };
+};
+
+/* ══════════════════════════════════════════════════════════════════
    TONES
    ══════════════════════════════════════════════════════════════════ */
 
@@ -387,13 +805,6 @@ const TONE_BG = {
   info: "bg-blue-100 dark:bg-blue-900/40 text-blue-600 dark:text-blue-400",
 };
 
-const TONE_BORDER = {
-  success: "border-emerald-200 dark:border-emerald-800",
-  error: "border-red-200 dark:border-red-800",
-  warning: "border-amber-200 dark:border-amber-800",
-  info: "border-blue-200 dark:border-blue-800",
-};
-
 const TONE_HEADER = {
   success: "border-emerald-100 dark:border-emerald-900 bg-emerald-50 dark:bg-emerald-950/40",
   error: "border-red-100 dark:border-red-900 bg-red-50 dark:bg-red-950/40",
@@ -401,9 +812,11 @@ const TONE_HEADER = {
   info: "border-blue-100 dark:border-blue-900 bg-blue-50 dark:bg-blue-950/40",
 };
 
-const TONE_TEXT = {
-  success: "text-emerald-500", error: "text-red-500",
-  warning: "text-amber-500", info: "text-blue-500",
+const TONE_TOAST_BORDER = {
+  success: "border-l-emerald-500",
+  error: "border-l-red-500",
+  warning: "border-l-amber-500",
+  info: "border-l-blue-500",
 };
 
 /* ══════════════════════════════════════════════════════════════════
@@ -549,8 +962,6 @@ const resolveIdentity = async () => {
   const firstId = [...ids][0] || "anon";
   const storageKey = `${role}-${authId || profileId || staffRowId || firstId}`;
 
-  dbg("identity:", { role, isHandler, name, email, ids: [...ids], storageKey });
-
   return {
     idSet: ids, authId, profileId, staffRowId,
     email, phone, name, role, isHandler, exists, storageKey,
@@ -563,22 +974,46 @@ const resolveIdentity = async () => {
    MATCHING
    ══════════════════════════════════════════════════════════════════ */
 
+const OWNERSHIP_ID_COLUMNS = [
+  "userId",
+  "user_id",
+  "user_id_from_auth",
+  "staffId",
+  "staff_id",
+  "created_by",
+  "reporter_id",
+];
+
+const HAZARD_ASSIGN_COLUMNS = [
+  "assigned_to_staff_id",
+  "reviewed_by_staff_id",
+  "reviewed_by",
+];
+
 const matchRow = (src, row, w) => {
   if (!w || !w.idSet || w.idSet.size === 0) return { ok: false, via: null };
 
-  for (const v of Object.values(row)) {
-    if (v === null || v === undefined) continue;
-    if (typeof v === "object") continue;
-    if (w.idSet.has(String(v))) return { ok: true, via: "id" };
+  for (const col of OWNERSHIP_ID_COLUMNS) {
+    const v = row[col];
+    if (v === null || v === undefined || v === "") continue;
+    if (w.idSet.has(String(v))) return { ok: true, via: col };
+  }
+
+  if (src.table === "hazard_reports") {
+    for (const col of HAZARD_ASSIGN_COLUMNS) {
+      const v = row[col];
+      if (v === null || v === undefined || v === "") continue;
+      if (w.idSet.has(String(v))) return { ok: true, via: col };
+    }
   }
 
   const myEmail = (w.email || "").trim().toLowerCase();
   const myPhone = digits(w.phone);
 
   for (const col of src.selfKeys || []) {
-    const raw = row[col];
-    if (!raw) continue;
-    const v = String(raw).trim();
+    const rawVal = row[col];
+    if (!rawVal) continue;
+    const v = String(rawVal).trim();
     if (myEmail && v.toLowerCase() === myEmail) return { ok: true, via: col };
     if (myPhone && myPhone.length >= 10 &&
       digits(v).slice(-10) === myPhone.slice(-10)) {
@@ -606,11 +1041,11 @@ export default function Notification() {
   const [notifications, setNotifications] = useState([]);
   const [readMap, setReadMap] = useState({});
   const [dismissMap, setDismissMap] = useState({});
-  const [toasts, setToasts] = useState([]);
   const [selected, setSelected] = useState(null);
   const [blocked, setBlocked] = useState([]);
   const [diag, setDiag] = useState({});
   const [pos, setPos] = useState(null);
+  const [toasts, setToasts] = useState([]);
 
   const btnRef = useRef(null);
   const whoRef = useRef(null);
@@ -619,11 +1054,10 @@ export default function Notification() {
   const readRef = useRef({});
   const dismissRef = useRef({});
   const seededRef = useRef(false);
-  const scanningRef = useRef(false);
-  const timersRef = useRef({});
+  const scanPromiseRef = useRef(null);
   const bootRef = useRef(null);
-
-  /* ── persistence ─────────────────────────────────────────────── */
+  const toastTimersRef = useRef(new Map());
+  const seenToastIdsRef = useRef(new Set());
 
   const persistAll = useCallback(() => {
     const w = whoRef.current;
@@ -639,9 +1073,35 @@ export default function Notification() {
     writeJSON(cacheKey(w.storageKey), cacheRef.current);
   }, []);
 
-  /* ── push ────────────────────────────────────────────────────── */
+  const removeToast = useCallback((id) => {
+    setToasts((prev) => prev.filter((t) => t.id !== id));
+    const timer = toastTimersRef.current.get(id);
+    if (timer) {
+      clearTimeout(timer);
+      toastTimersRef.current.delete(id);
+    }
+  }, []);
 
-  const push = useCallback((p) => {
+  const enqueueToast = useCallback((item) => {
+    if (!item || !item.id) return;
+    if (seenToastIdsRef.current.has(item.id)) return;
+    if (dismissRef.current[item.id] !== undefined) return;
+
+    seenToastIdsRef.current.add(item.id);
+
+    setToasts((prev) => {
+      const next = [{ ...item, toastId: `${item.id}-${Date.now()}` }, ...prev]
+        .slice(0, MAX_VISIBLE_TOASTS);
+      return next;
+    });
+
+    const timer = setTimeout(() => {
+      removeToast(item.id);
+    }, TOAST_DURATION_MS);
+    toastTimersRef.current.set(item.id, timer);
+  }, [removeToast]);
+
+  const push = useCallback((p, { silent = false } = {}) => {
     if (dismissRef.current[p.id] !== undefined) return;
     if (notifRef.current.some((x) => x.id === p.id)) return;
 
@@ -652,13 +1112,13 @@ export default function Notification() {
     setNotifications(next);
     persistAll();
 
-    setToasts((t) => [
-      ...t.filter((x) => x.id !== n.id),
-      { id: n.id, tone: n.tone, title: n.title, message: n.message, link: n.link },
-    ].slice(-MAX_TOASTS));
+    // Live toast only after seed and only for non-silent pushes
+    if (!silent && seededRef.current) {
+      enqueueToast(n);
+    }
 
-    dbg("push:", n.tone, n.title, n.id);
-  }, [persistAll]);
+    if (!silent) dbg("push:", n.tone, n.title, n.id);
+  }, [persistAll, enqueueToast]);
 
   const linkFor = useCallback(
     (src, w) =>
@@ -667,8 +1127,6 @@ export default function Notification() {
       ] || "/home",
     []
   );
-
-  /* ── create event ────────────────────────────────────────────── */
 
   const onCreated = useCallback((src, row, scope) => {
     const w = whoRef.current;
@@ -695,14 +1153,21 @@ export default function Notification() {
     });
   }, [push, linkFor]);
 
-  /* ── status event ────────────────────────────────────────────── */
-
   const onStatus = useCallback((src, row, scope, status, previous) => {
     if (!status) return;
     const w = whoRef.current;
     if (!w) return;
 
-    const tone = (scope === "queue" ? src.queueTones : src.selfTones)[status];
+    const mapped = (scope === "queue" ? src.queueTones : src.selfTones)[status];
+    const fallbackTone =
+      status === "approved" || status === "resolved" || status === "confirmed"
+        ? "success"
+        : status === "rejected" || status === "declined" || status === "cancelled" || status === "canceled"
+          ? "error"
+          : status === "under_review" || status === "in progress" || status === "dispatched"
+            ? "info"
+            : null;
+    const tone = mapped || fallbackTone;
     if (!tone) return;
 
     const { title, message } = src.describe(row || {});
@@ -718,15 +1183,82 @@ export default function Notification() {
       tone,
       label: src.label,
       iconKey: src.table,
-      title: `${title} ${pretty}`,
+      title: title || `${src.label} ${pretty}`,
       message: message || `Status changed to ${pretty}.`,
       link: linkFor(src, w),
       previousStatus: previous,
-      createdAt: row?.updated_at || row?.respondedAt || new Date().toISOString(),
+      createdAt: row?.updated_at || row?.respondedAt || row?.reviewed_at || new Date().toISOString(),
     });
   }, [push, linkFor]);
 
-  /* ── scan one source ──────────────────────────────────────────── */
+  const scanNotificationsTable = useCallback(async (w) => {
+    if (!w || !w.authId) {
+      setDiag((d) => ({
+        ...d,
+        notifications: { mine: 0, total: 0, note: "no auth id" },
+      }));
+      return;
+    }
+
+    const rows = await safeQuery(
+      supabase
+        .from("notifications")
+        .select("*")
+        .eq("user_id", w.authId)
+        .order("created_at", { ascending: false })
+        .limit(SCAN_LIMIT),
+      null,
+      "scan notifications",
+      10000
+    );
+
+    if (rows === null) {
+      setBlocked((p) =>
+        p.includes("notifications") ? p : [...p, "notifications"]
+      );
+      setDiag((d) => ({
+        ...d,
+        notifications: { error: "unreadable or timed out", mine: 0 },
+      }));
+      return;
+    }
+
+    setBlocked((p) => p.filter((t) => t !== "notifications"));
+
+    let added = 0;
+    let skippedRead = 0;
+
+    for (const row of rows) {
+      const item = notifRowToItem(row, w);
+      if (!item) continue;
+
+      if (dismissRef.current[item.id] !== undefined) continue;
+      if (notifRef.current.some((x) => x.id === item.id)) continue;
+
+      if (item.dbRead && readRef.current[item.id] === undefined) {
+        readRef.current = {
+          ...readRef.current,
+          [item.id]: new Date(row.created_at || Date.now()).getTime(),
+        };
+        skippedRead += 1;
+      }
+
+      const n = { read: item.dbRead === true, ...item };
+      notifRef.current = [n, ...notifRef.current].slice(0, MAX_NOTIFICATIONS);
+      added += 1;
+    }
+
+    if (added > 0 || skippedRead > 0) {
+      setNotifications([...notifRef.current]);
+      setReadMap({ ...readRef.current });
+      persistAll();
+    }
+
+    setDiag((d) => ({
+      ...d,
+      notifications: { mine: rows.length, total: rows.length },
+    }));
+  }, [persistAll]);
 
   const scanSource = useCallback(async (src, w) => {
     const rows = await safeQuery(
@@ -781,8 +1313,11 @@ export default function Notification() {
       }
 
       if (!w.isHandler && m.ok) {
-        if (prev === undefined) onCreated(src, row, "self");
-        else if (prev !== status) onStatus(src, row, "self", status, prev);
+        if (prev === undefined) {
+          onCreated(src, row, "self");
+        } else if (prev !== status) {
+          onStatus(src, row, "self", status, prev);
+        }
       }
     }
 
@@ -815,7 +1350,7 @@ export default function Notification() {
           message: message || "Waiting for review.",
           link: linkFor(src, w),
           createdAt: row.created_at || new Date().toISOString(),
-        });
+        }, { silent: true });
       });
     }
 
@@ -839,7 +1374,7 @@ export default function Notification() {
           message: message || "Your request.",
           link: linkFor(src, w),
           createdAt: row.created_at || new Date().toISOString(),
-        });
+        }, { silent: true });
       });
     }
   }, [onCreated, onStatus, push, linkFor]);
@@ -847,18 +1382,28 @@ export default function Notification() {
   const scanAll = useCallback(async () => {
     const w = whoRef.current;
     if (!w) return;
-    if (scanningRef.current) return;
 
-    scanningRef.current = true;
-    try {
-      await Promise.allSettled(sourcesFor(w).map((s) => scanSource(s, w)));
-      persistCache();
-    } finally {
-      scanningRef.current = false;
+    if (scanPromiseRef.current) {
+      return scanPromiseRef.current;
     }
-  }, [scanSource, persistCache]);
 
-  /* ── boot (StrictMode-safe) ───────────────────────────────────── */
+    const run = (async () => {
+      try {
+        await scanNotificationsTable(w);
+
+        await Promise.allSettled(
+          sourcesFor(w).map((s) => scanSource(s, w))
+        );
+
+        persistCache();
+      } finally {
+        scanPromiseRef.current = null;
+      }
+    })();
+
+    scanPromiseRef.current = run;
+    return run;
+  }, [scanNotificationsTable, scanSource, persistCache]);
 
   useEffect(() => {
     if (!bootRef.current) {
@@ -895,17 +1440,13 @@ export default function Notification() {
         setDismissMap(dismissRef.current);
         if (w) setWho(w);
         setBooting(false);
-        dbg("booted", w ? w.role : "guest");
       })
-      .catch((e) => {
-        dbg("boot failed:", e?.message);
+      .catch(() => {
         if (alive) setBooting(false);
       });
 
     return () => { alive = false; };
   }, [scanAll]);
-
-  /* ── poll ────────────────────────────────────────────────────── */
 
   useEffect(() => {
     if (!who || booting) return undefined;
@@ -921,8 +1462,6 @@ export default function Notification() {
     };
   }, [who, booting, scanAll]);
 
-  /* ── refresh signal ──────────────────────────────────────────── */
-
   useEffect(() => {
     if (!who || booting) return undefined;
     const onRefresh = () => scanAll();
@@ -930,13 +1469,35 @@ export default function Notification() {
     return () => window.removeEventListener(REFRESH_EVENT, onRefresh);
   }, [who, booting, scanAll]);
 
-  /* ── realtime ────────────────────────────────────────────────── */
-
   useEffect(() => {
     if (!who || booting) return undefined;
 
     const ch = supabase
-      .channel("mdrrmo-notif-v4")
+      .channel("mdrrmo-notif-v6")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "notifications" },
+        (pl) => {
+          const w = whoRef.current;
+          if (!w || !w.authId) return;
+          const row = pl.new;
+          if (!row || String(row.user_id) !== String(w.authId)) return;
+
+          const item = notifRowToItem(row, w);
+          if (!item) return;
+          if (dismissRef.current[item.id] !== undefined) return;
+          if (notifRef.current.some((x) => x.id === item.id)) return;
+
+          const n = { read: false, ...item };
+          notifRef.current = [n, ...notifRef.current].slice(0, MAX_NOTIFICATIONS);
+          setNotifications([...notifRef.current]);
+          persistAll();
+
+          if (seededRef.current) {
+            enqueueToast(n);
+          }
+        }
+      )
       .on("postgres_changes", { event: "*", schema: "public" }, (pl) => {
         const w = whoRef.current;
         if (!w) return;
@@ -977,37 +1538,15 @@ export default function Notification() {
       .subscribe();
 
     return () => { supabase.removeChannel(ch); };
-  }, [who, booting, onCreated, onStatus, persistCache]);
+  }, [who, booting, onCreated, onStatus, persistAll, persistCache, enqueueToast]);
 
-  /* ── toast timers ────────────────────────────────────────────── */
-
+  // Cleanup toast timers on unmount
   useEffect(() => {
-    const live = new Set(toasts.map((t) => t.id));
-    Object.keys(timersRef.current).forEach((id) => {
-      if (!live.has(id)) {
-        clearTimeout(timersRef.current[id]);
-        delete timersRef.current[id];
-      }
-    });
-    toasts.forEach((t) => {
-      if (!timersRef.current[t.id]) {
-        timersRef.current[t.id] = setTimeout(() => {
-          setToasts((p) => p.filter((x) => x.id !== t.id));
-          delete timersRef.current[t.id];
-        }, TOAST_DURATION_MS);
-      }
-    });
-  }, [toasts]);
-
-  useEffect(() => {
-    const r = timersRef;
     return () => {
-      Object.values(r.current).forEach(clearTimeout);
-      r.current = {};
+      toastTimersRef.current.forEach((t) => clearTimeout(t));
+      toastTimersRef.current.clear();
     };
   }, []);
-
-  /* ── dropdown placement ──────────────────────────────────────── */
 
   const place = useCallback(() => {
     if (!open || !btnRef.current) {
@@ -1060,8 +1599,6 @@ export default function Notification() {
     return () => window.removeEventListener("keydown", onKey);
   }, [open, selected]);
 
-  /* ── read / dismiss state ────────────────────────────────────── */
-
   const isRead = useCallback(
     (n) => readMap[n.id] !== undefined,
     [readMap]
@@ -1072,36 +1609,51 @@ export default function Notification() {
     [notifications, readMap]
   );
 
-  const queueUnread = useMemo(
-    () => notifications.filter(
-      (n) => n.scope === "queue" && readMap[n.id] === undefined
-    ).length,
-    [notifications, readMap]
-  );
-
-  const selfUnread = useMemo(
-    () => notifications.filter(
-      (n) => n.scope === "self" && readMap[n.id] === undefined
-    ).length,
-    [notifications, readMap]
-  );
-
   const markRead = useCallback((id) => {
     if (readRef.current[id] !== undefined) return;
     const next = { ...readRef.current, [id]: Date.now() };
     readRef.current = next;
     setReadMap(next);
     persistAll();
-    dbg("marked read:", id);
+
+    if (id.startsWith("notification::")) {
+      const dbId = id.split("::")[1];
+      if (dbId) {
+        void supabase
+          .from("notifications")
+          .update({ is_read: true })
+          .eq("id", dbId)
+          .then(({ error }) => {
+            if (error) dbg("mark read sync failed:", error.message);
+          });
+      }
+    }
   }, [persistAll]);
 
   const markAllRead = useCallback(() => {
     const now = Date.now();
     const next = { ...readRef.current };
-    notifRef.current.forEach((n) => { next[n.id] = now; });
+    const dbIds = [];
+    notifRef.current.forEach((n) => {
+      next[n.id] = now;
+      if (n.id.startsWith("notification::")) {
+        const dbId = n.id.split("::")[1];
+        if (dbId) dbIds.push(dbId);
+      }
+    });
     readRef.current = next;
     setReadMap(next);
     persistAll();
+
+    if (dbIds.length > 0) {
+      void supabase
+        .from("notifications")
+        .update({ is_read: true })
+        .in("id", dbIds)
+        .then(({ error }) => {
+          if (error) dbg("mark all read sync failed:", error.message);
+        });
+    }
   }, [persistAll]);
 
   const markUnread = useCallback((id) => {
@@ -1111,6 +1663,19 @@ export default function Notification() {
     readRef.current = next;
     setReadMap(next);
     persistAll();
+
+    if (id.startsWith("notification::")) {
+      const dbId = id.split("::")[1];
+      if (dbId) {
+        void supabase
+          .from("notifications")
+          .update({ is_read: false })
+          .eq("id", dbId)
+          .then(({ error }) => {
+            if (error) dbg("mark unread sync failed:", error.message);
+          });
+      }
+    }
   }, [persistAll]);
 
   const dismissOne = useCallback((id) => {
@@ -1124,10 +1689,10 @@ export default function Notification() {
     setNotifications(kept);
 
     setSelected((s) => (s && s.id === id ? null : s));
+    removeToast(id);
 
     persistAll();
-    dbg("dismissed:", id);
-  }, [persistAll]);
+  }, [persistAll, removeToast]);
 
   const dismissAll = useCallback(() => {
     const now = Date.now();
@@ -1138,17 +1703,9 @@ export default function Notification() {
 
     notifRef.current = [];
     setNotifications([]);
-    persistAll();
-    dbg("dismissed all");
-  }, [persistAll]);
-
-  const clearAll = useCallback(() => {
-    notifRef.current = [];
-    readRef.current = {};
-    dismissRef.current = {};
-    setNotifications([]);
-    setReadMap({});
-    setDismissMap({});
+    setToasts([]);
+    toastTimersRef.current.forEach((t) => clearTimeout(t));
+    toastTimersRef.current.clear();
     persistAll();
   }, [persistAll]);
 
@@ -1157,6 +1714,10 @@ export default function Notification() {
     setOpen(false);
     setSelected(n);
   }, [markRead]);
+
+  const handleToggleOpen = useCallback(() => {
+    setOpen((prev) => !prev);
+  }, []);
 
   const hardReset = useCallback(() => {
     const w = whoRef.current;
@@ -1170,13 +1731,13 @@ export default function Notification() {
     notifRef.current = [];
     readRef.current = {};
     dismissRef.current = {};
+    seenToastIdsRef.current.clear();
     setNotifications([]);
     setReadMap({});
     setDismissMap({});
     setToasts([]);
     setDiag({});
     setBlocked([]);
-    dbg("hard reset for", w.storageKey);
   }, []);
 
   const timeAgo = useCallback((iso) => {
@@ -1193,18 +1754,62 @@ export default function Notification() {
     });
   }, []);
 
-  const list = useMemo(() => {
-    if (filter === "unread") {
-      return notifications.filter((n) => readMap[n.id] === undefined);
+  /* New = unread; Earlier = read within 7 days; Old = read older than 7 days */
+  const EARLIER_MS = 7 * 24 * 60 * 60 * 1000;
+
+  const { newList, earlierList, oldList } = useMemo(() => {
+    const now = Date.now();
+    const unreadItems = [];
+    const earlierItems = [];
+    const oldItems = [];
+
+    notifications.forEach((n) => {
+      if (readMap[n.id] === undefined) {
+        unreadItems.push(n);
+        return;
+      }
+      const ts = new Date(n.createdAt).getTime();
+      const age = Number.isNaN(ts) ? 0 : now - ts;
+      if (age <= EARLIER_MS) earlierItems.push(n);
+      else oldItems.push(n);
+    });
+
+    if (filter === "unread" || filter === "new") {
+      return { newList: unreadItems, earlierList: [], oldList: [] };
     }
-    if (filter === "queue") {
-      return notifications.filter((n) => n.scope === "queue");
+    if (filter === "earlier") {
+      return { newList: [], earlierList: earlierItems, oldList: [] };
     }
-    if (filter === "self") {
-      return notifications.filter((n) => n.scope === "self");
+    if (filter === "old") {
+      return { newList: [], earlierList: [], oldList: oldItems };
     }
-    return notifications;
+
+    return {
+      newList: unreadItems,
+      earlierList: earlierItems,
+      oldList: oldItems,
+    };
   }, [notifications, filter, readMap]);
+
+  const earlierCount = useMemo(() => {
+    const now = Date.now();
+    return notifications.filter((n) => {
+      if (readMap[n.id] === undefined) return false;
+      const ts = new Date(n.createdAt).getTime();
+      const age = Number.isNaN(ts) ? 0 : now - ts;
+      return age <= EARLIER_MS;
+    }).length;
+  }, [notifications, readMap]);
+
+  const oldCount = useMemo(() => {
+    const now = Date.now();
+    return notifications.filter((n) => {
+      if (readMap[n.id] === undefined) return false;
+      const ts = new Date(n.createdAt).getTime();
+      const age = Number.isNaN(ts) ? 0 : now - ts;
+      return age > EARLIER_MS;
+    }).length;
+  }, [notifications, readMap]);
 
   if (booting) {
     return (
@@ -1218,21 +1823,88 @@ export default function Notification() {
 
   const filters = [
     { id: "all", label: "All", count: notifications.length },
-    { id: "unread", label: "Unread", count: unread },
-    ...(who.isHandler
-      ? [{ id: "queue", label: "Queue", count: queueUnread }]
+    ...(unread > 0 ? [{ id: "new", label: "New", count: unread }] : []),
+    ...(earlierCount > 0
+      ? [{ id: "earlier", label: "Earlier", count: earlierCount }]
+      : []),
+    ...(oldCount > 0
+      ? [{ id: "old", label: "Old", count: oldCount }]
       : []),
   ];
 
   const diagRows = Object.entries(diag);
 
+  const renderItem = (n) => {
+    const Icon = SOURCE_MAP[n.iconKey]?.icon || Bell;
+    const wasRead = isRead(n);
+
+    return (
+      <div
+        key={n.id}
+        className={`flex items-start gap-2 border-b border-slate-50 dark:border-slate-700/60 px-3 py-2 transition hover:bg-slate-50 dark:hover:bg-slate-700/40 ${
+          wasRead
+            ? "bg-white dark:bg-slate-800 opacity-70"
+            : "bg-blue-50/60 dark:bg-blue-950/20"
+        }`}
+      >
+        <button
+          type="button"
+          onClick={() => openItem(n)}
+          className="flex items-start gap-3 flex-1 min-w-0 text-left"
+        >
+          <span
+            className={`mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full ${TONE_BG[n.tone]}`}
+          >
+            <Icon className="h-4 w-4" />
+          </span>
+          <span className="min-w-0 flex-1">
+            <span className="flex items-start justify-between gap-2">
+              <span className="text-sm font-bold text-slate-800 dark:text-slate-100 leading-tight">
+                {n.title}
+                {wasRead && (
+                  <CheckCheck
+                    className="inline w-3 h-3 ml-1 text-slate-400 align-middle"
+                    aria-label="read"
+                  />
+                )}
+              </span>
+              <span className="shrink-0 text-[10px] text-slate-400 dark:text-slate-500 pt-0.5">
+                {timeAgo(n.createdAt)}
+              </span>
+            </span>
+            <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400 line-clamp-2 whitespace-pre-line">
+              {n.message}
+            </span>
+            <span className="mt-1 flex items-center gap-1.5">
+              <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
+                {n.label}
+              </span>
+            </span>
+          </span>
+          {!wasRead && (
+            <span className="mt-1.5 h-2 w-2 flex-shrink-0 rounded-full bg-blue-500" />
+          )}
+        </button>
+
+        <button
+          type="button"
+          onClick={() => dismissOne(n.id)}
+          aria-label={`Delete notification: ${n.title}`}
+          title="Delete"
+          className="mt-0.5 p-1.5 rounded-lg text-slate-400 hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-900/50 dark:hover:text-red-400 transition shrink-0"
+        >
+          <Ban className="h-4 w-4" />
+        </button>
+      </div>
+    );
+  };
+
   return (
     <div className="relative inline-block">
-      {/* ── Bell ── */}
       <button
         ref={btnRef}
         type="button"
-        onClick={() => setOpen((o) => !o)}
+        onClick={handleToggleOpen}
         title="Notifications"
         aria-label={unread ? `Notifications, ${unread} unread` : "Notifications"}
         aria-expanded={open}
@@ -1248,6 +1920,70 @@ export default function Notification() {
 
       {typeof document !== "undefined" && createPortal(
         <>
+          {/* ─── LIVE TOASTS ─── */}
+          {toasts.length > 0 && (
+            <div
+              className="fixed z-[100001] flex flex-col gap-2 pointer-events-none"
+              style={{
+                top: "max(1rem, env(safe-area-inset-top))",
+                right: "max(1rem, env(safe-area-inset-right))",
+                width: "min(22rem, calc(100vw - 2rem))",
+              }}
+              aria-live="polite"
+              aria-relevant="additions"
+            >
+              {toasts.map((t) => {
+                const Icon = SOURCE_MAP[t.iconKey]?.icon || Bell;
+                const ToneIcon = TONE_ICON[t.tone] || Info;
+                return (
+                  <div
+                    key={t.toastId || t.id}
+                    className={`pointer-events-auto flex items-start gap-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 shadow-2xl border-l-4 ${TONE_TOAST_BORDER[t.tone] || "border-l-blue-500"} p-3 animate-[toastIn_0.22s_cubic-bezier(0.16,1,0.3,1)]`}
+                    role="status"
+                  >
+                    <button
+                      type="button"
+                      className="flex items-start gap-3 flex-1 min-w-0 text-left"
+                      onClick={() => {
+                        markRead(t.id);
+                        removeToast(t.id);
+                        if (t.link) navigate(t.link);
+                      }}
+                    >
+                      <span
+                        className={`mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full ${TONE_BG[t.tone]}`}
+                      >
+                        <Icon className="h-4 w-4" />
+                      </span>
+                      <span className="min-w-0 flex-1">
+                        <span className="flex items-center gap-1.5">
+                          <ToneIcon className="h-3.5 w-3.5 shrink-0 opacity-70" />
+                          <span className="text-sm font-bold text-slate-800 dark:text-slate-100 leading-tight line-clamp-1">
+                            {t.title}
+                          </span>
+                        </span>
+                        <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400 line-clamp-2 whitespace-pre-line">
+                          {t.message}
+                        </span>
+                        <span className="mt-1 text-[9px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
+                          {t.label}
+                        </span>
+                      </span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => removeToast(t.id)}
+                      aria-label="Dismiss notification"
+                      className="mt-0.5 p-1 rounded-lg text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 hover:text-slate-600 dark:hover:text-slate-200 transition shrink-0"
+                    >
+                      <X className="h-4 w-4" />
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+
           {open && (
             <div
               className="fixed inset-0 z-[99998]"
@@ -1256,7 +1992,6 @@ export default function Notification() {
             />
           )}
 
-          {/* ── Dropdown ── */}
           {open && pos && (
             <div
               style={{ left: pos.left, top: pos.top, width: pos.width }}
@@ -1273,11 +2008,6 @@ export default function Notification() {
                   {unread > 0 && (
                     <p className="text-[11px] text-red-600 dark:text-red-400 font-semibold mt-0.5">
                       {unread} unread
-                    </p>
-                  )}
-                  {!who.isHandler && who.email && (
-                    <p className="text-[10px] text-slate-400 dark:text-slate-500 mt-0.5 truncate">
-                      matching: {who.email}
                     </p>
                   )}
                 </div>
@@ -1337,93 +2067,64 @@ export default function Notification() {
               )}
 
               <div className="overflow-y-auto" style={{ maxHeight: pos.listMax || 360 }}>
-                {list.length === 0 ? (
+                {newList.length === 0 && earlierList.length === 0 && oldList.length === 0 ? (
                   <div className="flex flex-col items-center gap-2 px-4 py-12 text-center">
                     <Bell className="h-10 w-10 text-slate-300 dark:text-slate-600" />
                     <p className="text-sm font-semibold text-slate-600 dark:text-slate-300">
-                      {filter === "all" ? "No notifications yet" : "Nothing in this filter"}
+                      {filter === "all"
+                        ? "No notifications yet"
+                        : filter === "new" || filter === "unread"
+                          ? "Nothing new"
+                          : filter === "earlier"
+                            ? "Nothing earlier"
+                            : filter === "old"
+                              ? "Nothing old"
+                              : "No notifications"}
                     </p>
                     <p className="text-xs text-slate-400 dark:text-slate-500 max-w-[16rem]">
                       {who.isHandler
-                        ? "You'll be alerted when residents submit requests and when staff update the queues you handle."
+                        ? "You'll be alerted when residents submit requests and when staff update the queues you handle — including hazard reports."
                         : "Submit an appointment, incident, vehicle request, check-up, or hazard report — you'll be alerted here whenever its status changes."}
                     </p>
                   </div>
                 ) : (
-                  list.map((n) => {
-                    const Icon = SOURCE_MAP[n.iconKey]?.icon || Bell;
-                    const wasRead = isRead(n);
+                  <>
+                    {newList.length > 0 && (
+                      <>
+                        <div className="px-3 py-1.5 bg-blue-50/80 dark:bg-blue-950/30 border-b border-blue-100 dark:border-blue-900 sticky top-0 z-10">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-blue-600 dark:text-blue-400">
+                            New · {newList.length}
+                          </p>
+                        </div>
+                        {newList.map(renderItem)}
+                      </>
+                    )}
 
-                    return (
-                      <div
-                        key={n.id}
-                        className={`flex items-start gap-2 border-b border-slate-50 dark:border-slate-700/60 px-3 py-2 transition hover:bg-slate-50 dark:hover:bg-slate-700/40 ${
-                          wasRead
-                            ? "bg-white dark:bg-slate-800 opacity-70"
-                            : "bg-blue-50/60 dark:bg-blue-950/20"
-                        }`}
-                      >
-                        <button
-                          type="button"
-                          onClick={() => openItem(n)}
-                          className="flex items-start gap-3 flex-1 min-w-0 text-left"
-                        >
-                          <span
-                            className={`mt-0.5 flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-full ${TONE_BG[n.tone]}`}
-                          >
-                            <Icon className="h-4 w-4" />
-                          </span>
-                          <span className="min-w-0 flex-1">
-                            <span className="flex items-start justify-between gap-2">
-                              <span className="text-sm font-bold text-slate-800 dark:text-slate-100 leading-tight">
-                                {n.title}
-                                {wasRead && (
-                                  <CheckCheck
-                                    className="inline w-3 h-3 ml-1 text-slate-400 align-middle"
-                                    aria-label="read"
-                                  />
-                                )}
-                              </span>
-                              <span className="shrink-0 text-[10px] text-slate-400 dark:text-slate-500 pt-0.5">
-                                {timeAgo(n.createdAt)}
-                              </span>
-                            </span>
-                            <span className="mt-0.5 block text-xs text-slate-500 dark:text-slate-400 line-clamp-2">
-                              {n.message}
-                            </span>
-                            <span className="mt-1 flex items-center gap-1.5">
-                              <span className="text-[9px] font-bold uppercase tracking-widest text-slate-400 dark:text-slate-500">
-                                {n.label}
-                              </span>
-                              {n.scope === "queue" && (
-                                <span className="text-[9px] font-bold uppercase tracking-widest px-1.5 py-0.5 rounded bg-amber-100 dark:bg-amber-900/40 text-amber-700 dark:text-amber-300">
-                                  Queue
-                                </span>
-                              )}
-                            </span>
-                          </span>
-                          {!wasRead && (
-                            <span className="mt-1.5 h-2 w-2 flex-shrink-0 rounded-full bg-blue-500" />
-                          )}
-                        </button>
+                    {earlierList.length > 0 && (
+                      <>
+                        <div className="px-3 py-1.5 bg-slate-50 dark:bg-slate-900/60 border-b border-slate-100 dark:border-slate-700 sticky top-0 z-10">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400">
+                            Earlier · {earlierList.length}
+                          </p>
+                        </div>
+                        {earlierList.map(renderItem)}
+                      </>
+                    )}
 
-                        {/* Per-item delete */}
-                        <button
-                          type="button"
-                          onClick={() => dismissOne(n.id)}
-                          aria-label={`Delete notification: ${n.title}`}
-                          title="Delete"
-                          className="mt-0.5 p-1.5 rounded-lg text-slate-400 hover:bg-red-100 hover:text-red-600 dark:hover:bg-red-900/50 dark:hover:text-red-400 transition shrink-0"
-                        >
-                          <Ban className="h-4 w-4" />
-                        </button>
-                      </div>
-                    );
-                  })
+                    {oldList.length > 0 && (
+                      <>
+                        <div className="px-3 py-1.5 bg-slate-100/80 dark:bg-slate-950/50 border-b border-slate-200 dark:border-slate-700 sticky top-0 z-10">
+                          <p className="text-[10px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500">
+                            Old · {oldList.length}
+                          </p>
+                        </div>
+                        {oldList.map(renderItem)}
+                      </>
+                    )}
+                  </>
                 )}
               </div>
 
-              {/* Diagnostics footer */}
               <div className="border-t border-slate-100 dark:border-slate-700 bg-slate-50 dark:bg-slate-900">
                 {blocked.length > 0 && (
                   <p className="px-4 pt-2 text-[10px] text-amber-600 dark:text-amber-400 text-center">
@@ -1471,26 +2172,14 @@ export default function Notification() {
                 )}
 
                 <div className="px-4 py-2 flex items-center justify-center gap-2">
-                  {notifications.length > 0 && (
-                    <button
-                      type="button"
-                      onClick={clearAll}
-                      className="text-[10px] text-slate-400 dark:text-slate-500 hover:text-red-600 dark:hover:text-red-400 underline transition"
-                    >
-                      Wipe history
-                    </button>
-                  )}
                   <p className="text-[10px] text-slate-400 dark:text-slate-500 text-center">
-                    {who.isHandler ? "Admin/Staff" : "Resident"} ·{" "}
-                    {sourcesFor(who).length} tables ·{" "}
-                    {(who.isHandler ? POLL_MS_HANDLER : POLL_MS_USER) / 1000}s
+                    {who.isHandler ? "Admin / Staff" : "Resident"}
                   </p>
                 </div>
               </div>
             </div>
           )}
 
-          {/* ── Detail modal ── */}
           {selected && (() => {
             const ToneIcon = TONE_ICON[selected.tone] || Info;
             const wasRead = isRead(selected);
@@ -1536,7 +2225,7 @@ export default function Notification() {
                   </div>
 
                   <div className="p-6">
-                    <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed mb-4">
+                    <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed whitespace-pre-line mb-4">
                       {selected.message}
                     </p>
 
@@ -1600,54 +2289,6 @@ export default function Notification() {
               </div>
             );
           })()}
-
-          {/* ── Toasts ── */}
-          <div className="fixed right-4 sm:right-6 bottom-4 sm:bottom-6 z-[100001] flex w-[calc(100vw-2rem)] sm:w-80 flex-col gap-2 pointer-events-none">
-            {toasts.map((t) => {
-              const ToneIcon = TONE_ICON[t.tone] || Info;
-              return (
-                <div
-                  key={t.id}
-                  className={`notif-toast pointer-events-auto flex items-start gap-3 rounded-xl border bg-white dark:bg-slate-800 p-3 shadow-xl ${TONE_BORDER[t.tone]}`}
-                >
-                  <ToneIcon
-                    className={`mt-0.5 h-5 w-5 flex-shrink-0 ${TONE_TEXT[t.tone]}`}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <p className="text-sm font-bold text-slate-800 dark:text-slate-100">
-                      {t.title}
-                    </p>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 line-clamp-2">
-                      {t.message}
-                    </p>
-                  </div>
-                  <div className="flex items-center gap-1 shrink-0">
-                    {t.link && (
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setToasts((p) => p.filter((x) => x.id !== t.id));
-                          markRead(t.id);
-                          navigate(t.link);
-                        }}
-                        className="rounded-lg px-2 py-1 text-[10px] font-bold uppercase text-purple-600 dark:text-purple-400 hover:bg-purple-50 dark:hover:bg-purple-900/30 transition"
-                      >
-                        Open
-                      </button>
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setToasts((p) => p.filter((x) => x.id !== t.id))}
-                      aria-label="Dismiss"
-                      className="rounded-lg p-1 text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-700 transition"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
         </>,
         document.body
       )}
@@ -1659,11 +2300,10 @@ export default function Notification() {
         }
         .notif-drop { animation: notifDrop 0.16s cubic-bezier(0.16, 1, 0.3, 1); }
 
-        @keyframes notifToast {
-          from { opacity: 0; transform: translateX(24px); }
-          to   { opacity: 1; transform: translateX(0); }
+        @keyframes toastIn {
+          from { opacity: 0; transform: translateX(24px) scale(0.96); }
+          to   { opacity: 1; transform: translateX(0) scale(1); }
         }
-        .notif-toast { animation: notifToast 0.28s cubic-bezier(0.16, 1, 0.3, 1); }
       `}</style>
     </div>
   );

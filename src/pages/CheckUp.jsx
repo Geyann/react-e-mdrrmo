@@ -1,30 +1,79 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
-import { supabase } from "../createClient";
 import {
-  HeartPlus, AlertCircle, CheckCircle2, Loader2, RotateCcw,
-  Send, Info, User, Shield,
+  useCallback,
+  useEffect,
+  useState,
+} from "react";
+import { Link, useNavigate } from "react-router-dom";
+import {
+  Accessibility,
+  Ambulance,
+  Building2,
+  CalendarDays,
+  CheckCircle2,
+  Clock3,
+  HeartPlus,
+  Info,
+  Loader2,
+  LogIn,
+  MapPin,
+  Phone,
+  Shield,
+  User,
 } from "lucide-react";
+
+import { supabase } from "../createClient";
+
+import RequestFormShell, {
+  FORM_INPUT_CLASS,
+  FormField,
+  FormSectionHeading,
+} from "../components/RequestFormShell";
 
 /* ══════════════════════════════════════════════════════════════════
    ACTOR RESOLUTION
-   ──────────────────────────────────────────────────────────────────
-   outPatientCheckUp.userId is plain text with NO foreign key, and
-   staffId is int8. So we need exactly one correct identifier per
-   account type — not a speculative list of candidates.
 
-     resident -> userId  = profiles.id  (uuid as text)
-     staff    -> staffId = staff_users.id (int8), userId = null
+   Resident:
+     userId = profiles.user_id
+     staffId = null
+     reporter_name = logged-in account name
 
-   This mirrors borrow-vehicle and borrower_slip exactly, so
-   /track, the notification engine, and the admin joins all line up.
+   Staff/Admin:
+     userId = null
+     staffId = staff_users.id
+     reporter_name = manually entered reporter name
+
+   outPatientCheckUp.userId references profiles.user_id.
+   Therefore, do not insert profiles.id into userId.
    ══════════════════════════════════════════════════════════════════ */
+
+const PROFILE_COLUMNS = [
+  "id",
+  "user_id",
+  "full_name",
+  "first_name",
+  "middle_name",
+  "last_name",
+  "mobile_number",
+  "email",
+  "role",
+  "is_active",
+].join(", ");
 
 const readLocal = (key) => {
   try {
     const raw = localStorage.getItem(key);
-    return raw ? JSON.parse(raw) : null;
+
+    if (!raw) {
+      return null;
+    }
+
+    const parsed = JSON.parse(raw);
+
+    return parsed && typeof parsed === "object"
+      ? parsed
+      : null;
   } catch {
     return null;
   }
@@ -33,163 +82,378 @@ const readLocal = (key) => {
 const cleanName = (...parts) =>
   parts
     .filter(Boolean)
-    .map((p) => String(p).trim())
+    .map((part) => String(part).trim())
     .filter(Boolean)
     .join(" ")
     .trim();
 
-async function resolveActor() {
-  // ── 1. Supabase Auth (OAuth, or migrated accounts) ──────────────
-  let authUser = null;
+async function getAuthUser() {
   try {
     const { data, error } = await supabase.auth.getUser();
-    if (!error && data?.user) authUser = data.user;
+
+    if (!error && data?.user) {
+      return data.user;
+    }
   } catch {
-    /* no session — continue */
+    // No Supabase Auth session.
   }
 
-  if (authUser) {
-    const byId = await supabase
-      .from("profiles")
-      .select("id, full_name, first_name, last_name, mobile_number, is_active")
-      .eq("id", authUser.id)
-      .maybeSingle();
+  return null;
+}
 
-    const p = byId.data || (await lookupResident(authUser.email));
-    if (p) {
+async function lookupResident(email, authId = null) {
+  if (authId) {
+    try {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select(PROFILE_COLUMNS)
+        .eq("id", authId)
+        .maybeSingle();
+
+      if (!error && data?.user_id) {
+        return data;
+      }
+    } catch {
+      // Try the next lookup method.
+    }
+  }
+
+  if (email) {
+    try {
+      const { data, error } = await supabase
+        .from("profiles")
+        .select(PROFILE_COLUMNS)
+        .eq("email", email)
+        .maybeSingle();
+
+      if (!error && data?.user_id) {
+        return data;
+      }
+    } catch {
+      // Try the RPC fallback.
+    }
+  }
+
+  if (email) {
+    try {
+      const { data, error } = await supabase.rpc(
+        "lookup_resident_identity",
+        {
+          p_email: email,
+        },
+      );
+
+      if (!error && data) {
+        const row = Array.isArray(data) ? data[0] : data;
+
+        if (row?.user_id) {
+          return row;
+        }
+      }
+    } catch {
+      // No resident profile found.
+    }
+  }
+
+  return null;
+}
+
+async function lookupStaff(workId, email = null) {
+  if (workId) {
+    try {
+      const { data, error } = await supabase
+        .from("staff_users")
+        .select(
+          "id, user_id, full_name, email, role, department, mobile_number, is_active",
+        )
+        .eq("user_id", workId)
+        .maybeSingle();
+
+      if (!error && data) {
+        return data;
+      }
+    } catch {
+      // Try the RPC fallback.
+    }
+  }
+
+  if (email) {
+    try {
+      const { data, error } = await supabase
+        .from("staff_users")
+        .select(
+          "id, user_id, full_name, email, role, department, mobile_number, is_active",
+        )
+        .eq("email", email)
+        .maybeSingle();
+
+      if (!error && data) {
+        return data;
+      }
+    } catch {
+      // Try the RPC fallback.
+    }
+  }
+
+  try {
+    const { data, error } = await supabase.rpc(
+      "lookup_staff_identity",
+      {
+        p_user_id: workId,
+      },
+    );
+
+    if (!error && data) {
+      const row = Array.isArray(data) ? data[0] : data;
+
+      if (row) {
+        return row;
+      }
+    }
+  } catch {
+    // No staff profile found.
+  }
+
+  return null;
+}
+
+function buildResidentActor(
+  profile,
+  fallback = {},
+  authUser = null,
+) {
+  const profileUserId = String(
+    profile.user_id || "",
+  ).trim();
+
+  if (!profileUserId) {
+    return null;
+  }
+
+  const email =
+    profile.email ||
+    fallback.email ||
+    authUser?.email ||
+    "";
+
+  const displayName =
+    profile.full_name ||
+    cleanName(
+      profile.first_name,
+      profile.middle_name,
+      profile.last_name,
+    ) ||
+    fallback.full_name ||
+    fallback.username ||
+    email ||
+    "Resident";
+
+  const contact =
+    profile.mobile_number ||
+    fallback.mobile_number ||
+    email;
+
+  return {
+    kind: "resident",
+    profileId: profile.id,
+    profileUserId,
+    staffId: null,
+    workId: "",
+    displayName,
+    contact,
+    email,
+    role:
+      profile.role ||
+      fallback.role ||
+      "user",
+    department: "",
+    active: profile.is_active !== false,
+  };
+}
+
+function buildStaffActor(row, localStaff = {}) {
+  const workId = String(
+    row.user_id || localStaff.user_id || "",
+  ).trim();
+
+  return {
+    kind: "staff",
+    profileId: null,
+    profileUserId: null,
+    staffId: row.id,
+    workId,
+    displayName:
+      row.full_name ||
+      localStaff.full_name ||
+      localStaff.username ||
+      row.email ||
+      localStaff.email ||
+      workId ||
+      "Staff Member",
+    contact:
+      row.mobile_number ||
+      localStaff.mobile_number ||
+      row.email ||
+      localStaff.email ||
+      "",
+    email:
+      row.email ||
+      localStaff.email ||
+      "",
+    role:
+      row.role ||
+      localStaff.role ||
+      "staff",
+    department:
+      row.department ||
+      localStaff.department ||
+      "",
+    active: row.is_active !== false,
+  };
+}
+
+async function resolveActor() {
+  try {
+    /*
+     * Staff sessions use currentStaff and must be checked first
+     * because manually authenticated staff normally do not have
+     * a Supabase Auth session.
+     */
+    const localStaff = readLocal("currentStaff");
+
+    if (localStaff) {
+      const workId = String(
+        localStaff.user_id || "",
+      ).trim();
+
+      if (!workId) {
+        return {
+          kind: "error",
+          reason: "missing-id",
+        };
+      }
+
+      const staffRow = await lookupStaff(
+        workId,
+        localStaff.email || null,
+      );
+
+      if (!staffRow) {
+        return {
+          kind: "error",
+          reason: "staff-not-found",
+        };
+      }
+
+      if (
+        staffRow.is_active === false ||
+        localStaff.is_active === false
+      ) {
+        return {
+          kind: "error",
+          reason: "staff-inactive",
+        };
+      }
+
+      return buildStaffActor(staffRow, localStaff);
+    }
+
+    const localUser = readLocal("currentUser");
+    const authUser = await getAuthUser();
+
+    /*
+     * Try the local resident session first.
+     */
+    if (localUser) {
+      const localProfile = await lookupResident(
+        localUser.email || "",
+      );
+
+      if (localProfile) {
+        if (localProfile.is_active === false) {
+          return {
+            kind: "error",
+            reason: "account-inactive",
+          };
+        }
+
+        const actor = buildResidentActor(
+          localProfile,
+          localUser,
+          null,
+        );
+
+        if (actor) {
+          return actor;
+        }
+      }
+    }
+
+    /*
+     * OAuth or migrated Supabase Auth user.
+     */
+    if (authUser) {
+      const profile = await lookupResident(
+        authUser.email || "",
+        authUser.id,
+      );
+
+      if (!profile) {
+        return {
+          kind: "error",
+          reason: "profile-missing",
+        };
+      }
+
+      if (profile.is_active === false) {
+        return {
+          kind: "error",
+          reason: "account-inactive",
+        };
+      }
+
+      const actor = buildResidentActor(
+        profile,
+        {},
+        authUser,
+      );
+
+      if (actor) {
+        return actor;
+      }
+
       return {
-        kind: "resident",
-        residentId: p.id,
-        staffId: null,
-        displayName:
-          p.full_name || cleanName(p.first_name, p.last_name) || authUser.email,
-        contact: p.mobile_number || authUser.email || "",
-        email: authUser.email || "",
-        role: "user",
-        department: "",
-        active: p.is_active !== false,
+        kind: "error",
+        reason: "profile-owner-id-missing",
       };
     }
-  }
 
-  // ── 2. Staff / admin (manual login -> currentStaff) ──────────────
-  const staff = readLocal("currentStaff");
-  if (staff) {
-    const workId = staff.user_id || staff.id;
-    if (!workId) {
-      return { kind: "error", reason: "missing-id" };
-    }
-
-    const row = await lookupStaff(workId);
-    if (!row) {
-      return { kind: "error", reason: "staff-not-found" };
-    }
-    if (row.is_active === false) {
-      return { kind: "error", reason: "staff-inactive" };
+    if (localUser) {
+      return {
+        kind: "error",
+        reason: "profile-missing",
+      };
     }
 
     return {
-      kind: "staff",
-      residentId: null,
-      staffId: row.id,
-      displayName: row.full_name || staff.full_name || staff.user_id,
-      contact: row.mobile_number || staff.mobile_number || row.email || "",
-      email: row.email || staff.email || "",
-      role: row.role || staff.role || "staff",
-      department: row.department || staff.department || "",
-      active: true,
+      kind: "none",
+    };
+  } catch (error) {
+    console.error(
+      "Actor resolution error:",
+      error,
+    );
+
+    return {
+      kind: "error",
+      reason: "lookup-failed",
     };
   }
-
-  // ── 3. Resident (manual login -> currentUser) ───────────────────
-  const user = readLocal("currentUser");
-  if (user) {
-    const email = user.email || "";
-    if (email.endsWith("@local.user") && !authUser) {
-      // Legacy password accounts were created with a synthetic email and
-      // have no Supabase auth session. They cannot be resolved safely.
-      return { kind: "error", reason: "legacy-account" };
-    }
-
-    const p = authUser ? null : await lookupResident(email);
-    if (p) {
-      return {
-        kind: "resident",
-        residentId: p.id,
-        staffId: null,
-        displayName:
-          p.full_name ||
-          cleanName(user.first_name, user.middle_name, user.last_name) ||
-          email,
-        contact: p.mobile_number || user.mobile_number || "",
-        email,
-        role: user.role || "user",
-        department: "",
-        active: p.is_active !== false,
-      };
-    }
-
-    return { kind: "error", reason: "profile-missing" };
-  }
-
-  return { kind: "none" };
 }
-
-/* Profile lookup: try the table first, fall back to the RPC.
-   The RPC is what works for manual-login users, whose auth.uid() is
-   null and who therefore fail every direct RLS check. */
-async function lookupResident(email) {
-  if (!email) return null;
-  try {
-    const direct = await supabase
-      .from("profiles")
-      .select("id, full_name, first_name, last_name, mobile_number, is_active")
-      .eq("email", email)
-      .maybeSingle();
-    if (direct.data) return direct.data;
-  } catch {
-    /* fall through to RPC */
-  }
-  try {
-    const { data, error } = await supabase.rpc("lookup_resident_identity", {
-      p_email: email,
-    });
-    if (!error && data && data.length) return data[0];
-  } catch {
-    /* no access */
-  }
-  return null;
-}
-
-async function lookupStaff(workId) {
-  if (!workId) return null;
-  try {
-    const direct = await supabase
-      .from("staff_users")
-      .select("id, full_name, email, role, department, mobile_number, is_active")
-      .eq("user_id", workId)
-      .maybeSingle();
-    if (direct.data) return direct.data;
-  } catch {
-    /* fall through to RPC */
-  }
-  try {
-    const { data, error } = await supabase.rpc("lookup_staff_identity", {
-      p_user_id: workId,
-    });
-    if (!error && data && data.length) return data[0];
-  } catch {
-    /* no access */
-  }
-  return null;
-}
-
-/* ══════════════════════════════════════════════════════════════════
-   FORM CONFIG
-   ══════════════════════════════════════════════════════════════════ */
 
 const INITIAL_FORM = {
   patientName: "",
+  reporterName: "",
   location: "",
   hospitalName: "",
   contactDetails: "",
@@ -201,160 +465,319 @@ const INITIAL_FORM = {
   escort: "",
 };
 
+function buildInitialForm(actor) {
+  if (actor?.kind === "resident") {
+    return {
+      ...INITIAL_FORM,
+      reporterName: actor.displayName || "",
+      contactDetails: actor.contact || "",
+    };
+  }
+
+  return {
+    ...INITIAL_FORM,
+  };
+}
+
 const TEXT_FIELDS = [
-  { label: "Patient Name", name: "patientName", placeholder: "Full name of the patient" },
-  { label: "Location / Address", name: "location", placeholder: "Barangay, purok, street" },
-  { label: "Hospital Name", name: "hospitalName", placeholder: "Destination hospital" },
-  { label: "Contact Details", name: "contactDetails", placeholder: "Phone number or email" },
+  {
+    label: "Location / Address",
+    name: "location",
+    placeholder:
+      "Barangay, purok, street, or landmark",
+    autoComplete: "street-address",
+  },
+  {
+    label: "Hospital Name",
+    name: "hospitalName",
+    placeholder:
+      "Enter the destination hospital",
+    autoComplete: "organization",
+  },
+  {
+    label: "Patient Contact Details",
+    name: "contactDetails",
+    placeholder:
+      "Patient phone number or email",
+    autoComplete: "tel",
+  },
 ];
 
 const SELECT_FIELDS = [
   {
-    label: "Mobility",
+    label: "Mobility Requirement",
     name: "mobility",
     options: [
-      { value: "stretcher", label: "Stretcher" },
-      { value: "wheel-chair", label: "Wheel Chair" },
-      { value: "walker", label: "Walker" },
+      {
+        value: "stretcher",
+        label: "Stretcher",
+      },
+      {
+        value: "wheel-chair",
+        label: "Wheel Chair",
+      },
+      {
+        value: "walker",
+        label: "Walker",
+      },
     ],
   },
   {
-    label: "Patient for",
+    label: "Patient For",
     name: "patientFor",
     options: [
-      { value: "admission", label: "Admission" },
-      { value: "discharge", label: "Discharge" },
-      { value: "check-up", label: "Check Up" },
+      {
+        value: "admission",
+        label: "Admission",
+      },
+      {
+        value: "discharge",
+        label: "Discharge",
+      },
+      {
+        value: "check-up",
+        label: "Check Up",
+      },
     ],
   },
   {
     label: "Escort / Vehicle",
     name: "escort",
     options: [
-      { value: "medical", label: "Medical" },
-      { value: "family", label: "Family" },
-      { value: "other", label: "Other (specify below)" },
+      {
+        value: "medical",
+        label: "Medical Vehicle",
+      },
+      {
+        value: "family",
+        label: "Family Vehicle",
+      },
+      {
+        value: "other",
+        label: "Other — specify below",
+      },
     ],
   },
 ];
 
-const inputCls =
-  "w-full p-3 border border-gray-300 dark:border-slate-600 rounded-xl bg-white dark:bg-slate-800 text-gray-900 dark:text-slate-100 outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500 transition placeholder:text-gray-400 dark:placeholder:text-slate-500";
+function todayStr() {
+  const date = new Date();
 
-const labelCls = "text-sm font-semibold text-gray-700 dark:text-slate-200";
-const reqCls = "text-red-500";
+  return [
+    date.getFullYear(),
+    String(date.getMonth() + 1).padStart(2, "0"),
+    String(date.getDate()).padStart(2, "0"),
+  ].join("-");
+}
 
-const todayStr = () => {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-};
-
-const prettyRole = (role) => {
+function prettyRole(role) {
   if (role === "admin") return "Admin";
   if (role === "moderator") return "Moderator";
   if (role === "staff") return "Staff";
+
   return "Resident";
-};
+}
+
+function dashboardPathFor(actor) {
+  if (!actor) return "/home";
+
+  if (actor.kind === "staff") {
+    return actor.role === "admin"
+      ? "/admin/dashboard"
+      : "/staff/dashboard";
+  }
+
+  return "/home";
+}
 
 const ERROR_COPY = {
   "missing-id":
     "Your staff session is missing its work ID. Please sign out and log in again.",
+
   "staff-not-found":
-    "Your staff account could not be found. Ask an administrator to confirm your staff_users row.",
+    "Your staff account could not be verified. Ask an administrator to confirm your staff_users row.",
+
   "staff-inactive":
     "Your staff account has been deactivated. Contact your administrator.",
-  "legacy-account":
-    "Accounts created with a username and password need to be migrated to Supabase Auth before they can submit requests. Please sign in with Google instead, or ask an administrator to migrate your account.",
+
   "profile-missing":
-    "We could not match your account to a resident profile. Please make sure your registration was approved, then sign out and back in.",
+    "We could not match your account to a resident profile. Make sure your registration was approved, then sign out and sign in again.",
+
+  "profile-owner-id-missing":
+    "Your approved profile is missing profiles.user_id. Ask an administrator to repair your profile before submitting a check-up request.",
+
+  "account-inactive":
+    "Your account has been deactivated. Contact an administrator.",
+
+  "lookup-failed":
+    "We could not verify your account right now. Please try again.",
 };
 
-/* ══════════════════════════════════════════════════════════════════
-   COMPONENT
-   ══════════════════════════════════════════════════════════════════ */
-
 export default function CheckUp() {
-  const [form, setForm] = useState(INITIAL_FORM);
-  const [actor, setActor] = useState(null);
-  const [resolving, setResolving] = useState(true);
-  const [submitting, setSubmitting] = useState(false);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
+  const navigate = useNavigate();
+
+  const [form, setForm] =
+    useState(INITIAL_FORM);
+
+  const [actor, setActor] =
+    useState(null);
+
+  const [resolving, setResolving] =
+    useState(true);
+
+  const [submitting, setSubmitting] =
+    useState(false);
+
+  const [error, setError] =
+    useState("");
+
+  const [submitted, setSubmitted] =
+    useState(false);
+
+  const [submittedInfo, setSubmittedInfo] =
+    useState(null);
 
   const isStaff = actor?.kind === "staff";
-  const isHandler = isStaff || actor?.kind === "resident";
+  const isResident =
+    actor?.kind === "resident";
 
-  /* ── Resolve on mount ──────────────────────────────────────────── */
   useEffect(() => {
     let cancelled = false;
 
-    (async () => {
+    const resolve = async () => {
       const who = await resolveActor();
-      if (cancelled) return;
+
+      if (cancelled) {
+        return;
+      }
 
       if (who.kind === "error") {
-        setError(ERROR_COPY[who.reason] || "Could not verify your account.");
         setActor(who);
+
+        setError(
+          ERROR_COPY[who.reason] ||
+            "Could not verify your account.",
+        );
+
         setResolving(false);
+
         return;
       }
 
       setActor(who);
-      // Residents file for themselves, so prefill their name and contact.
-      // Staff file on behalf of a patient, so both stay blank.
-      if (who.kind === "resident") {
-        setForm((prev) => ({
-          ...prev,
-          patientName: prev.patientName || who.displayName,
-          contactDetails: prev.contactDetails || who.contact,
-        }));
+
+      if (
+        who.kind === "resident" ||
+        who.kind === "staff"
+      ) {
+        setForm(
+          buildInitialForm(who),
+        );
       }
+
       setResolving(false);
-    })();
+    };
+
+    resolve();
 
     return () => {
       cancelled = true;
     };
   }, []);
 
-  /* ── Toast auto-dismiss ────────────────────────────────────────── */
-  useEffect(() => {
-    if (!success) return undefined;
-    const t = setTimeout(() => setSuccess(""), 6000);
-    return () => clearTimeout(t);
-  }, [success]);
+  const handleChange = useCallback(
+    (event) => {
+      const { name, value } = event.target;
 
-  const handleChange = useCallback((event) => {
-    const { name, value } = event.target;
-    setForm((prev) => {
-      const next = { ...prev, [name]: value };
-      if (name === "escort" && value !== "other") next.specificVehicle = "";
-      return next;
-    });
-  }, []);
+      setForm((previous) => {
+        const next = {
+          ...previous,
+          [name]: value,
+        };
+
+        if (
+          name === "escort" &&
+          value !== "other"
+        ) {
+          next.specificVehicle = "";
+        }
+
+        return next;
+      });
+    },
+    [],
+  );
 
   const handleReset = useCallback(() => {
-    setForm({
-      ...INITIAL_FORM,
-      ...(actor?.kind === "resident"
-        ? { patientName: actor.displayName, contactDetails: actor.contact }
-        : {}),
-    });
+    setForm(buildInitialForm(actor));
     setError("");
-    setSuccess("");
   }, [actor]);
 
-  /* ── Submit ────────────────────────────────────────────────────── */
   const handleSubmit = useCallback(
     async (event) => {
       event.preventDefault();
-      if (submitting || resolving) return;
+
+      if (submitting || resolving) {
+        return;
+      }
 
       setError("");
-      setSuccess("");
 
-      if (!actor || actor.kind === "none" || actor.kind === "error") {
-        setError("You must be signed in to submit a check-up request.");
+      if (
+        !actor ||
+        actor.kind === "none" ||
+        actor.kind === "error"
+      ) {
+        setError(
+          "You must be signed in to submit a check-up request.",
+        );
+
+        return;
+      }
+
+      const patientName =
+        form.patientName.trim();
+
+      const reporterName = isStaff
+        ? form.reporterName.trim()
+        : String(
+            actor.displayName || "",
+          ).trim();
+
+      if (!patientName) {
+        setError(
+          "Patient name is required.",
+        );
+
+        return;
+      }
+
+      if (!reporterName) {
+        setError(
+          isStaff
+            ? "Reporter name is required."
+            : "Your account name could not be determined.",
+        );
+
+        return;
+      }
+
+      if (isStaff && !actor.staffId) {
+        setError(
+          "Your staff account ID could not be determined.",
+        );
+
+        return;
+      }
+
+      if (
+        isResident &&
+        !actor.profileUserId
+      ) {
+        setError(
+          "Your resident profile ID could not be determined.",
+        );
+
         return;
       }
 
@@ -363,335 +786,587 @@ export default function CheckUp() {
       try {
         const finalEscort =
           form.escort === "other"
-            ? form.specificVehicle.trim() || "Other"
+            ? form.specificVehicle.trim() ||
+              "Other"
             : form.escort;
 
-        const base = {
-          patientName: form.patientName.trim(),
+        const checkUpRequest = {
+          patientName,
+          reporter_name: reporterName,
+
           location: form.location.trim(),
-          hospitalName: form.hospitalName.trim(),
-          contactDetails: form.contactDetails.trim(),
-          preferredDate: form.preferredDate,
-          preferredTime: form.preferredTime,
+          hospitalName:
+            form.hospitalName.trim(),
+          contactDetails:
+            form.contactDetails.trim(),
+          preferredDate:
+            form.preferredDate,
+          preferredTime:
+            form.preferredTime,
           mobility: form.mobility,
           patientFor: form.patientFor,
           escort: finalEscort,
-          // Capital P — this is what checkUpTable.jsx filters on
+
           status: "Pending",
-          // resident -> profiles.id as text; staff -> null + staffId
-          userId: actor.residentId ?? null,
-          staffId: actor.staffId ?? null,
+
+          /*
+           * Resident:
+           *   profiles.user_id is the FK target.
+           *
+           * Staff:
+           *   userId is null.
+           */
+          userId: isStaff
+            ? null
+            : actor.profileUserId,
+
+          /*
+           * Staff/Admin:
+           *   staff_users.id is the FK target.
+           *
+           * Resident:
+           *   staffId is null.
+           */
+          staffId: isStaff
+            ? actor.staffId
+            : null,
         };
 
-        let { data, error: insertError } = await supabase
-          .from("outPatientCheckUp")
-          .insert([base])
-          .select("id")
-          .single();
-
-        // Tolerate a not-yet-migrated schema: retry without staffId.
-        if (
-          insertError &&
-          /staffId|staff_id/i.test(insertError.message || "")
-        ) {
-          const { staffId: _omit, ...withoutStaff } = base;
-          const retry = await supabase
+        const { data, error: insertError } =
+          await supabase
             .from("outPatientCheckUp")
-            .insert([withoutStaff])
+            .insert([checkUpRequest])
             .select("id")
             .single();
-          data = retry.data;
-          insertError = retry.error;
+
+        if (insertError) {
+          if (
+            insertError.message?.includes(
+              "reporter_name",
+            )
+          ) {
+            throw new Error(
+              "The database is missing the reporter_name column. Run the required ALTER TABLE migration first.",
+            );
+          }
+
+          throw new Error(
+            insertError.message,
+          );
         }
 
-        if (insertError) throw new Error(insertError.message);
-
-        setSuccess(
-          `Check-up request #${data?.id ?? "—"} submitted successfully. ` +
-            (isHandler
-              ? "It is now in the admin queue for review."
-              : "An administrator will review it shortly.")
+        window.dispatchEvent(
+          new Event(
+            "mdrrmo:notif-refresh",
+          ),
         );
 
-        setForm({
-          ...INITIAL_FORM,
-          ...(actor.kind === "resident"
-            ? { patientName: actor.displayName, contactDetails: actor.contact }
-            : {}),
+        setSubmittedInfo({
+          id: data?.id ?? null,
+          patientName,
+          hospitalName:
+            form.hospitalName.trim(),
+          preferredDate:
+            form.preferredDate,
+          preferredTime:
+            form.preferredTime,
         });
 
-        if (typeof window !== "undefined") {
-          window.dispatchEvent(new Event("mdrrmo:notif-refresh"));
-        }
-      } catch (err) {
-        console.error("Check-up submit error:", err);
+        setSubmitted(true);
+
+        setForm(
+          buildInitialForm(actor),
+        );
+      } catch (submitError) {
+        console.error(
+          "Check-up submit error:",
+          submitError,
+        );
+
         setError(
-          `Failed to submit: ${err?.message || "unknown error"}`
+          submitError?.message ||
+            "Failed to submit the check-up request.",
         );
       } finally {
         setSubmitting(false);
       }
     },
-    [actor, form, submitting, resolving, isHandler]
+    [
+      actor,
+      form,
+      isResident,
+      isStaff,
+      resolving,
+      submitting,
+    ],
   );
 
-  /* ── RENDER: loading ───────────────────────────────────────────── */
   if (resolving) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950">
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 dark:bg-slate-950">
         <div className="text-center">
-          <Loader2 className="h-10 w-10 animate-spin text-purple-600 mx-auto" />
-          <p className="mt-3 text-sm text-gray-500 dark:text-slate-400 font-semibold">
-            Checking your session...
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-r from-blue-600 via-blue-600 to-purple-600 shadow-xl">
+            <Loader2 className="h-8 w-8 animate-spin text-white" />
+          </div>
+
+          <p className="mt-5 text-sm font-black text-slate-700 dark:text-slate-200">
+            Checking your account...
+          </p>
+
+          <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
+            Please wait while we verify your request identity.
           </p>
         </div>
       </div>
     );
   }
 
-  /* ── RENDER: signed out / unresolvable ─────────────────────────── */
-  if (!actor || actor.kind === "none" || actor.kind === "error") {
+  if (
+    !actor ||
+    actor.kind === "none" ||
+    actor.kind === "error"
+  ) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50 dark:bg-slate-950 p-4">
-        <div className="max-w-md w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-700 rounded-3xl shadow-xl p-8 text-center">
-          <HeartPlus className="h-12 w-12 text-red-500 mx-auto mb-4" />
-          <h2 className="text-xl font-bold text-gray-800 dark:text-slate-100 mb-2">
-            {actor?.kind === "none" ? "Sign in required" : "Account not ready"}
-          </h2>
-          <p className="text-sm text-gray-500 dark:text-slate-400 mb-6">
-            {error || "You need an account before submitting a check-up request."}
-          </p>
-          <a
-            href="/login"
-            className="inline-block px-6 py-3 bg-blue-600 hover:bg-blue-700 text-white font-bold rounded-xl transition"
-          >
-            Go to Login
-          </a>
+      <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 dark:bg-slate-950">
+        <div className="w-full max-w-md overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+          <div className="flex h-2 bg-gradient-to-r from-blue-600 via-blue-600 to-purple-600" />
+
+          <div className="p-8 text-center">
+            <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-rose-100 dark:bg-rose-950/50">
+              <HeartPlus className="h-8 w-8 text-rose-600" />
+            </div>
+
+            <h2 className="mt-5 text-xl font-black text-slate-900 dark:text-white">
+              {actor?.kind === "none"
+                ? "Sign in required"
+                : "Account not ready"}
+            </h2>
+
+            <p className="mt-3 text-sm leading-6 text-slate-500 dark:text-slate-400">
+              {error ||
+                "You need an approved account before submitting a check-up request."}
+            </p>
+
+            <Link
+              to="/login"
+              className="mt-6 inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 via-blue-600 to-purple-600 px-6 py-3 text-sm font-black text-white shadow-lg transition hover:brightness-105"
+            >
+              <LogIn className="h-4 w-4" />
+              Go to Login
+            </Link>
+          </div>
         </div>
       </div>
     );
   }
 
-  /* ── RENDER: form ──────────────────────────────────────────────── */
+  if (submitted) {
+    return (
+      <CheckUpSuccess
+        info={submittedInfo}
+        isStaff={isStaff}
+        onGoToDashboard={() =>
+          navigate(dashboardPathFor(actor))
+        }
+        onSubmitAnother={() =>
+          setSubmitted(false)
+        }
+      />
+    );
+  }
+
   return (
-    <div className="min-h-screen pt-10 pb-16 bg-slate-50 dark:bg-slate-950">
-      <div className="max-w-2xl mx-auto px-4 sm:px-6">
-        {/* Header */}
-        <div className="bg-gradient-to-r from-blue-600 to-purple-600 rounded-t-3xl shadow-xl px-5 pt-6 pb-5">
-          <div className="flex flex-col items-center text-center">
-            <HeartPlus className="h-12 w-12 text-white mb-2" />
-            <h1 className="text-2xl sm:text-3xl font-bold text-white">
-              Out Patient Check Up
-            </h1>
-            <p className="text-white/90 text-xs sm:text-sm mt-1">
-              Fields marked <span className="text-red-300">*</span> are required for assessment.
-            </p>
-          </div>
+    <RequestFormShell
+      icon={HeartPlus}
+      eyebrow="Community Health Service"
+      title="Outpatient Check-Up Request"
+      description="Provide the patient's travel and care requirements so MDRRMO personnel can prepare the appropriate response."
+      account={{
+        name: actor.displayName,
+        detail:
+          actor.contact ||
+          "No contact number available",
+        badge: isStaff
+          ? prettyRole(actor.role)
+          : "Resident",
+      }}
+      onSubmit={handleSubmit}
+      onReset={handleReset}
+      error={error}
+      submitting={submitting}
+      submitLabel="Submit Check-Up Request"
+      footerNote={
+        isStaff
+          ? "Staff submissions are reviewed by an administrator before the patient is scheduled."
+          : "You will be notified once an administrator reviews your request."
+      }
+    >
+      {isStaff ? (
+        <div className="mb-7 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800/70 dark:bg-amber-950/40 dark:text-amber-200">
+          <Info className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
 
-          <div className="mt-4 flex items-center gap-3 bg-white/15 rounded-xl px-4 py-3">
-            <span className="w-9 h-9 rounded-full bg-white/25 flex items-center justify-center flex-shrink-0 text-white text-sm font-bold">
-              {(actor.displayName || "?").charAt(0).toUpperCase()}
-            </span>
-            <div className="min-w-0 flex-1">
-              <p className="text-white text-sm font-bold truncate">
-                {actor.displayName}
-              </p>
-              <p className="text-white/75 text-[11px] flex items-center gap-1">
-                {isStaff ? (
-                  <>
-                    <Shield className="h-3 w-3" />
-                    Filing on behalf of a patient · {prettyRole(actor.role)}
-                    {actor.department ? ` · ${actor.department}` : ""}
-                  </>
-                ) : (
-                  "Submitting your own request"
-                )}
-              </p>
-            </div>
-          </div>
+          <p className="text-xs leading-6">
+            You are signed in as {prettyRole(actor.role)}. Enter the patient name and the name of the person filing this request. Your staff account will be linked automatically.
+          </p>
         </div>
+      ) : (
+        <div className="mb-7 flex items-start gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800 dark:border-blue-800/70 dark:bg-blue-950/40 dark:text-blue-200">
+          <User className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" />
 
-        {/* Form */}
-        <form
-          onSubmit={handleSubmit}
-          className="bg-white dark:bg-slate-800 px-5 sm:px-8 py-6 rounded-b-3xl shadow-xl border border-t-0 border-gray-200 dark:border-slate-700"
-        >
-          {isStaff && (
-            <div className="flex items-start gap-2.5 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl px-4 py-3 mb-5">
-              <Info className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
-              <p className="text-xs text-amber-800 dark:text-amber-200 leading-relaxed">
-                You are signed in as {prettyRole(actor.role)}. The patient name
-                and contact are required and are not auto-filled. Your request
-                will appear in the admin queue for review.
-              </p>
+          <p className="text-xs leading-6">
+            Your reporter name and account ID are attached automatically. You only need to provide the patient and request information.
+          </p>
+        </div>
+      )}
+
+      <section>
+        <FormSectionHeading
+          icon={User}
+          step="01"
+          title="Patient & Reporter"
+          description="Confirm who the patient is and who is filing this request."
+        />
+
+        <div className="grid gap-5 md:grid-cols-2">
+          <FormField
+            id="patientName"
+            label="Patient Name"
+            required
+          >
+            <input
+              id="patientName"
+              name="patientName"
+              value={form.patientName}
+              onChange={handleChange}
+              placeholder="Full name of the patient"
+              className={FORM_INPUT_CLASS}
+              autoComplete="name"
+              required
+            />
+          </FormField>
+
+          <FormField
+            id="reporterName"
+            label="Reporter Name"
+            required={isStaff}
+            hint={
+              isStaff
+                ? `This request will be linked to staff ID #${actor.staffId}.`
+                : `Automatically linked to account ID: ${actor.profileUserId}`
+            }
+          >
+            <div className="relative">
+              <User className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+
+              <input
+                id="reporterName"
+                name="reporterName"
+                value={
+                  isStaff
+                    ? form.reporterName
+                    : actor.displayName
+                }
+                onChange={handleChange}
+                placeholder={
+                  isStaff
+                    ? "Enter the reporter's full name"
+                    : "Automatically taken from your account"
+                }
+                className={`${FORM_INPUT_CLASS} pl-11 ${
+                  isStaff
+                    ? ""
+                    : "cursor-not-allowed bg-slate-200 dark:bg-slate-800"
+                }`}
+                readOnly={!isStaff}
+                tabIndex={
+                  isStaff ? 0 : -1
+                }
+                required={isStaff}
+                aria-readonly={!isStaff}
+              />
             </div>
-          )}
+          </FormField>
+        </div>
+      </section>
 
-          {error && (
-            <div
-              role="alert"
-              className="bg-red-50 dark:bg-red-950/30 border border-red-200 dark:border-red-800 rounded-xl p-4 mb-5"
+      <div className="my-8 h-px bg-slate-200 dark:bg-slate-700" />
+
+      <section>
+        <FormSectionHeading
+          icon={MapPin}
+          step="02"
+          title="Location & Destination"
+          description="Tell us where the patient is located and where they need to go."
+        />
+
+        <div className="grid gap-5">
+          {TEXT_FIELDS.map((field) => (
+            <FormField
+              key={field.name}
+              id={field.name}
+              label={field.label}
+              required
             >
-              <div className="flex items-start gap-2.5">
-                <AlertCircle className="w-4 h-4 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
-                <p className="text-sm text-red-700 dark:text-red-300 font-medium">
-                  {error}
-                </p>
-              </div>
-            </div>
-          )}
+              <div className="relative">
+                {field.name === "location" && (
+                  <MapPin className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                )}
 
-          {success && (
-            <div
-              role="status"
-              className="flex items-start gap-2.5 bg-emerald-50 dark:bg-emerald-950/30 border border-emerald-200 dark:border-emerald-800 rounded-xl px-4 py-3 mb-5"
-            >
-              <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400 flex-shrink-0 mt-0.5" />
-              <div className="min-w-0">
-                <p className="text-sm text-emerald-700 dark:text-emerald-300 font-medium">
-                  {success}
-                </p>
-               
-              </div>
-            </div>
-          )}
+                {field.name === "hospitalName" && (
+                  <Building2 className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                )}
 
-          {/* Text fields */}
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            {TEXT_FIELDS.map((field) => (
-              <div
-                key={field.name}
-                className="flex flex-col gap-1.5 md:col-span-2"
-              >
-                <label htmlFor={field.name} className={labelCls}>
-                  {field.label} <span className={reqCls}>*</span>
-                </label>
+                {field.name ===
+                  "contactDetails" && (
+                  <Phone className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                )}
+
                 <input
                   id={field.name}
                   name={field.name}
-                  value={form[field.name]}
+                  value={
+                    form[field.name]
+                  }
                   onChange={handleChange}
-                  placeholder={field.placeholder}
-                  className={inputCls}
+                  placeholder={
+                    field.placeholder
+                  }
+                  autoComplete={
+                    field.autoComplete
+                  }
+                  className={`${FORM_INPUT_CLASS} pl-11`}
                   required
                 />
               </div>
-            ))}
+            </FormField>
+          ))}
+        </div>
+      </section>
 
-            {/* Date */}
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="preferredDate" className={labelCls}>
-                Preferred Date <span className={reqCls}>*</span>
-              </label>
+      <div className="my-8 h-px bg-slate-200 dark:bg-slate-700" />
+
+      <section>
+        <FormSectionHeading
+          icon={CalendarDays}
+          step="03"
+          title="Preferred Schedule"
+          description="Choose the preferred date and time for the patient."
+        />
+
+        <div className="grid gap-5 md:grid-cols-2">
+          <FormField
+            id="preferredDate"
+            label="Preferred Date"
+            required
+          >
+            <div className="relative">
+              <CalendarDays className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+
               <input
                 id="preferredDate"
-                type="date"
                 name="preferredDate"
+                type="date"
                 value={form.preferredDate}
                 onChange={handleChange}
                 min={todayStr()}
-                className={inputCls}
+                className={`${FORM_INPUT_CLASS} pl-11`}
                 required
               />
             </div>
+          </FormField>
 
-            {/* Time */}
-            <div className="flex flex-col gap-1.5">
-              <label htmlFor="preferredTime" className={labelCls}>
-                Preferred Time <span className={reqCls}>*</span>
-              </label>
+          <FormField
+            id="preferredTime"
+            label="Preferred Time"
+            required
+          >
+            <div className="relative">
+              <Clock3 className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+
               <input
                 id="preferredTime"
-                type="time"
                 name="preferredTime"
+                type="time"
                 value={form.preferredTime}
                 onChange={handleChange}
-                className={inputCls}
+                className={`${FORM_INPUT_CLASS} pl-11`}
                 required
               />
             </div>
-          </div>
+          </FormField>
+        </div>
+      </section>
 
-          {/* Selects */}
-          <div className="mt-5 space-y-5">
-            {SELECT_FIELDS.map((field) => (
-              <div key={field.name} className="flex flex-col gap-1.5">
-                <label htmlFor={field.name} className={labelCls}>
-                  {field.label} <span className={reqCls}>*</span>
-                </label>
+      <div className="my-8 h-px bg-slate-200 dark:bg-slate-700" />
+
+      <section>
+        <FormSectionHeading
+          icon={Accessibility}
+          step="04"
+          title="Mobility & Assistance"
+          description="Select the support and escort required for the patient."
+        />
+
+        <div className="grid gap-5 md:grid-cols-2">
+          {SELECT_FIELDS.map((field) => (
+            <FormField
+              key={field.name}
+              id={field.name}
+              label={field.label}
+              required
+              className={
+                field.name === "escort"
+                  ? "md:col-span-2"
+                  : ""
+              }
+            >
+              <div className="relative">
+                {field.name === "mobility" && (
+                  <Accessibility className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                )}
+
+                {field.name === "escort" && (
+                  <Ambulance className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                )}
+
                 <select
                   id={field.name}
                   name={field.name}
                   value={form[field.name]}
                   onChange={handleChange}
-                  className={inputCls}
+                  className={`${FORM_INPUT_CLASS} pl-11`}
                   required
                 >
-                  <option value="">Select an Option</option>
-                  {field.options.map((opt) => (
-                    <option key={opt.value} value={opt.value}>
-                      {opt.label}
+                  <option value="">
+                    Select an option
+                  </option>
+
+                  {field.options.map((option) => (
+                    <option
+                      key={option.value}
+                      value={option.value}
+                    >
+                      {option.label}
                     </option>
                   ))}
                 </select>
               </div>
-            ))}
+            </FormField>
+          ))}
+        </div>
 
-            {form.escort === "other" && (
-              <div className="flex flex-col gap-1.5">
-                <label htmlFor="specificVehicle" className={labelCls}>
-                  Specify Escort/Vehicle <span className={reqCls}>*</span>
-                </label>
+        {form.escort === "other" && (
+          <div className="mt-5">
+            <FormField
+              id="specificVehicle"
+              label="Specify Escort / Vehicle"
+              required
+            >
+              <div className="relative">
+                <Ambulance className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+
                 <input
                   id="specificVehicle"
                   name="specificVehicle"
                   value={form.specificVehicle}
                   onChange={handleChange}
-                  placeholder="e.g. Private ambulance, motorcycle with sidecar..."
-                  className={inputCls}
+                  placeholder="e.g. Private ambulance or motorcycle with sidecar"
+                  className={`${FORM_INPUT_CLASS} pl-11`}
                   required
                 />
               </div>
-            )}
+            </FormField>
+          </div>
+        )}
+      </section>
+    </RequestFormShell>
+  );
+}
+
+/* ══════════════════════════════════════════════════════════════════
+   SUCCESS PAGE
+   ══════════════════════════════════════════════════════════════════ */
+
+function CheckUpSuccess({
+  info,
+  isStaff,
+  onGoToDashboard,
+  onSubmitAnother,
+}) {
+  return (
+    <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-10 dark:bg-slate-950">
+      <div className="w-full max-w-lg overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
+        <div className="bg-gradient-to-r from-blue-600 via-blue-600 to-purple-600 px-6 py-8 text-center text-white">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/20">
+            <CheckCircle2 className="h-9 w-9" />
           </div>
 
-          {/* Actions */}
-          <div className="flex flex-col sm:flex-row gap-3 mt-8">
+          <h1 className="mt-5 text-2xl font-black">
+            Check-Up Request Submitted
+          </h1>
+
+          <p className="mt-2 text-sm leading-6 text-blue-50/85">
+            {isStaff
+              ? "Your request has been received and is now pending administrator review."
+              : "Your request has been received and is now in the administrator queue."}
+          </p>
+        </div>
+
+        <div className="space-y-4 p-6 sm:p-8">
+          {info && (
+            <div className="rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800 dark:border-blue-800/70 dark:bg-blue-950/40 dark:text-blue-200">
+              {info.id && (
+                <p className="text-xs font-black uppercase tracking-wide opacity-70">
+                  Request #{info.id}
+                </p>
+              )}
+
+              {info.patientName && (
+                <p className="mt-1 text-base font-black">
+                  Patient: {info.patientName}
+                </p>
+              )}
+
+              {info.hospitalName && (
+                <p className="mt-1 text-xs leading-6 opacity-80">
+                  Hospital: {info.hospitalName}
+                </p>
+              )}
+
+              {(info.preferredDate ||
+                info.preferredTime) && (
+                <p className="mt-1 text-xs leading-6 opacity-80">
+                  Preferred: {info.preferredDate}
+                  {info.preferredTime
+                    ? ` at ${info.preferredTime}`
+                    : ""}
+                </p>
+              )}
+            </div>
+          )}
+
+          <p className="text-center text-xs leading-5 text-slate-500 dark:text-slate-400">
+            You can track this request from your dashboard under “My Requests”.
+          </p>
+
+          <div className="flex flex-col gap-3 sm:flex-row">
             <button
               type="button"
-              onClick={handleReset}
-              disabled={submitting}
-              className="sm:w-auto px-5 py-4 border border-gray-300 dark:border-slate-600 rounded-2xl text-gray-700 dark:text-slate-200 font-bold hover:bg-gray-50 dark:hover:bg-slate-700 transition disabled:opacity-50 flex items-center justify-center gap-2"
+              onClick={onSubmitAnother}
+              className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-5 py-3 text-sm font-black text-slate-700 transition hover:bg-slate-50 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-200"
             >
-              <RotateCcw className="h-4 w-4" />
-              Clear
+              Submit Another
             </button>
 
             <button
-              type="submit"
-              disabled={submitting || resolving}
-              className="flex-1 bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white font-bold py-4 rounded-2xl transition shadow-lg shadow-blue-200 dark:shadow-none flex items-center justify-center gap-2"
+              type="button"
+              onClick={onGoToDashboard}
+              className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 via-blue-600 to-purple-600 px-5 py-3 text-sm font-black text-white shadow-lg transition hover:brightness-105"
             >
-              {submitting ? (
-                <>
-                  <Loader2 className="h-5 w-5 animate-spin" />
-                  Submitting...
-                </>
-              ) : (
-                <>
-                  <Send className="h-5 w-5" />
-                  Submit
-                </>
-              )}
+              Back to Dashboard
             </button>
           </div>
-        </form>
-
-        <p className="text-center text-xs text-gray-400 dark:text-slate-500 mt-5">
-          {isStaff
-            ? "Staff submissions are reviewed by an administrator before the patient is scheduled."
-            : "You will be notified once an administrator reviews your request."}
-        </p>
+        </div>
       </div>
     </div>
   );

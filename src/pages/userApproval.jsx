@@ -1,604 +1,3026 @@
-import React, { useEffect, useState, useMemo } from 'react';
-import { supabase } from '../createClient';
-import {
-  Users, Search, User, Shield, Mail, Lock, Trash2, Edit3,
-  AlertCircle, X, Eye, EyeOff, Clock,
-  UserCheck, Save, Info, Calendar, MapPin, Phone, Building2, Hash,
-  Camera, CreditCard, Download
-} from 'lucide-react';
-import {
-  PieChart, Pie, Cell, BarChart, Bar, XAxis, YAxis, CartesianGrid,
-  Tooltip, ResponsiveContainer, Legend,
-} from 'recharts';
+"use client";
 
-// ===== REAL storage buckets in your project =====
-const PHOTO_BUCKETS = ['pending_ids', 'profile-pics', 'id-previews', 'avatars', 'uploads'];
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+import { supabase } from "../createClient";
+import {
+  AlertCircle,
+  Building2,
+  Calendar,
+  Camera,
+  CheckCircle,
+  ChevronDown,
+  Clock,
+  CreditCard,
+  Download,
+  Edit3,
+  Eye,
+  EyeOff,
+  Hash,
+  Info,
+  Loader2,
+  Lock,
+  Mail,
+  MapPin,
+  Phone,
+  Plus,
+  RefreshCw,
+  Save,
+  Search,
+  Shield,
+  ShieldCheck,
+  Trash2,
+  User,
+  UserCheck,
+  Users,
+  X,
+} from "lucide-react";
+import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Cell,
+  Legend,
+  Pie,
+  PieChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import { useDialog } from "../components/AppDialog";
 
-// Turns a stored value into a displayable URL.
+/** Philippine mobile: 09XXXXXXXXX (11) or +639XXXXXXXXX (13) */
+function normalizePHMobile(raw) {
+  if (raw == null) return null;
+  let v = String(raw).trim().replace(/[\s\-()]/g, "");
+  if (v.startsWith("+639") && /^\+639\d{9}$/.test(v)) return v;
+  if (v.startsWith("639") && /^639\d{9}$/.test(v)) return `+${v}`;
+  if (v.startsWith("09") && /^09\d{9}$/.test(v)) return v;
+  if (/^9\d{9}$/.test(v)) return `0${v}`;
+  return null;
+}
+
+function isValidPHMobile(raw) {
+  return normalizePHMobile(raw) !== null;
+}
+
+/* =============================================================
+ * CONSTANTS
+ * ============================================================= */
+
+const PHOTO_BUCKETS = [
+  "pending_ids",
+  "profile-pics",
+  "id-previews",
+  "avatars",
+  "uploads",
+  "images",
+];
+
+const TABLE_PRIORITY = {
+  admin_users: 4,
+  staff_users: 3,
+  profiles: 2,
+  pending_registrations: 1,
+};
+
+const TABLE_LABELS = {
+  admin_users: "Administrators",
+  staff_users: "Staff Users",
+  profiles: "Approved Users",
+  pending_registrations: "Pending Registrations",
+};
+
+const ACCOUNT_TABLES = [
+  "admin_users",
+  "staff_users",
+  "profiles",
+  "pending_registrations",
+];
+
+const EMPTY_CREATE_FORM = {
+  work_id: "",
+  username: "",
+  full_name: "",
+  email: "",
+  password: "",
+  confirmPassword: "",
+  department: "",
+  mobile_number: "",
+  requester_password: "",
+  role: "staff",
+};
+
+const USERNAME_PATTERN = /^[a-z0-9._-]{3,50}$/;
+const EMAIL_PATTERN = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+const ID_TYPE_OPTIONS = [
+  { value: "philippine-passport", label: "Philippine Passport" },
+  { value: "drivers-license", label: "Driver's License / LTO ID" },
+  { value: "philsys-id", label: "PhilSys ID" },
+  { value: "umid", label: "UMID" },
+  { value: "barangay-id", label: "Barangay ID" },
+  { value: "voter-id", label: "Voter ID" },
+  { value: "philhealth-id", label: "PhilHealth ID" },
+  { value: "postal-id", label: "Postal ID" },
+  { value: "tin", label: "Tax Identification Number (TIN)" },
+  { value: "school-id", label: "School ID" },
+  { value: "other-valid-id", label: "Other Valid ID" },
+];
+
+const prettyStatus = (status) => {
+  const value = String(status || "pending")
+    .trim()
+    .toLowerCase()
+    .replace(/_/g, " ");
+
+  return value
+    .split(" ")
+    .map((word) => word.charAt(0).toUpperCase() + word.slice(1))
+    .join(" ");
+};
+
+/* =============================================================
+ * HELPERS
+ * ============================================================= */
+
+const rawText = (value) => String(value ?? "").trim();
+const normalizeUsername = (value) => rawText(value).toLowerCase();
+const normalizeEmail = (value) => rawText(value).toLowerCase();
+const validUsername = (value) => USERNAME_PATTERN.test(normalizeUsername(value));
+
+const normalizeStatus = (value) =>
+  String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ");
+
+const isPendingStatus = (value) => {
+  const status = normalizeStatus(value);
+  return status === "pending" || status === "pending approval";
+};
+
+const getIdTypeLabel = (value) => {
+  const idType = rawText(value);
+  if (!idType) return "Not provided";
+  return (
+    ID_TYPE_OPTIONS.find((option) => option.value === idType)?.label || idType
+  );
+};
+
+const readCurrentStaff = () => {
+  try {
+    const raw = localStorage.getItem("currentStaff");
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    return parsed && typeof parsed === "object" ? parsed : null;
+  } catch {
+    return null;
+  }
+};
+
 const resolveImageUrl = (value) => {
   if (!value) return null;
-  const v = String(value);
-  if (/^(https?:\/\/|data:image\/|blob:)/i.test(v)) return v;
+  const text = String(value);
 
-  const firstSegment = v.split('/')[0];
+  if (/^(https?:\/\/|data:image\/|blob:)/i.test(text)) return text;
+
+  const firstSegment = text.split("/")[0];
+
   if (PHOTO_BUCKETS.includes(firstSegment)) {
     try {
-      const { data } = supabase.storage.from(firstSegment).getPublicUrl(v);
-      return data?.publicUrl || v;
-    } catch { return v; }
+      const { data } = supabase.storage.from(firstSegment).getPublicUrl(text);
+      return data?.publicUrl || text;
+    } catch {
+      return text;
+    }
   }
+
   for (const bucket of PHOTO_BUCKETS) {
     try {
-      const { data } = supabase.storage.from(bucket).getPublicUrl(v);
-      return data?.publicUrl || v;
-    } catch { /* try next */ }
+      const { data } = supabase.storage.from(bucket).getPublicUrl(text);
+      if (data?.publicUrl) return data.publicUrl;
+    } catch {
+      /* continue */
+    }
   }
-  return v;
+
+  return text;
 };
 
-// Photo column detection (id_image_url is what CreateUser saves).
-const normalizePhotos = (rec) => {
+const normalizePhotos = (record) => {
   const avatar =
-    rec.avatar_url || rec.profile_picture || rec.profile_pic ||
-    rec.profile_photo || rec.photo_url || rec.picture || rec.avatar || null;
+    record.avatar_url ||
+    record.profile_picture ||
+    record.profile_pic ||
+    record.profile_photo ||
+    record.photo_url ||
+    record.picture ||
+    record.avatar ||
+    null;
 
-  const idPhoto =
-    rec.id_image_url || rec.id_preview || rec.id_picture || rec.id_photo ||
-    rec.id_photo_url || rec.id_card || rec.id_pic || rec.id_url ||
-    rec.identification || null;
+  const idFrontPhoto =
+    record.id_front_image_url ||
+    record.front_id_image_url ||
+    record.id_image_url ||
+    record.id_photo_url ||
+    record.id_preview ||
+    record.id_picture ||
+    record.id_photo ||
+    record.id_card ||
+    record.id_pic ||
+    record.id_url ||
+    record.identification ||
+    null;
 
-  return { avatar_url: avatar, id_photo_url: idPhoto };
+  const idBackPhoto =
+    record.id_back_image_url ||
+    record.back_id_image_url ||
+    record.id_back ||
+    record.back_id ||
+    record.id_back_photo ||
+    record.id_back_picture ||
+    record.id_back_preview ||
+    null;
+
+  const idHolderPhoto =
+    record.id_holder_image_url ||
+    record.person_holding_id_image_url ||
+    record.id_holder_photo ||
+    record.holder_image_url ||
+    record.holder_photo ||
+    record.selfie_with_id ||
+    null;
+
+  return {
+    avatar_url: avatar,
+    id_image_url: idFrontPhoto,
+    id_photo_url: idFrontPhoto,
+    id_front_image_url: idFrontPhoto,
+    id_back_image_url: idBackPhoto,
+    id_holder_image_url: idHolderPhoto,
+  };
 };
 
-const AdminUserManagement = () => {
+const formatDate = (value) => {
+  if (!value) return "N/A";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return String(value);
+  return date.toLocaleString("en-PH", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+};
+
+const hashPassword = async (password) => {
+  if (!globalThis.crypto?.subtle) {
+    throw new Error(
+      "Secure password encryption is not available in this browser.",
+    );
+  }
+
+  const salt = "hackerai-salt-2024";
+  const encoder = new TextEncoder();
+  const data = encoder.encode(`${password}${salt}`);
+  const hashBuffer = await globalThis.crypto.subtle.digest("SHA-256", data);
+  const hashArray = Array.from(new Uint8Array(hashBuffer));
+
+  return hashArray
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+};
+
+const parseFunctionError = async (error) => {
+  if (!error) return "Unknown error.";
+
+  const possibleContexts = [
+    error.context,
+    error.context?.response,
+    error.response,
+  ];
+
+  for (const context of possibleContexts) {
+    if (!context) continue;
+
+    if (typeof context.json === "function") {
+      try {
+        const body = await context.json();
+        if (body?.error) return String(body.error);
+      } catch {
+        /* continue */
+      }
+    }
+
+    if (typeof context === "object") {
+      if (context.error) return String(context.error);
+      if (context.message) return String(context.message);
+    }
+  }
+
+  return error.message || "The account could not be created.";
+};
+
+const getWorkId = (record, sourceTable) => {
+  if (sourceTable === "admin_users") {
+    return record.custom_id || record.username || record.user_id || "";
+  }
+  if (sourceTable === "staff_users") {
+    return record.user_id || record.username || record.id || "";
+  }
+  return record.user_id || record.username || "";
+};
+
+const getAccountIdentity = ({ email, username, workId, recordId }) => {
+  return String(
+    normalizeEmail(email) ||
+      normalizeUsername(username) ||
+      rawText(workId).toLowerCase() ||
+      recordId ||
+      "",
+  );
+};
+
+const mergeMissingFields = (primary, fallback) => {
+  const merged = { ...primary };
+
+  const fieldsToMerge = [
+    "avatar_url",
+    "id_photo_url",
+    "id_image_url",
+    "id_front_image_url",
+    "id_back_image_url",
+    "id_holder_image_url",
+    "id_type",
+    "id_number",
+    "birthdate",
+    "address",
+    "mobile_number",
+    "age",
+    "department",
+    "full_name",
+    "first_name",
+    "middle_name",
+    "last_name",
+    "created_at",
+    "updated_at",
+  ];
+
+  for (const field of fieldsToMerge) {
+    const primaryValue = primary[field];
+    const fallbackValue = fallback[field];
+    const primaryMissing =
+      primaryValue === null || primaryValue === undefined || primaryValue === "";
+
+    if (
+      primaryMissing &&
+      fallbackValue !== null &&
+      fallbackValue !== undefined &&
+      fallbackValue !== ""
+    ) {
+      merged[field] = fallbackValue;
+    }
+  }
+
+  return merged;
+};
+
+/* =============================================================
+ * REUSABLE UI
+ * ============================================================= */
+
+function StatusBadge({ user }) {
+  const status = normalizeStatus(user.status);
+
+  const isPending = status === "pending" || status === "pending approval";
+  const isRejected = status === "rejected";
+  const isInactive = status === "inactive" || user.is_active === false;
+  const isActive =
+    !isPending &&
+    !isRejected &&
+    !isInactive &&
+    (status === "approved" || user.is_active === true);
+
+  let className = "border border-slate-200 bg-slate-100 text-slate-700";
+  let label = "Unknown";
+
+  if (isActive) {
+    className = "border border-emerald-200 bg-emerald-100 text-emerald-700";
+    label = "Active";
+  } else if (isPending) {
+    className = "border border-yellow-200 bg-yellow-100 text-yellow-700";
+    label = "Pending";
+  } else if (isRejected) {
+    className = "border border-red-200 bg-red-100 text-red-700";
+    label = "Rejected";
+  } else if (isInactive) {
+    className = "border border-red-200 bg-red-100 text-red-700";
+    label = "Inactive";
+  }
+
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-3 py-1 text-xs font-bold ${className}`}
+    >
+      {label}
+    </span>
+  );
+}
+
+function RoleBadge({ role }) {
+  const colors = {
+    admin: "border border-purple-200 bg-purple-100 text-purple-700",
+    staff: "border border-blue-200 bg-blue-100 text-blue-700",
+    moderator: "border border-indigo-200 bg-indigo-100 text-indigo-700",
+    user: "border border-emerald-200 bg-emerald-100 text-emerald-700",
+  };
+
+  return (
+    <span
+      className={`inline-flex items-center rounded-full border px-2 py-1 text-xs font-bold capitalize ${
+        colors[role] || "border border-slate-200 bg-slate-100 text-slate-700"
+      }`}
+    >
+      {role || "user"}
+    </span>
+  );
+}
+
+function SmartImage({ src, alt, className = "", fallback = null }) {
+  const [failed, setFailed] = useState(false);
+  if (!src || failed) return fallback;
+
+  return (
+    <img
+      src={src}
+      alt={alt}
+      className={className}
+      onError={() => setFailed(true)}
+    />
+  );
+}
+
+function Avatar({ user, size = "md" }) {
+  const sizeClasses = {
+    sm: "h-9 w-9 text-sm",
+    md: "h-14 w-14 text-xl",
+    lg: "h-24 w-24 text-3xl",
+  };
+
+  const colorClasses =
+    user.displayRole === "admin"
+      ? "bg-purple-600"
+      : user.displayRole === "staff"
+        ? "bg-blue-600"
+        : "bg-emerald-600";
+
+  const fullName =
+    user.full_name ||
+    [user.first_name, user.middle_name, user.last_name]
+      .filter(Boolean)
+      .join(" ") ||
+    user.username ||
+    user.email ||
+    "";
+
+  const nameParts = String(fullName).trim().split(/\s+/).filter(Boolean);
+  const initials =
+    nameParts
+      .slice(0, 2)
+      .map((part) => part.charAt(0))
+      .join("")
+      .toUpperCase() || "?";
+
+  const src = resolveImageUrl(user.avatar_url);
+
+  return (
+    <div
+      className={`relative flex shrink-0 items-center justify-center overflow-hidden rounded-full font-bold text-white ${sizeClasses[size]} ${colorClasses}`}
+    >
+      <span>{initials}</span>
+      {src && (
+        <img
+          src={src}
+          alt={`${fullName || "User"} profile`}
+          className="absolute inset-0 h-full w-full object-cover"
+          onError={(event) => {
+            event.currentTarget.style.display = "none";
+          }}
+        />
+      )}
+    </div>
+  );
+}
+
+function DetailField({ icon: Icon, label, value }) {
+  return (
+    <div className="flex items-start gap-3 rounded-xl border border-slate-200 bg-white p-3">
+      <Icon className="mt-0.5 h-4 w-4 shrink-0 text-purple-600" />
+      <div className="min-w-0">
+        <p className="text-xs font-bold uppercase tracking-wide text-slate-400">
+          {label}
+        </p>
+        <p className="mt-1 break-words text-sm font-semibold text-slate-800">
+          {value || "N/A"}
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function PhotoCard({
+  label,
+  value,
+  alt,
+  icon: IconComponent = CreditCard,
+  contain = false,
+}) {
+  const source = resolveImageUrl(value);
+
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white p-4 dark:border-slate-700 dark:bg-slate-900">
+      <p className="mb-3 flex items-center gap-2 text-xs font-bold uppercase tracking-wide text-slate-400">
+        <IconComponent className="h-3.5 w-3.5" />
+        {label}
+      </p>
+      <SmartImage
+        src={source}
+        alt={alt}
+        className={`h-48 w-full rounded-lg border border-slate-200 bg-slate-50 dark:border-slate-700 ${
+          contain ? "object-contain" : "object-cover"
+        }`}
+        fallback={
+          <div className="flex h-48 w-full flex-col items-center justify-center rounded-lg border-2 border-dashed border-slate-200 bg-slate-50 text-slate-400 dark:border-slate-700">
+            <IconComponent className="mb-2 h-8 w-8" />
+            <p className="px-3 text-center text-xs font-semibold">
+              No {label.toLowerCase()}
+            </p>
+          </div>
+        }
+      />
+    </div>
+  );
+}
+
+function ActiveToggle({ value, onToggle, disabled = false }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      disabled={disabled}
+      aria-pressed={value}
+      aria-label={value ? "Set account as inactive" : "Set account as active"}
+      className={`relative h-6 w-12 rounded-full transition disabled:cursor-not-allowed disabled:opacity-50 ${
+        value ? "bg-green-500" : "bg-red-400"
+      }`}
+    >
+      <span
+        className={`absolute top-1 h-4 w-4 rounded-full bg-white shadow transition-all ${
+          value ? "left-7" : "left-1"
+        }`}
+      />
+    </button>
+  );
+}
+
+/* =============================================================
+ * MAIN COMPONENT
+ * ============================================================= */
+
+function AdminUserManagement() {
   const [loading, setLoading] = useState(true);
-  const [searchTerm, setSearchTerm] = useState('');
-  const [roleFilter, setRoleFilter] = useState('all');
-  const [statusFilter, setStatusFilter] = useState('all');
+  const [refreshing, setRefreshing] = useState(false);
+  const { showAlert, showConfirm } = useDialog();
+
+  const [searchTerm, setSearchTerm] = useState("");
+  const [roleFilter, setRoleFilter] = useState("all");
+  const [statusFilter, setStatusFilter] = useState("all");
+
   const [users, setUsers] = useState([]);
+
   const [selectedUser, setSelectedUser] = useState(null);
   const [detailsUser, setDetailsUser] = useState(null);
   const [showEditModal, setShowEditModal] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+
+  const [saving, setSaving] = useState(false);
+  const [approvalSavingId, setApprovalSavingId] = useState(null);
+  const [error, setError] = useState("");
+
   const [editForm, setEditForm] = useState({
-    email: '', username: '', password: '', confirmPassword: '',
-    full_name: '', role: 'user', is_active: true,
+    work_id: "",
+    username: "",
+    email: "",
+    password: "",
+    confirmPassword: "",
+    full_name: "",
+    id_type: "",
+    role: "user",
+    is_active: true,
   });
- const [showPassword, setShowPassword] = useState(false);
-const [showConfirm, setShowConfirm] = useState(false);
-const [saving, setSaving] = useState(false);
-const [error, setError] = useState('');
-const [showReport, setShowReport] = useState(false); 
 
-  const hashPassword = async (password) => {
-    const encoder = new TextEncoder();
-    const data = encoder.encode(password + 'hackerai-salt-2024');
-    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
-    const hashArray = Array.from(new Uint8Array(hashBuffer));
-    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
-  };
+  const [showReport, setShowReport] = useState(false);
+  const [showCreateModal, setShowCreateModal] = useState(false);
+  const [createRole, setCreateRole] = useState("staff");
+  const [createForm, setCreateForm] = useState({ ...EMPTY_CREATE_FORM });
+  const [createSaving, setCreateSaving] = useState(false);
+  const [createError, setCreateError] = useState("");
+  const [createSuccess, setCreateSuccess] = useState("");
 
-  const formatDate = (value) => {
-    if (!value) return 'N/A';
+  /* ── Account deletion requests ───────────────────────────────── */
+  const [deletionRequests, setDeletionRequests] = useState([]);
+  const [deletionLoading, setDeletionLoading] = useState(false);
+  const [deletionSavingId, setDeletionSavingId] = useState(null);
+
+  /* ── Deleted accounts archive ────────────────────────────────── */
+  const [deletedAccounts, setDeletedAccounts] = useState([]);
+  const [deletedLoading, setDeletedLoading] = useState(false);
+  const [restoreSavingId, setRestoreSavingId] = useState(null);
+
+  /* ── Approve modal state ─────────────────────────────────────── */
+  const [showApproveModal, setShowApproveModal] = useState(false);
+  const [approveTarget, setApproveTarget] = useState(null);
+  const [approvePassword, setApprovePassword] = useState("");
+  const [approveSaving, setApproveSaving] = useState(false);
+  const [approveError, setApproveError] = useState("");
+
+  /* ── Decline modal state ─────────────────────────────────────── */
+  const [showDeclineModal, setShowDeclineModal] = useState(false);
+  const [declineTarget, setDeclineTarget] = useState(null);
+  const [declineSaving, setDeclineSaving] = useState(false);
+  const [declineError, setDeclineError] = useState("");
+  const [declineReason, setDeclineReason] = useState("");
+
+  const currentStaff = useMemo(() => readCurrentStaff(), []);
+
+  const isPortalAccount = (user) =>
+    user?.sourceTable === "staff_users" ||
+    user?.sourceTable === "admin_users";
+
+  const supportsIdType = (user) =>
+    user?.sourceTable === "profiles" ||
+    user?.sourceTable === "pending_registrations" ||
+    Boolean(user?.id_type);
+
+  const isCurrentAccount = useCallback(
+    (user) => {
+      if (!currentStaff || !user) return false;
+      const currentId = String(currentStaff.id || "");
+      const sourceId = String(user.sourceId || "");
+      const currentEmail = normalizeEmail(currentStaff.email);
+      const userEmail = normalizeEmail(user.email);
+      return Boolean(
+        (currentId && currentId === sourceId) ||
+          (currentEmail && currentEmail === userEmail),
+      );
+    },
+    [currentStaff],
+  );
+
+  /* ===========================================================
+     FETCH ALL USERS
+  =========================================================== */
+
+  const fetchAllUsers = useCallback(async (showLoading = true) => {
+    if (showLoading) setLoading(true);
+    else setRefreshing(true);
+
+    setError("");
+
     try {
-      return new Date(value).toLocaleString(undefined, {
-        year: 'numeric', month: 'short', day: 'numeric', hour: '2-digit', minute: '2-digit'
-      });
-    } catch { return String(value); }
-  };
+      const results = await Promise.allSettled([
+        supabase.from("admin_users").select("*").order("created_at", { ascending: false }),
+        supabase.from("staff_users").select("*").order("created_at", { ascending: false }),
+        supabase.from("profiles").select("*").order("created_at", { ascending: false }),
+        supabase.from("pending_registrations").select("*").order("created_at", { ascending: false }),
+      ]);
 
-  useEffect(() => { fetchAllUsers(); }, []);
+      const failed = [];
+      const accountMap = new Map();
 
-  const fetchAllUsers = async () => {
-    setLoading(true);
-    try {
-      const results = [];
-      // Per-table dedup so no pending user (or photo) is ever dropped.
-      const seen = {};
-      const addIfNew = (record, table) => {
-        const key = `${table}:${record.user_id || record.id || record.username || 'x'}`;
-        if (seen[key]) return;
-        seen[key] = true;
-        results.push(record);
+      const addUser = (record, sourceTable) => {
+        if (!record) return;
+
+        const sourceId = record.id;
+        const workId = getWorkId(record, sourceTable);
+        const username = rawText(record.username);
+
+        const identity = getAccountIdentity({
+          email: record.email,
+          username,
+          workId,
+          recordId: sourceId,
+        });
+
+        if (!identity) return;
+
+        const isAdminRow = sourceTable === "admin_users";
+        const isStaffRow = sourceTable === "staff_users";
+
+        const fullName =
+          record.full_name ||
+          [record.first_name, record.middle_name, record.last_name]
+            .filter(Boolean)
+            .join(" ") ||
+          "";
+
+        const photos = normalizePhotos(record);
+        const priority = TABLE_PRIORITY[sourceTable] || 0;
+
+        const normalized = {
+          ...record,
+          ...photos,
+          source: sourceTable,
+          sourceTable,
+          sourceId,
+          databaseId: record.id,
+          priority,
+          workId,
+          username: username || rawText(workId),
+          full_name: fullName,
+          displayRole: isAdminRow
+            ? "admin"
+            : isStaffRow
+              ? "staff"
+              : record.role || "user",
+          status: isAdminRow
+            ? "approved"
+            : isStaffRow
+              ? record.is_active === false
+                ? "inactive"
+                : "approved"
+              : rawText(record.status) ||
+                (record.is_active === false ? "inactive" : "approved"),
+          is_active: isAdminRow ? true : record.is_active,
+          password: null,
+          pending_id:
+            sourceTable === "pending_registrations" ? record.id : null,
+          profile_id:
+            sourceTable === "profiles" ? record.id : null,
+        };
+
+        const key = `account:${identity}`;
+        const previous = accountMap.get(key);
+
+        if (!previous) {
+          accountMap.set(key, normalized);
+          return;
+        }
+
+        let merged;
+        if (priority > (previous.priority || 0)) {
+          merged = mergeMissingFields(normalized, previous);
+        } else {
+          merged = mergeMissingFields(previous, normalized);
+        }
+        merged.pending_id =
+          previous.pending_id || normalized.pending_id || null;
+        merged.profile_id =
+          previous.profile_id || normalized.profile_id || null;
+        accountMap.set(key, merged);
       };
 
-      // 1. admin_users
-      const { data: admins } = await supabase
-        .from('admin_users').select('*').order('created_at', { ascending: false });
-      (admins || []).forEach(a => addIfNew({
-        ...a, ...normalizePhotos(a),
-        source: 'admin_users', sourceTable: 'admin_users', sourceId: a.id,
-        user_id: a.user_id || a.id, displayRole: a.role || 'admin',
-        status: 'approved', password: null,
-      }, 'admin_users'));
+      results.forEach((result, index) => {
+        const table = ACCOUNT_TABLES[index];
 
-      // 2. staff_users
-      const { data: staff } = await supabase
-        .from('staff_users').select('*').order('created_at', { ascending: false });
-      (staff || []).forEach(s => addIfNew({
-        ...s, ...normalizePhotos(s),
-        source: 'staff_users', sourceTable: 'staff_users', sourceId: s.id,
-        user_id: s.user_id || s.id, displayRole: s.role || 'staff',
-        status: s.is_active ? 'approved' : 'inactive', password: null,
-        email: s.email || '', username: s.user_id || '', full_name: s.full_name || '',
-        first_name: s.full_name?.split(' ')[0] || '',
-        last_name: s.full_name?.split(' ').slice(1).join(' ') || '',
-      }, 'staff_users'));
+        if (result.status === "rejected" || result.value.error) {
+          failed.push(TABLE_LABELS[table]);
+          return;
+        }
 
-      // 3. profiles
-      const { data: profiles } = await supabase
-        .from('profiles').select('*').order('created_at', { ascending: false });
-      (profiles || []).forEach(p => addIfNew({
-        ...p, ...normalizePhotos(p),
-        source: 'profiles', sourceTable: 'profiles', sourceId: p.id,
-        user_id: p.user_id || p.id, displayRole: p.role || 'user',
-        status: 'approved', password: null,
-      }, 'profiles'));
+        (result.value.data || []).forEach((record) => addUser(record, table));
+      });
 
-      // 4. pending_registrations  ← holds the ID photo
-      const { data: pending } = await supabase
-        .from('pending_registrations').select('*').order('created_at', { ascending: false });
-      (pending || []).forEach(p => addIfNew({
-        ...p, ...normalizePhotos(p),
-        source: 'pending_registrations', sourceTable: 'pending_registrations', sourceId: p.id,
-        user_id: p.user_id || p.id, displayRole: p.role || 'user',
-        status: p.status || 'pending', password: null,
-        full_name: `${p.first_name || ''} ${p.middle_name || ''} ${p.last_name || ''}`.trim(),
-      }, 'pending_registrations'));
+      const sortedUsers = [...accountMap.values()].sort((a, b) => {
+        const aTime = a.created_at ? new Date(a.created_at).getTime() : 0;
+        const bTime = b.created_at ? new Date(b.created_at).getTime() : 0;
+        return bTime - aTime;
+      });
 
-      setUsers(results);
-      console.log('id_image_url samples:', results.map(u => u.id_image_url).filter(Boolean).slice(0, 3));
+      setUsers(sortedUsers);
+
+      if (failed.length > 0) {
+        setError(
+          `Some account tables could not be read: ${failed.join(
+            ", ",
+          )}. Check your Supabase RLS policies.`,
+        );
+      }
     } catch (err) {
-      console.error('Error fetching users:', err);
-      setError('Failed to load users: ' + err.message);
-    } finally { setLoading(false); }
-  };
+      console.error("Error fetching users:", err);
+      setError(err?.message || "Failed to load user accounts.");
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
+    }
+  }, []);
 
-  const filteredUsers = users.filter(user => {
-    const search = searchTerm.toLowerCase();
-    const matchesSearch = !searchTerm ||
-      user.full_name?.toLowerCase().includes(search) ||
-      user.first_name?.toLowerCase().includes(search) ||
-      user.last_name?.toLowerCase().includes(search) ||
-      user.email?.toLowerCase().includes(search) ||
-      user.username?.toLowerCase().includes(search) ||
-      user.user_id?.toString().toLowerCase().includes(search);
-    const matchesRole = roleFilter === 'all' || user.displayRole === roleFilter;
-    const matchesStatus = statusFilter === 'all' || user.status === statusFilter;
-    return matchesSearch && matchesRole && matchesStatus;
-  });
+  useEffect(() => {
+    fetchAllUsers(true);
+  }, [fetchAllUsers]);
 
-  const getDetailFields = (user) => {
-    const fields = [];
-    if (user.full_name) fields.push({ label: 'Full Name', value: user.full_name, icon: User });
-    if (user.first_name) fields.push({ label: 'First Name', value: user.first_name, icon: User });
-    if (user.middle_name) fields.push({ label: 'Middle Name', value: user.middle_name, icon: User });
-    if (user.last_name) fields.push({ label: 'Last Name', value: user.last_name, icon: User });
-    if (user.username) fields.push({ label: 'Username', value: user.username, icon: User });
-    if (user.email) fields.push({ label: 'Email', value: user.email, icon: Mail });
-    if (user.user_id) fields.push({ label: 'User ID', value: String(user.user_id), icon: Hash });
-    if (user.custom_id) fields.push({ label: 'Custom ID', value: user.custom_id, icon: Hash });
-    if (user.id_number) fields.push({ label: 'ID Number', value: user.id_number, icon: CreditCard });
-    if (user.department) fields.push({ label: 'Department', value: user.department, icon: Building2 });
-    if (user.age != null) fields.push({ label: 'Age', value: String(user.age), icon: User });
-    if (user.birthdate) fields.push({ label: 'Birthdate', value: formatDate(user.birthdate), icon: Calendar });
-    if (user.address) fields.push({ label: 'Address', value: user.address, icon: MapPin });
-    if (user.mobile_number) fields.push({ label: 'Mobile Number', value: user.mobile_number, icon: Phone });
-    if (user.status) fields.push({ label: 'Status', value: user.status, icon: UserCheck });
-    if (typeof user.is_active === 'boolean') fields.push({ label: 'Active', value: user.is_active ? 'Yes' : 'No', icon: UserCheck });
-    if (user.created_at) fields.push({ label: 'Created', value: formatDate(user.created_at), icon: Clock });
-    if (user.updated_at) fields.push({ label: 'Last Updated', value: formatDate(user.updated_at), icon: Clock });
-    return fields;
-  };
-
-  const openDetails = (user) => setDetailsUser(user);
-
-  const SmartImage = ({ src, alt, className, fallback }) => {
-    const [failed, setFailed] = useState(false);
-    if (!src || failed) return fallback || null;
-    return <img src={src} alt={alt} className={className} onError={() => setFailed(true)} />;
-  };
-
-  const Avatar = ({ user, size = 'md' }) => {
-    const src = resolveImageUrl(user.avatar_url);
-    const sizeClasses = { sm: 'w-9 h-9 text-sm', md: 'w-14 h-14 text-xl', lg: 'w-24 h-24 text-3xl' };
-    const colorClasses =
-      user.displayRole === 'admin' ? 'bg-purple-600' :
-      user.displayRole === 'staff' ? 'bg-blue-600' : 'bg-green-600';
-    const initials = (user.first_name?.charAt(0) || user.full_name?.charAt(0) || '?').toUpperCase();
-    return (
-      <div className={`relative ${sizeClasses[size]} rounded-full ${colorClasses} text-white font-bold flex items-center justify-center overflow-hidden flex-shrink-0`}>
-        <span>{initials}</span>
-        {src && (
-          <img src={src} alt="Profile" className="absolute inset-0 w-full h-full object-cover"
-            onError={e => { e.currentTarget.style.display = 'none'; }} />
-        )}
-      </div>
-    );
-  };
-
-  const handleDeleteUser = async (user) => {
-    const userName = user.full_name || `${user.first_name || ''} ${user.last_name || ''}`.trim() || user.email;
-    if (!window.confirm(`⚠️ DELETE USER\n\nAre you sure you want to permanently delete ${userName}?\n\nThis will remove their record from ${user.sourceTable} table.\nThis action CANNOT be undone!`)) return;
-    if (!window.confirm(`FINAL CONFIRMATION\n\nType "DELETE" in the next prompt to confirm permanent deletion of ${userName}.`)) return;
-    const confirmation = prompt(`To confirm deletion of ${userName}, type "DELETE":`);
-    if (confirmation !== 'DELETE') { alert('Deletion cancelled.'); return; }
-    setSaving(true);
+  const fetchDeletionRequests = useCallback(async () => {
+    setDeletionLoading(true);
     try {
-      const { error } = await supabase.from(user.sourceTable).delete().eq('id', user.sourceId);
-      if (error) throw error;
-      alert(`✅ ${userName} has been permanently deleted.`);
-      fetchAllUsers();
-    } catch (err) { alert(`❌ Deletion failed: ${err.message}`); }
-    finally { setSaving(false); }
+      const { data, error } = await supabase
+        .from("account_deletion_requests")
+        .select("*")
+        .order("created_at", { ascending: false });
+
+      if (error) {
+        if (
+          String(error.message || "").includes("account_deletion_requests") ||
+          error.code === "42P01"
+        ) {
+          setDeletionRequests([]);
+          return;
+        }
+        throw error;
+      }
+
+      setDeletionRequests(data || []);
+    } catch (err) {
+      console.warn("Failed to load deletion requests:", err);
+      setDeletionRequests([]);
+    } finally {
+      setDeletionLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchDeletionRequests();
+  }, [fetchDeletionRequests]);
+
+  const fetchDeletedAccounts = useCallback(async () => {
+    setDeletedLoading(true);
+    try {
+      const { data, error } = await supabase
+        .from("deleted_accounts")
+        .select("*")
+        .order("deleted_at", { ascending: false });
+
+      if (error) {
+        if (
+          String(error.message || "").includes("deleted_accounts") ||
+          error.code === "42P01"
+        ) {
+          setDeletedAccounts([]);
+          return;
+        }
+        throw error;
+      }
+
+      setDeletedAccounts(data || []);
+    } catch (err) {
+      console.warn("Failed to load deleted accounts:", err);
+      setDeletedAccounts([]);
+    } finally {
+      setDeletedLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchDeletedAccounts();
+  }, [fetchDeletedAccounts]);
+
+  const buildRestoreRow = (archived) => {
+    const snapshot = archived?.snapshot || {};
+    const liveRow = snapshot.liveRow || null;
+    const table = archived.original_table;
+
+    if (liveRow && typeof liveRow === "object") {
+      return { table, row: { ...liveRow } };
+    }
+
+    if (table === "profiles") {
+      return {
+        table,
+        row: {
+          id: archived.auth_uid || archived.original_id || undefined,
+          email: archived.email || null,
+          full_name: archived.full_name || null,
+          mobile_number: archived.mobile_number || null,
+          role: archived.role || "user",
+          user_id: archived.work_id || null,
+          is_active: true,
+        },
+      };
+    }
+
+    if (table === "staff_users") {
+      return {
+        table,
+        row: {
+          id: archived.original_id ? Number(archived.original_id) : undefined,
+          user_id: archived.work_id || null,
+          email: archived.email || null,
+          full_name: archived.full_name || null,
+          mobile_number: archived.mobile_number || null,
+          role: archived.role || "staff",
+          password: snapshot.user?.password || "RESTORE_REQUIRED",
+          is_active: true,
+        },
+      };
+    }
+
+    if (table === "admin_users") {
+      return {
+        table,
+        row: {
+          id: archived.auth_uid || archived.original_id || undefined,
+          email: archived.email || null,
+          full_name: archived.full_name || null,
+          role: archived.role || "admin",
+          custom_id: archived.work_id || null,
+          user_id: archived.auth_uid || null,
+        },
+      };
+    }
+
+    if (table === "pending_registrations") {
+      return {
+        table,
+        row: {
+          id: archived.original_id || undefined,
+          email: archived.email || null,
+          first_name: (archived.full_name || "").split(" ")[0] || "Restored",
+          last_name: (archived.full_name || "").split(" ").slice(1).join(" ") || "User",
+          mobile_number: archived.mobile_number || null,
+          status: "pending",
+          role: archived.role || "user",
+          user_id: archived.work_id || null,
+        },
+      };
+    }
+
+    return { table, row: liveRow || null };
   };
+
+  const handleRestoreDeletedAccount = async (archived) => {
+    const label = archived.full_name || archived.email || "this account";
+    const ok = await showConfirm(
+      `Restore ${label}?\n\nTable: ${archived.original_table || "—"}\nEmail: ${archived.email || "—"}\n\nThe account will be inserted back into ${archived.original_table} and removed from deleted_accounts.`,
+    );
+    if (!ok) return;
+
+    setRestoreSavingId(archived.id);
+    setError("");
+
+    try {
+      const { table, row } = buildRestoreRow(archived);
+
+      if (!table || !row) {
+        throw new Error(
+          "This archive entry does not contain enough data to restore the account.",
+        );
+      }
+
+      const insertRow = Object.fromEntries(
+        Object.entries(row).filter(([, value]) => value !== undefined),
+      );
+
+      const { error: insertError } = await supabase.from(table).insert(insertRow);
+
+      if (insertError) {
+        if (
+          String(insertError.message || "").toLowerCase().includes("duplicate") ||
+          insertError.code === "23505"
+        ) {
+          throw new Error(
+            "An account with the same identity already exists. Remove the existing row before restoring.",
+          );
+        }
+        throw insertError;
+      }
+
+      await supabase.from("deleted_accounts").delete().eq("id", archived.id);
+
+      if (archived.auth_uid) {
+        try {
+          await supabase.from("notifications").insert({
+            user_id: archived.auth_uid,
+            title: "Account restored",
+            message:
+              "Your account was restored by an administrator. You can sign in again.",
+            type: "success",
+            related_id: archived.id,
+          });
+        } catch {
+          /* ignore */
+        }
+      }
+
+      await fetchDeletedAccounts();
+      await fetchAllUsers(false);
+      window.dispatchEvent(new Event("mdrrmo:notif-refresh"));
+      setCreateSuccess(`Account restored: ${label}`);
+    } catch (err) {
+      console.error("Restore failed:", err);
+      setError(err?.message || "Failed to restore the account.");
+    } finally {
+      setRestoreSavingId(null);
+    }
+  };
+
+  const notifyUser = async (userId, title, message, type = "info", relatedId = null) => {
+    if (!userId) return;
+    try {
+      await supabase.from("notifications").insert({
+        user_id: userId,
+        title,
+        message,
+        type,
+        related_id: relatedId,
+      });
+    } catch (err) {
+      console.warn("Notification failed:", err);
+    }
+  };
+
+  const archiveAndDeleteAccount = async (request, adminActor) => {
+    const email = String(request.requester_email || "").trim().toLowerCase();
+    const linkedIds = Array.isArray(request.requester_linked_ids)
+      ? request.requester_linked_ids
+      : [];
+
+    let liveRow = null;
+    const sourceTable = request.requester_source || "profiles";
+    try {
+      if (request.requester_profile_id && sourceTable === "profiles") {
+        const { data } = await supabase
+          .from("profiles")
+          .select("*")
+          .eq("id", request.requester_profile_id)
+          .maybeSingle();
+        liveRow = data;
+      } else if (email) {
+        const { data } = await supabase
+          .from(sourceTable === "staff_users" ? "staff_users" : "profiles")
+          .select("*")
+          .eq("email", email)
+          .maybeSingle();
+        liveRow = data;
+      }
+    } catch {
+      /* best effort */
+    }
+
+    const snapshot = {
+      request,
+      liveRow,
+      archived_at: new Date().toISOString(),
+    };
+
+    const archivePayload = {
+      original_table: request.requester_source || "profiles",
+      original_id: request.requester_profile_id || request.requester_work_id || null,
+      email: email || null,
+      full_name: request.requester_name || null,
+      mobile_number: request.requester_mobile || null,
+      role: request.requester_role || null,
+      work_id: request.requester_work_id || null,
+      account_type: request.requester_account_type || null,
+      auth_uid: request.requester_auth_id || null,
+      linked_ids: linkedIds,
+      snapshot,
+      deletion_request_id: request.id,
+      deleted_by: adminActor?.id || null,
+      deleted_by_name: adminActor?.fullName || adminActor?.full_name || "Administrator",
+      reason: request.reason || "Approved account deletion request",
+    };
+
+    const { error: archiveError } = await supabase
+      .from("deleted_accounts")
+      .insert(archivePayload);
+
+    if (archiveError) {
+      if (
+        String(archiveError.message || "").includes("deleted_accounts") ||
+        archiveError.code === "42P01"
+      ) {
+        throw new Error(
+          "deleted_accounts table is missing. Run account_deletion_tables.sql in Supabase.",
+        );
+      }
+      throw archiveError;
+    }
+
+    if (request.requester_profile_id) {
+      await supabase.from("profiles").delete().eq("id", request.requester_profile_id);
+    }
+
+    if (email) {
+      await supabase.from("pending_registrations").delete().eq("email", email);
+      await supabase.from("profiles").delete().eq("email", email);
+    }
+
+    if (request.requester_work_id) {
+      await supabase.from("staff_users").delete().eq("user_id", request.requester_work_id);
+    }
+
+    const { error: updateError } = await supabase
+      .from("account_deletion_requests")
+      .update({
+        status: "approved",
+        reviewed_at: new Date().toISOString(),
+        reviewed_by: adminActor?.id || null,
+        reviewed_by_name:
+          adminActor?.fullName || adminActor?.full_name || "Administrator",
+        updated_at: new Date().toISOString(),
+      })
+      .eq("id", request.id);
+
+    if (updateError) throw updateError;
+
+    if (request.requester_auth_id) {
+      await notifyUser(
+        request.requester_auth_id,
+        "Account deleted",
+        "Your account deletion request was approved. Your personal account data has been removed.",
+        "info",
+        request.id,
+      );
+    }
+  };
+
+  const handleApproveDeletionRequest = async (request) => {
+    const label = request.requester_name || request.requester_email || "this account";
+    const ok = await showConfirm(
+      `Approve deletion for ${label}?\n\nEmail: ${request.requester_email || "—"}\nRole: ${request.requester_role || "—"}\n\nThe account will be removed and archived in deleted_accounts.`,
+    );
+    if (!ok) return;
+
+    setDeletionSavingId(request.id);
+    setError("");
+
+    try {
+      const staff = (() => {
+        try {
+          return JSON.parse(localStorage.getItem("currentStaff") || "null");
+        } catch {
+          return null;
+        }
+      })();
+
+      await archiveAndDeleteAccount(request, {
+        id: staff?.id || staff?.user_id || null,
+        fullName: staff?.full_name || staff?.username || "Administrator",
+      });
+
+      await fetchDeletionRequests();
+      await fetchDeletedAccounts();
+      await fetchAllUsers(false);
+      window.dispatchEvent(new Event("mdrrmo:notif-refresh"));
+      setCreateSuccess(`Deletion approved and archived for ${label}.`);
+    } catch (err) {
+      console.error("Approve deletion failed:", err);
+      setError(err?.message || "Failed to approve the deletion request.");
+    } finally {
+      setDeletionSavingId(null);
+    }
+  };
+
+  const handleRejectDeletionRequest = async (request) => {
+    const label = request.requester_name || request.requester_email || "this account";
+    const ok = await showConfirm(
+      `Reject deletion request for ${label}? The account will remain active.`,
+    );
+    if (!ok) return;
+
+    setDeletionSavingId(request.id);
+    setError("");
+
+    try {
+      const staff = (() => {
+        try {
+          return JSON.parse(localStorage.getItem("currentStaff") || "null");
+        } catch {
+          return null;
+        }
+      })();
+
+      const { error: updateError } = await supabase
+        .from("account_deletion_requests")
+        .update({
+          status: "rejected",
+          reviewed_at: new Date().toISOString(),
+          reviewed_by: staff?.id || staff?.user_id || null,
+          reviewed_by_name: staff?.full_name || staff?.username || "Administrator",
+          admin_notes: "Rejected by administrator",
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", request.id);
+
+      if (updateError) throw updateError;
+
+      if (request.requester_auth_id) {
+        await notifyUser(
+          request.requester_auth_id,
+          "Deletion request rejected",
+          "Your account deletion request was rejected. Contact MDRRMO if you still need assistance.",
+          "warning",
+          request.id,
+        );
+      }
+
+      await fetchDeletionRequests();
+      window.dispatchEvent(new Event("mdrrmo:notif-refresh"));
+      setCreateSuccess(`Deletion request rejected for ${label}.`);
+    } catch (err) {
+      console.error("Reject deletion failed:", err);
+      setError(err?.message || "Failed to reject the deletion request.");
+    } finally {
+      setDeletionSavingId(null);
+    }
+  };
+
+  /* ===========================================================
+     DERIVED FILTERS
+  =========================================================== */
+
+  const filteredUsers = useMemo(() => {
+    const query = searchTerm.trim().toLowerCase();
+
+    return users.filter((user) => {
+      const idTypeLabel = user.id_type ? getIdTypeLabel(user.id_type) : "";
+
+      const matchesSearch =
+        !query ||
+        [
+          user.full_name,
+          user.first_name,
+          user.middle_name,
+          user.last_name,
+          user.email,
+          user.username,
+          user.workId,
+          user.user_id,
+          user.databaseId,
+          user.sourceTable,
+          user.id_type,
+          idTypeLabel,
+          user.id_number,
+        ]
+          .filter(Boolean)
+          .map((value) => String(value).toLowerCase())
+          .join(" ")
+          .includes(query);
+
+      const matchesRole =
+        roleFilter === "all" || user.displayRole === roleFilter;
+
+      const matchesStatus =
+        statusFilter === "all" ||
+        normalizeStatus(user.status) === normalizeStatus(statusFilter);
+
+      return matchesSearch && matchesRole && matchesStatus;
+    });
+  }, [roleFilter, searchTerm, statusFilter, users]);
+
+  const stats = useMemo(() => {
+    return {
+      total: users.length,
+      users: users.filter(
+        (user) => user.displayRole === "user" || !user.displayRole,
+      ).length,
+      staff: users.filter((user) => user.displayRole === "staff").length,
+      admins: users.filter((user) => user.displayRole === "admin").length,
+      pending: users.filter((user) => isPendingStatus(user.status)).length,
+      active: users.filter(
+        (user) =>
+          normalizeStatus(user.status) === "approved" ||
+          user.is_active === true,
+      ).length,
+    };
+  }, [users]);
+
+  /* ===========================================================
+     EDIT ACCOUNT
+  =========================================================== */
 
   const openEditModal = (user) => {
     setSelectedUser(user);
+
     setEditForm({
-      email: user.email || '',
-      username: user.username || user.user_id || '',
-      password: '', confirmPassword: '',
-      full_name: user.full_name || `${user.first_name || ''} ${user.middle_name || ''} ${user.last_name || ''}`.trim(),
-      role: user.displayRole || 'user',
-      is_active: user.is_active !== false && user.status !== 'rejected',
+      work_id: rawText(user.workId || user.user_id || user.custom_id),
+      username: normalizeUsername(user.username || user.workId),
+      email: normalizeEmail(user.email),
+      password: "",
+      confirmPassword: "",
+      full_name:
+        user.full_name ||
+        [user.first_name, user.middle_name, user.last_name]
+          .filter(Boolean)
+          .join(" "),
+      id_type: rawText(user.id_type),
+      role: user.displayRole || "user",
+      is_active: user.is_active !== false && user.status !== "rejected",
     });
-    setError('');
+
+    setShowPassword(false);
+    setShowConfirmPassword(false);
+    setError("");
     setShowEditModal(true);
   };
 
-  const handleSaveEdit = async (e) => {
-    e.preventDefault();
-    setError('');
-    if (editForm.password && editForm.password.length < 6) { setError('Password must be at least 6 characters.'); return; }
-    if (editForm.password && editForm.password !== editForm.confirmPassword) { setError('Passwords do not match.'); return; }
+  const handleSaveEdit = async (event) => {
+    event.preventDefault();
+
+    if (saving) return;
+    setError("");
+
+    const workId = rawText(editForm.work_id);
+    const username = normalizeUsername(editForm.username);
+    const fullName = rawText(editForm.full_name);
+    const email = normalizeEmail(editForm.email);
+    const idType = rawText(editForm.id_type);
+
+    if (!fullName) {
+      setError("Full name is required.");
+      return;
+    }
+
+    if (!EMAIL_PATTERN.test(email)) {
+      setError("Enter a valid email address.");
+      return;
+    }
+
+    if (idType && !ID_TYPE_OPTIONS.some((option) => option.value === idType)) {
+      setError("Select a valid ID type.");
+      return;
+    }
+
+    if (isPortalAccount(selectedUser)) {
+      if (workId.length < 3) {
+        setError("Work ID must contain at least 3 characters.");
+        return;
+      }
+      if (!validUsername(username)) {
+        setError(
+          "Username must be 3–50 characters and contain only letters, numbers, dots, underscores, or hyphens.",
+        );
+        return;
+      }
+    }
+
+    if (editForm.password && editForm.password.length < 6) {
+      setError("Password must be at least 6 characters.");
+      return;
+    }
+
+    if (editForm.password && editForm.password !== editForm.confirmPassword) {
+      setError("Passwords do not match.");
+      return;
+    }
+
     setSaving(true);
+
     try {
       const table = selectedUser.sourceTable;
       const recordId = selectedUser.sourceId;
       const updateData = {};
 
-      if (table === 'profiles') {
-        const nameParts = editForm.full_name.trim().split(' ');
-        updateData.first_name = nameParts[0] || '';
-        updateData.last_name = nameParts.slice(1).join(' ') || '';
-        updateData.full_name = editForm.full_name.trim();
-        updateData.email = editForm.email;
-        updateData.username = editForm.username;
+      if (table === "profiles") {
+        const nameParts = fullName.split(/\s+/);
+        updateData.first_name = nameParts.shift() || "";
+        updateData.middle_name = nameParts.length > 1 ? nameParts.shift() : "";
+        updateData.last_name = nameParts.join(" ") || "";
+        updateData.full_name = fullName;
+        updateData.email = email;
+        updateData.username = username || null;
+        updateData.id_type = idType || null;
         updateData.is_active = editForm.is_active;
-        updateData.role = editForm.role || 'user';
-      } else if (table === 'pending_registrations') {
-        const nameParts = editForm.full_name.trim().split(' ');
-        updateData.first_name = nameParts[0] || '';
-        updateData.last_name = nameParts.slice(1).join(' ') || '';
-        updateData.email = editForm.email;
-        updateData.username = editForm.username;
-        updateData.status = editForm.is_active ? 'approved' : 'rejected';
-      } else if (table === 'staff_users') {
-        updateData.full_name = editForm.full_name.trim();
-        updateData.email = editForm.email;
-        updateData.user_id = editForm.username;
-        updateData.is_active = editForm.is_active;
-        updateData.role = editForm.role || 'staff';
-      } else if (table === 'admin_users') {
-        updateData.full_name = editForm.full_name.trim();
-        updateData.email = editForm.email;
-        updateData.username = editForm.username;
-        updateData.role = editForm.role || 'admin';
+        updateData.role = editForm.role || "user";
       }
 
-      if (editForm.password) updateData.password = await hashPassword(editForm.password);
-
-      const { error: updateError } = await supabase.from(table).update(updateData).eq('id', recordId);
-      if (updateError) {
-        if (updateError.message?.includes('column "id" does not exist') || updateError.code === '42703') {
-          const { error: retryError } = await supabase.from(table).update(updateData).eq('user_id', selectedUser.user_id || recordId);
-          if (retryError) throw retryError;
-        } else throw updateError;
+      if (table === "pending_registrations") {
+        const nameParts = fullName.split(/\s+/);
+        updateData.first_name = nameParts.shift() || "";
+        updateData.middle_name = nameParts.length > 1 ? nameParts.shift() : "";
+        updateData.last_name = nameParts.join(" ") || "";
+        updateData.email = email;
+        updateData.username = username || null;
+        updateData.id_type = idType || null;
       }
-      alert(`✅ ${editForm.full_name.trim() || editForm.email} has been updated.`);
+
+      if (table === "staff_users") {
+        updateData.full_name = fullName;
+        updateData.email = email;
+        updateData.user_id = workId;
+        updateData.username = username;
+        updateData.role = "staff";
+        updateData.is_active = editForm.is_active;
+      }
+
+      if (table === "admin_users") {
+        updateData.full_name = fullName;
+        updateData.email = email;
+        updateData.custom_id = workId;
+        updateData.username = username;
+        updateData.role = "admin";
+        updateData.updated_at = new Date().toISOString();
+      }
+
+      if (editForm.password) {
+        updateData.password = await hashPassword(editForm.password);
+      }
+
+      const { error: updateError } = await supabase
+        .from(table)
+        .update(updateData)
+        .eq("id", recordId);
+
+      if (updateError) throw updateError;
+
+      await fetchAllUsers(false);
       setShowEditModal(false);
-      fetchAllUsers();
+      setSelectedUser(null);
     } catch (err) {
-      console.error('Update error:', err);
-      setError(err.message || 'Failed to update user. Check console for details.');
-    } finally { setSaving(false); }
+      console.error("Update user error:", err);
+      setError(err?.message || "Failed to update the user.");
+    } finally {
+      setSaving(false);
+    }
   };
 
-  const stats = {
-    total: users.length,
-    users: users.filter(u => u.displayRole === 'user' || !u.displayRole).length,
-    staff: users.filter(u => u.displayRole === 'staff').length,
-    admins: users.filter(u => u.displayRole === 'admin').length,
-    pending: users.filter(u => u.status === 'pending').length,
-    active: users.filter(u => u.status === 'approved' || u.is_active === true).length,
+  /* ===========================================================
+     APPROVE / DECLINE REGULAR USER ACCOUNT
+  =========================================================== */
+
+  const handleApprovalAction = (user, action) => {
+    const isPendingRegistration =
+      user?.sourceTable === "pending_registrations";
+    const pending = isPendingStatus(user?.status);
+
+    if (!isPendingRegistration || !pending) {
+      setError(
+        "Approve/Decline is only available for pending resident registrations.",
+      );
+      return;
+    }
+
+    if (action === "approved") {
+      setApproveTarget(user);
+      setApprovePassword("");
+      setApproveError("");
+      setShowApproveModal(true);
+      return;
+    }
+
+    setDeclineTarget(user);
+    setDeclineError("");
+    setDeclineReason("");
+    setShowDeclineModal(true);
   };
 
-  const StatusBadge = ({ user }) => {
-    let color = 'bg-gray-100 text-gray-700'; let label = 'Unknown';
-    if (user.status === 'approved' || user.is_active === true) { color = 'bg-green-100 text-green-700'; label = 'Active'; }
-    else if (user.status === 'pending') { color = 'bg-yellow-100 text-yellow-700'; label = 'Pending'; }
-    else if (user.status === 'rejected' || user.is_active === false) { color = 'bg-red-100 text-red-700'; label = 'Inactive'; }
-    return <span className={`px-3 py-1 rounded-full text-xs font-bold ${color}`}>{label}</span>;
+  const handleApproveConfirm = async (event) => {
+    event.preventDefault();
+
+    if (!approveTarget || approveSaving) return;
+
+    setApproveSaving(true);
+    setApproveError("");
+
+    try {
+      const currentStaffData = readCurrentStaff();
+
+      if (!currentStaffData) {
+        throw new Error(
+          "Your administrator session could not be read. Please sign in again.",
+        );
+      }
+
+      const registrationId =
+        approveTarget.pending_id || approveTarget.sourceId;
+
+      const { data, error } = await supabase.functions.invoke(
+        "approve-registration",
+        {
+          body: {
+            registration_id: registrationId,
+            requester_work_id:
+              currentStaffData.user_id ||
+              currentStaffData.custom_id ||
+              null,
+            requester_username: currentStaffData.username || null,
+            requester_email: currentStaffData.email || null,
+            requester_password: approvePassword,
+          },
+        },
+      );
+
+      if (error) {
+        let serverMessage = error.message || "Approval failed.";
+        try {
+          const ctx = error.context;
+          if (ctx && typeof ctx.json === "function") {
+            const body = await ctx.json();
+            if (body?.error) serverMessage = body.error;
+          }
+        } catch {
+          /* keep fallback */
+        }
+        throw new Error(serverMessage);
+      }
+
+      if (!data?.success) {
+        throw new Error(
+          data?.error || "Approval failed. No auth user was created.",
+        );
+      }
+
+      setShowApproveModal(false);
+      setApproveTarget(null);
+      setApprovePassword("");
+
+      const userName =
+        approveTarget.full_name || approveTarget.email || "the user";
+      setCreateSuccess(
+        `${userName}'s account was approved. They can now sign in.`,
+      );
+
+      await fetchAllUsers(false);
+    } catch (err) {
+      console.error("Approve registration error:", err);
+      setApproveError(
+        err?.message ||
+          "Failed to approve. Check the approve-registration function logs.",
+      );
+    } finally {
+      setApproveSaving(false);
+    }
   };
 
-  const RoleBadge = ({ role }) => {
-    const colors = {
-      admin: 'bg-purple-100 text-purple-700', staff: 'bg-blue-100 text-blue-700',
-      moderator: 'bg-indigo-100 text-indigo-700', user: 'bg-green-100 text-green-700',
-    };
-    const color = colors[role] || 'bg-gray-100 text-gray-600';
-    return <span className={`px-2 py-1 rounded-full text-xs font-bold ${color}`}>{role || 'user'}</span>;
+  const handleDeclineConfirm = async (event) => {
+    event.preventDefault();
+
+    if (!declineTarget || declineSaving) return;
+
+    setDeclineSaving(true);
+    setDeclineError("");
+    setApprovalSavingId(declineTarget.sourceId);
+
+    const trimmedReason = declineReason.trim();
+
+    try {
+      const { error: updateError } = await supabase
+        .from("pending_registrations")
+        .update({
+          status: "rejected",
+          review_notes: trimmedReason || null,
+          updated_at: new Date().toISOString(),
+        })
+        .eq("id", declineTarget.sourceId)
+        .eq("status", "pending");
+
+      if (updateError) throw updateError;
+
+      setShowDeclineModal(false);
+      setDeclineTarget(null);
+      setDeclineReason("");
+      await fetchAllUsers(false);
+    } catch (err) {
+      console.error("Decline registration error:", err);
+      setDeclineError(
+        err?.message ||
+          "Failed to decline the account. Please try again.",
+      );
+    } finally {
+      setDeclineSaving(false);
+      setApprovalSavingId(null);
+    }
   };
+
+  /* ===========================================================
+     DELETE ACCOUNT
+     - Archives to deleted_accounts
+     - Removes from all login tables so the user can no longer sign in
+  =========================================================== */
+
+  const handleDeleteUser = async (user) => {
+    const userName = user.full_name || user.email || "this account";
+
+    if (isCurrentAccount(user)) {
+      setError("You cannot delete the account that is currently signed in.");
+      return;
+    }
+
+    const accountSummary = [
+      `Name: ${user.full_name || userName}`,
+      `Email: ${user.email || "—"}`,
+      `Mobile: ${user.mobile_number || user.mobile || "—"}`,
+      `Role: ${user.role || user.displayRole || "—"}`,
+      `Work ID: ${user.workId || user.user_id || "—"}`,
+      `Source: ${user.sourceTable || "—"}`,
+      `Record ID: ${user.sourceId || "—"}`,
+    ].join("\n");
+
+    const firstConfirmation = await showConfirm(
+      `Delete this account?\n\n${accountSummary}\n\nThis will permanently remove the account from the login tables and move a copy to Deleted Accounts.`,
+    );
+    if (!firstConfirmation) return;
+
+    const secondConfirmation = await showConfirm(
+      "FINAL CONFIRMATION\n\nThis action cannot be undone. The user will no longer be able to log in. Continue?",
+    );
+    if (!secondConfirmation) return;
+
+    setSaving(true);
+    setError("");
+    setCreateSuccess("");
+
+    try {
+      const staff = (() => {
+        try {
+          return JSON.parse(localStorage.getItem("currentStaff") || "null");
+        } catch {
+          return null;
+        }
+      })();
+
+      // 1. Fetch complete live row
+      let liveRow = null;
+      try {
+        const { data: fetchedRow } = await supabase
+          .from(user.sourceTable)
+          .select("*")
+          .eq("id", user.sourceId)
+          .maybeSingle();
+        liveRow = fetchedRow;
+      } catch (err) {
+        console.warn("Live row fetch failed:", err);
+      }
+
+      // 2. Resolve UUID for deleted_by
+      let deletedByUuid = null;
+      if (staff?.id && typeof staff.id === "string" && staff.id.length === 36) {
+        deletedByUuid = staff.id;
+      } else if (
+        staff?.user_id &&
+        typeof staff.user_id === "string" &&
+        staff.user_id.length === 36
+      ) {
+        deletedByUuid = staff.user_id;
+      }
+
+      // 3. Archive first
+      const archivePayload = {
+        original_table: user.sourceTable,
+        original_id: String(user.sourceId ?? ""),
+        email: user.email || liveRow?.email || null,
+        full_name: user.full_name || liveRow?.full_name || userName,
+        mobile_number:
+          user.mobile_number || user.mobile || liveRow?.mobile_number || null,
+        role: user.role || user.displayRole || liveRow?.role || null,
+        work_id:
+          user.workId ||
+          user.user_id ||
+          liveRow?.user_id ||
+          liveRow?.custom_id ||
+          null,
+        account_type: user.displayRole || user.role || liveRow?.role || null,
+        auth_uid:
+          user.sourceTable === "profiles"
+            ? liveRow?.id || user.sourceId
+            : liveRow?.user_id || liveRow?.id || null,
+        linked_ids: [String(user.sourceId ?? "")].filter(Boolean),
+        snapshot: {
+          user,
+          liveRow,
+          archived_at: new Date().toISOString(),
+        },
+        deletion_request_id: null,
+        deleted_by: deletedByUuid,
+        deleted_by_name: staff?.full_name || staff?.username || "Administrator",
+        reason: "Deleted by administrator from User Management",
+      };
+
+      const { error: archiveError } = await supabase
+        .from("deleted_accounts")
+        .insert(archivePayload);
+
+      if (archiveError) {
+        if (
+          String(archiveError.message || "").includes("deleted_accounts") ||
+          archiveError.code === "42P01"
+        ) {
+          throw new Error(
+            "deleted_accounts table is missing. Run the account deletion migration SQL first.",
+          );
+        }
+        throw archiveError;
+      }
+
+      // 4. Best-effort: try to disable Auth user (if Edge Function exists)
+      const authUid =
+        user.sourceTable === "profiles"
+          ? liveRow?.id || user.sourceId
+          : liveRow?.user_id || null;
+
+      if (authUid) {
+        try {
+          await supabase.functions.invoke("delete-auth-user", {
+            body: { user_id: authUid },
+          });
+        } catch (authErr) {
+          console.warn("Could not delete/disable Auth user:", authErr);
+        }
+      }
+
+      // 5. Nullify common foreign keys
+      const sourceId = user.sourceId;
+      const nullifyPromises = [];
+
+      if (user.sourceTable === "profiles") {
+        nullifyPromises.push(
+          supabase.from("reportIncident").update({ userId: null }).eq("userId", sourceId),
+          supabase.from("borrow-vehicle").update({ userId: null }).eq("userId", sourceId),
+          supabase.from("borrower_slip").update({ user_id: null }).eq("user_id", sourceId),
+        );
+      }
+
+      if (user.sourceTable === "staff_users") {
+        nullifyPromises.push(
+          supabase.from("borrow-vehicle").update({ staffId: null }).eq("staffId", sourceId),
+          supabase.from("borrower_slip").update({ staff_id: null }).eq("staff_id", sourceId),
+          supabase.from("outPatientCheckUp").update({ staffId: null }).eq("staffId", sourceId),
+          supabase.from("hazard_reports").update({ assigned_to_staff_id: null }).eq("assigned_to_staff_id", sourceId),
+          supabase.from("hazard_reports").update({ reviewed_by_staff_id: null }).eq("reviewed_by_staff_id", sourceId),
+        );
+      }
+
+      await Promise.allSettled(nullifyPromises);
+
+      // 6. Hard delete from the source table
+      const { error: deleteError } = await supabase
+        .from(user.sourceTable)
+        .delete()
+        .eq("id", user.sourceId);
+
+      if (deleteError) throw deleteError;
+
+      // 7. Extra cleanup by email (removes any leftover login rows)
+      const email = (user.email || liveRow?.email || "").trim().toLowerCase();
+      if (email) {
+        await Promise.allSettled([
+          supabase.from("pending_registrations").delete().eq("email", email),
+          supabase.from("profiles").delete().eq("email", email),
+          supabase.from("staff_users").delete().eq("email", email),
+          supabase.from("admin_users").delete().eq("email", email),
+        ]);
+      }
+
+      // 8. Refresh
+      await Promise.all([
+        fetchAllUsers(false),
+        fetchDeletionRequests(),
+        fetchDeletedAccounts(),
+      ]);
+
+      window.dispatchEvent(new Event("mdrrmo:notif-refresh"));
+      setCreateSuccess(
+        `Account deleted. The user can no longer log in. A copy was saved in Deleted Accounts: ${userName}`,
+      );
+    } catch (err) {
+      console.error("Delete user error:", err);
+      setError(err?.message || "Failed to delete the user.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  /* ===========================================================
+     CREATE STAFF OR ADMIN ACCOUNT
+  =========================================================== */
+
+  const openCreateAccountModal = (role = "staff") => {
+    const normalizedRole = role === "admin" ? "admin" : "staff";
+    setCreateRole(normalizedRole);
+    setCreateForm({ ...EMPTY_CREATE_FORM, role: normalizedRole });
+    setCreateError("");
+    setShowCreateModal(true);
+  };
+
+  const handleCreateAccount = async (event) => {
+    event.preventDefault();
+
+    if (createSaving) return;
+    setCreateSaving(true);
+    setCreateError("");
+    setCreateSuccess("");
+
+    try {
+      const workId = rawText(createForm.work_id);
+      const username = normalizeUsername(createForm.username);
+      const fullName = rawText(createForm.full_name);
+      const email = normalizeEmail(createForm.email);
+      const password = createForm.password;
+      const confirmPassword = createForm.confirmPassword;
+      const requesterPassword = createForm.requester_password;
+
+      if (workId.length < 3) {
+        throw new Error("Work ID must contain at least 3 characters.");
+      }
+      if (!validUsername(username)) {
+        throw new Error(
+          "Username must be 3–50 characters and contain only letters, numbers, dots, underscores, or hyphens.",
+        );
+      }
+      if (fullName.length < 2) {
+        throw new Error("Full name is required.");
+      }
+      if (!EMAIL_PATTERN.test(email)) {
+        throw new Error("Enter a valid email address.");
+      }
+      if (password.length < 6) {
+        throw new Error("Password must be at least 6 characters.");
+      }
+      if (password !== confirmPassword) {
+        throw new Error("Passwords do not match.");
+      }
+      if (!requesterPassword) {
+        throw new Error("Enter your current administrator password.");
+      }
+
+      const mobileRaw = rawText(createForm.mobile_number);
+      let mobileNormalized = null;
+      if (mobileRaw) {
+        mobileNormalized = normalizePHMobile(mobileRaw);
+        if (!mobileNormalized) {
+          throw new Error(
+            "Contact number must be a valid Philippine mobile: 09XXXXXXXXX (11 digits) or +639XXXXXXXXX.",
+          );
+        }
+      }
+
+      const currentStaffData = readCurrentStaff();
+
+      if (!currentStaffData) {
+        throw new Error(
+          "Your administrator session could not be read. Please sign in again.",
+        );
+      }
+
+      const { data, error } = await supabase.functions.invoke(
+        "create-account",
+        {
+          body: {
+            account_type: createRole,
+            work_id: workId,
+            username,
+            full_name: fullName,
+            email,
+            password,
+            department: rawText(createForm.department) || null,
+            mobile_number: mobileNormalized,
+            requester_work_id:
+              currentStaffData.user_id || currentStaffData.id || null,
+            requester_username: currentStaffData.username || null,
+            requester_email: currentStaffData.email || null,
+            requester_password: requesterPassword,
+          },
+        },
+      );
+
+      if (error || !data?.success) {
+        const message = await parseFunctionError(error);
+        throw new Error(message || "Unable to create the account.");
+      }
+
+      await fetchAllUsers(false);
+      setShowCreateModal(false);
+      setCreateForm({ ...EMPTY_CREATE_FORM, role: createRole });
+
+      setCreateSuccess(
+        data?.message ||
+          `${
+            createRole === "admin" ? "Administrator" : "Staff"
+          } account for ${fullName} was ${
+            data?.created ? "created" : "updated"
+          } successfully.`,
+      );
+    } catch (err) {
+      console.error("Create account error:", err);
+      setCreateError(err?.message || "Unable to create the account.");
+    } finally {
+      setCreateSaving(false);
+    }
+  };
+
+  /* ===========================================================
+     DETAIL FIELDS
+  =========================================================== */
+
+  const getDetailFields = (user) => {
+    const fields = [];
+
+    if (user.full_name)
+      fields.push({ label: "Full Name", value: user.full_name, icon: User });
+    if (user.first_name)
+      fields.push({ label: "First Name", value: user.first_name, icon: User });
+    if (user.middle_name)
+      fields.push({ label: "Middle Name", value: user.middle_name, icon: User });
+    if (user.last_name)
+      fields.push({ label: "Last Name", value: user.last_name, icon: User });
+    if (user.workId)
+      fields.push({ label: "Work ID", value: user.workId, icon: Hash });
+    if (user.username)
+      fields.push({ label: "Username", value: user.username, icon: User });
+    if (user.email)
+      fields.push({ label: "Email", value: user.email, icon: Mail });
+    if (user.custom_id)
+      fields.push({ label: "Custom ID", value: user.custom_id, icon: Hash });
+    if (user.id_type)
+      fields.push({
+        label: "ID Type",
+        value: getIdTypeLabel(user.id_type),
+        icon: CreditCard,
+      });
+    if (user.id_number)
+      fields.push({ label: "ID Number", value: user.id_number, icon: CreditCard });
+    if (user.department)
+      fields.push({ label: "Department", value: user.department, icon: Building2 });
+    if (user.age != null)
+      fields.push({ label: "Age", value: String(user.age), icon: User });
+    if (user.birthdate)
+      fields.push({ label: "Birthdate", value: formatDate(user.birthdate), icon: Calendar });
+    if (user.address)
+      fields.push({ label: "Address", value: user.address, icon: MapPin });
+    if (user.mobile_number)
+      fields.push({ label: "Mobile Number", value: user.mobile_number, icon: Phone });
+
+    fields.push({ label: "Role", value: user.displayRole, icon: Shield });
+    fields.push({ label: "Status", value: prettyStatus(user.status), icon: UserCheck });
+
+    if (typeof user.is_active === "boolean") {
+      fields.push({
+        label: "Active",
+        value: user.is_active ? "Yes" : "No",
+        icon: UserCheck,
+      });
+    }
+
+    if (user.databaseId)
+      fields.push({
+        label: "Account Record ID",
+        value: String(user.databaseId),
+        icon: Hash,
+      });
+
+    if (user.sourceTable)
+      fields.push({ label: "Source Table", value: user.sourceTable, icon: Building2 });
+    if (user.created_at)
+      fields.push({ label: "Created", value: formatDate(user.created_at), icon: Clock });
+    if (user.updated_at)
+      fields.push({ label: "Last Updated", value: formatDate(user.updated_at), icon: Clock });
+
+    return fields;
+  };
+
+  /* ===========================================================
+     LOADING
+  =========================================================== */
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+      <div className="flex min-h-screen items-center justify-center bg-slate-50">
         <div className="text-center">
-          <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-purple-600 mx-auto"></div>
-          <p className="mt-4 text-gray-600 font-semibold">Loading all users...</p>
+          <Loader2 className="mx-auto h-12 w-12 animate-spin text-purple-600" />
+          <p className="mt-4 font-semibold text-gray-600">
+            Loading all user accounts...
+          </p>
         </div>
       </div>
     );
   }
 
+  const detailFields = detailsUser ? getDetailFields(detailsUser) : [];
+
+  /* ===========================================================
+     MAIN PAGE
+  =========================================================== */
+
   return (
-    <div className="p-6 md:p-10 bg-slate-50 min-h-screen">
-      <div className="max-w-7xl mx-auto">
+    <div className="min-h-screen bg-slate-50 p-4 dark:bg-slate-950 sm:p-6 lg:p-10">
+      <div className="mx-auto max-w-7xl">
         {/* Header */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="mb-6 flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div>
-            <h1 className="text-3xl font-black text-slate-800 flex items-center gap-3">
-              <Users className="w-8 h-8 text-purple-600" />
+            <h1 className="flex items-center gap-3 text-2xl font-black text-slate-800 dark:text-slate-100 sm:text-3xl">
+              <Users className="h-7 w-7 text-purple-600 sm:h-8 sm:w-8" />
               User Management
             </h1>
-            <p className="text-slate-500 mt-1">View, edit, and manage all user accounts (regular, staff, admin)</p>
+            <p className="mt-1 text-slate-500 dark:text-slate-400">
+              Manage resident, staff, and administrator accounts
+            </p>
           </div>
-         <div className="flex items-center gap-2">
-  <button
-    type="button"
-    onClick={() => setShowReport(true)}
-    className="px-4 py-2 border border-purple-300 text-purple-700 rounded-xl font-bold hover:bg-purple-50 transition flex items-center gap-2"
-  >
-    <Download className="w-4 h-4" />
-    Summary Report
-  </button>
-  <button onClick={fetchAllUsers}
-    className="px-4 py-2 bg-purple-600 text-white rounded-xl font-bold hover:bg-purple-700 transition flex items-center gap-2">
-    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" />
-    </svg>
-    Refresh
-  </button>
-</div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              onClick={() => openCreateAccountModal("staff")}
+              className="flex items-center gap-2 rounded-xl bg-blue-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-blue-700"
+            >
+              <Users className="h-4 w-4" />
+              Add Staff
+            </button>
+            <button
+              type="button"
+              onClick={() => openCreateAccountModal("admin")}
+              className="flex items-center gap-2 rounded-xl bg-purple-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-purple-700"
+            >
+              <Shield className="h-4 w-4" />
+              Add Admin
+            </button>
+            <button
+              type="button"
+              onClick={() => setShowReport(true)}
+              disabled={users.length === 0}
+              className="flex items-center gap-2 rounded-xl border border-purple-300 px-4 py-2 text-sm font-bold text-purple-700 transition hover:bg-purple-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-purple-700 dark:text-purple-300 dark:hover:bg-purple-950/30"
+            >
+              <Download className="h-4 w-4" />
+              Summary Report
+            </button>
+            <button
+              type="button"
+              onClick={() => fetchAllUsers(false)}
+              disabled={refreshing}
+              className="flex items-center gap-2 rounded-xl bg-slate-700 px-4 py-2 text-sm font-bold text-white transition hover:bg-slate-800 disabled:opacity-50 dark:bg-slate-600"
+            >
+              <RefreshCw
+                className={`h-4 w-4 ${refreshing ? "animate-spin" : ""}`}
+              />
+              Refresh
+            </button>
+          </div>
         </div>
 
-        {/* Stats */}
-        <div className="grid grid-cols-2 md:grid-cols-6 gap-3 mb-6">
+        {/* Create success */}
+        {createSuccess && (
+          <div
+            role="status"
+            className="mb-5 flex items-center gap-3 rounded-xl border border-emerald-200 bg-emerald-50 p-4"
+          >
+            <CheckCircle className="h-5 w-5 shrink-0 text-emerald-600" />
+            <p className="text-sm font-medium text-emerald-700">
+              {createSuccess}
+            </p>
+            <button
+              type="button"
+              onClick={() => setCreateSuccess("")}
+              aria-label="Dismiss success message"
+              className="ml-auto rounded-lg p-1 text-emerald-600 hover:bg-emerald-100"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+
+        {/* General error */}
+        {error && (
+          <div
+            role="alert"
+            className="mb-5 flex items-start gap-3 rounded-xl border border-red-200 bg-red-50 p-4"
+          >
+            <AlertCircle className="mt-0.5 h-5 w-5 shrink-0 text-red-600" />
+            <p className="text-sm font-medium text-red-700">{error}</p>
+          </div>
+        )}
+
+        {/* Account deletion requests */}
+        <div className="mb-6 overflow-hidden rounded-2xl border border-rose-200 bg-white shadow-sm dark:border-rose-900 dark:bg-slate-900">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-rose-100 bg-rose-50 px-4 py-3 dark:border-rose-900 dark:bg-rose-950/40">
+            <div className="flex items-center gap-2">
+              <Trash2 className="h-5 w-5 text-rose-600" />
+              <div>
+                <h2 className="text-sm font-black text-rose-900 dark:text-rose-100">
+                  Account Deletion Requests
+                </h2>
+                <p className="text-xs text-rose-700/80 dark:text-rose-300/80">
+                  Approve to delete the account and save a copy in deleted_accounts
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={fetchDeletionRequests}
+              disabled={deletionLoading}
+              className="inline-flex items-center gap-2 rounded-xl border border-rose-200 bg-white px-3 py-1.5 text-xs font-bold text-rose-700 transition hover:bg-rose-50 disabled:opacity-50 dark:border-rose-800 dark:bg-slate-900 dark:text-rose-300"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${deletionLoading ? "animate-spin" : ""}`} />
+              Refresh
+            </button>
+          </div>
+
+          <div className="overflow-x-auto">
+            {deletionLoading && deletionRequests.length === 0 ? (
+              <p className="p-6 text-center text-sm text-slate-500">Loading deletion requests...</p>
+            ) : deletionRequests.filter((r) => r.status === "pending").length === 0 ? (
+              <p className="p-6 text-center text-sm text-slate-500">
+                No pending account deletion requests.
+              </p>
+            ) : (
+              <table className="w-full min-w-[720px]">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-bold uppercase tracking-wide text-slate-500 dark:border-slate-700 dark:bg-slate-800">
+                    <th className="px-4 py-3">Requester</th>
+                    <th className="px-4 py-3">Contact</th>
+                    <th className="px-4 py-3">Role</th>
+                    <th className="px-4 py-3">Requested</th>
+                    <th className="px-4 py-3">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {deletionRequests
+                    .filter((r) => r.status === "pending")
+                    .map((request) => {
+                      const busy = deletionSavingId === request.id;
+                      return (
+                        <tr
+                          key={request.id}
+                          className="border-b border-slate-100 dark:border-slate-800"
+                        >
+                          <td className="px-4 py-3">
+                            <p className="text-sm font-bold text-slate-800 dark:text-slate-100">
+                              {request.requester_name || "—"}
+                            </p>
+                            <p className="text-xs text-slate-500">
+                              ID: {request.requester_work_id || "—"}
+                            </p>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
+                            <p>{request.requester_email || "—"}</p>
+                            <p className="text-xs text-slate-400">
+                              {request.requester_mobile || "No mobile"}
+                            </p>
+                          </td>
+                          <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
+                            {request.requester_role || request.requester_account_type || "—"}
+                          </td>
+                          <td className="px-4 py-3 text-xs text-slate-500">
+                            {request.created_at
+                              ? new Date(request.created_at).toLocaleString()
+                              : "—"}
+                          </td>
+                          <td className="px-4 py-3">
+                            <div className="flex flex-wrap gap-2">
+                              <button
+                                type="button"
+                                disabled={busy}
+                                onClick={() => handleApproveDeletionRequest(request)}
+                                className="inline-flex items-center gap-1 rounded-lg bg-rose-600 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-rose-700 disabled:opacity-50"
+                              >
+                                {busy ? (
+                                  <Loader2 className="h-3 w-3 animate-spin" />
+                                ) : (
+                                  <CheckCircle className="h-3 w-3" />
+                                )}
+                                Approve & Delete
+                              </button>
+                              <button
+                                type="button"
+                                disabled={busy}
+                                onClick={() => handleRejectDeletionRequest(request)}
+                                className="inline-flex items-center gap-1 rounded-lg border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
+                              >
+                                <X className="h-3 w-3" />
+                                Reject
+                              </button>
+                            </div>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+
+        {/* Deleted accounts archive */}
+        <div className="mb-6 overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-900">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-b border-slate-200 bg-slate-50 px-4 py-3 dark:border-slate-700 dark:bg-slate-800/80">
+            <div className="flex items-center gap-2">
+              <Trash2 className="h-5 w-5 text-slate-600 dark:text-slate-300" />
+              <div>
+                <h2 className="text-sm font-black text-slate-800 dark:text-slate-100">
+                  Deleted Accounts
+                </h2>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Archived accounts from admin delete or approved deletion requests. You can restore them.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={fetchDeletedAccounts}
+              disabled={deletedLoading}
+              className="inline-flex items-center gap-2 rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
+            >
+              <RefreshCw className={`h-3.5 w-3.5 ${deletedLoading ? "animate-spin" : ""}`} />
+              Refresh
+            </button>
+          </div>
+
+          <div className="overflow-x-auto">
+            {deletedLoading && deletedAccounts.length === 0 ? (
+              <p className="p-6 text-center text-sm text-slate-500">Loading deleted accounts...</p>
+            ) : deletedAccounts.length === 0 ? (
+              <p className="p-6 text-center text-sm text-slate-500">
+                No deleted accounts archived yet.
+              </p>
+            ) : (
+              <table className="w-full min-w-[900px]">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50 text-left text-xs font-bold uppercase tracking-wide text-slate-500 dark:border-slate-700 dark:bg-slate-800">
+                    <th className="px-4 py-3">Name</th>
+                    <th className="px-4 py-3">Contact</th>
+                    <th className="px-4 py-3">Role / Table</th>
+                    <th className="px-4 py-3">Deleted</th>
+                    <th className="px-4 py-3">Deleted By</th>
+                    <th className="px-4 py-3">Actions</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {deletedAccounts.map((row) => {
+                    const busy = restoreSavingId === row.id;
+                    return (
+                      <tr
+                        key={row.id}
+                        className="border-b border-slate-100 dark:border-slate-800"
+                      >
+                        <td className="px-4 py-3">
+                          <p className="text-sm font-bold text-slate-800 dark:text-slate-100">
+                            {row.full_name || "—"}
+                          </p>
+                          <p className="text-xs text-slate-500">
+                            Work ID: {row.work_id || "—"}
+                          </p>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
+                          <p>{row.email || "—"}</p>
+                          <p className="text-xs text-slate-400">
+                            {row.mobile_number || "No mobile"}
+                          </p>
+                        </td>
+                        <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
+                          <p>{row.role || row.account_type || "—"}</p>
+                          <p className="text-xs text-slate-400">
+                            {row.original_table || "—"}
+                          </p>
+                        </td>
+                        <td className="px-4 py-3 text-xs text-slate-500">
+                          {row.deleted_at
+                            ? new Date(row.deleted_at).toLocaleString()
+                            : "—"}
+                          {row.reason ? (
+                            <p className="mt-1 max-w-[200px] truncate text-[11px] text-slate-400" title={row.reason}>
+                              {row.reason}
+                            </p>
+                          ) : null}
+                        </td>
+                        <td className="px-4 py-3 text-sm text-slate-600 dark:text-slate-300">
+                          {row.deleted_by_name || "—"}
+                        </td>
+                        <td className="px-4 py-3">
+                          <button
+                            type="button"
+                            disabled={busy}
+                            onClick={() => handleRestoreDeletedAccount(row)}
+                            className="inline-flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-1.5 text-xs font-bold text-white transition hover:bg-emerald-700 disabled:opacity-50"
+                          >
+                            {busy ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <RefreshCw className="h-3 w-3" />
+                            )}
+                            Restore
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            )}
+          </div>
+        </div>
+
+        {/* Statistics */}
+        <div className="mb-6 grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">
           {[
-            { label: 'Total Users', value: stats.total, color: 'bg-blue-50 border-blue-200 text-blue-700', icon: Users },
-            { label: 'Regular', value: stats.users, color: 'bg-green-50 border-green-200 text-green-700', icon: User },
-            { label: 'Staff', value: stats.staff, color: 'bg-indigo-50 border-indigo-200 text-indigo-700', icon: Shield },
-            { label: 'Admins', value: stats.admins, color: 'bg-purple-50 border-purple-200 text-purple-700', icon: Shield },
-            { label: 'Pending', value: stats.pending, color: 'bg-yellow-50 border-yellow-200 text-yellow-700', icon: Clock },
-            { label: 'Active', value: stats.active, color: 'bg-green-50 border-green-200 text-green-700', icon: UserCheck },
-          ].map((stat, i) => (
-            <div key={i} className={`p-4 rounded-xl border ${stat.color} shadow-sm`}>
+            { label: "Total Users", value: stats.total, className: "border-blue-200 bg-blue-50 text-blue-700", icon: Users },
+            { label: "Regular", value: stats.users, className: "border-emerald-200 bg-emerald-50 text-emerald-700", icon: User },
+            { label: "Staff", value: stats.staff, className: "border-blue-200 bg-blue-50 text-blue-700", icon: ShieldCheck },
+            { label: "Admins", value: stats.admins, className: "border-purple-200 bg-purple-50 text-purple-700", icon: Shield },
+            { label: "Pending", value: stats.pending, className: "border-yellow-200 bg-yellow-50 text-yellow-700", icon: Clock },
+            { label: "Active", value: stats.active, className: "border-emerald-200 bg-emerald-50 text-emerald-700", icon: UserCheck },
+          ].map((stat) => (
+            <div
+              key={stat.label}
+              className={`rounded-xl border p-4 shadow-sm ${stat.className}`}
+            >
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-xs font-bold opacity-70">{stat.label}</p>
-                  <p className="text-2xl font-bold mt-1">{stat.value}</p>
+                  <p className="mt-1 text-2xl font-black">{stat.value}</p>
                 </div>
-                <stat.icon className="w-7 h-7 opacity-70" />
+                <stat.icon className="h-7 w-7 opacity-70" />
               </div>
             </div>
           ))}
         </div>
 
-        {/* Search & Filter */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm p-4 mb-6">
-          <div className="flex flex-col sm:flex-row gap-3">
+        {/* Search and filters */}
+        <div className="mb-6 rounded-2xl border border-slate-200 bg-white p-4 shadow-sm dark:border-slate-700 dark:bg-slate-800">
+          <div className="flex flex-col gap-3 xl:flex-row">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-3 w-5 h-5 text-slate-400" />
-              <input type="text" placeholder="Search by name, email, username, or ID..."
-                value={searchTerm} onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full pl-10 pr-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none" />
+              <Search className="absolute left-3 top-1/2 h-5 w-5 -translate-y-1/2 text-slate-400" />
+              <input
+                type="search"
+                aria-label="Search accounts"
+                placeholder="Search by name, email, username, ID type, ID number, or Work ID..."
+                value={searchTerm}
+                onChange={(event) => setSearchTerm(event.target.value)}
+                className="w-full rounded-xl border border-slate-300 bg-white py-2 pl-10 pr-4 text-sm outline-none transition focus:ring-2 focus:ring-purple-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+              />
             </div>
-            <select value={roleFilter} onChange={(e) => setRoleFilter(e.target.value)}
-              className="px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none bg-white">
+
+            <select
+              aria-label="Filter by role"
+              value={roleFilter}
+              onChange={(event) => setRoleFilter(event.target.value)}
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-purple-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
+            >
               <option value="all">All Roles</option>
               <option value="user">Regular User</option>
               <option value="staff">Staff</option>
               <option value="admin">Admin</option>
             </select>
-            <select value={statusFilter} onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-4 py-2 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none bg-white">
-              <option value="all">All Status</option>
+
+            <select
+              aria-label="Filter by status"
+              value={statusFilter}
+              onChange={(event) => setStatusFilter(event.target.value)}
+              className="rounded-xl border border-slate-300 bg-white px-4 py-2 text-sm font-semibold text-slate-700 outline-none focus:ring-2 focus:ring-purple-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
+            >
+              <option value="all">All Statuses</option>
               <option value="approved">Active</option>
               <option value="pending">Pending</option>
-              <option value="rejected">Inactive</option>
+              <option value="rejected">Rejected</option>
+              <option value="inactive">Inactive</option>
             </select>
           </div>
         </div>
 
-        {/* Table */}
-        <div className="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+        {/* Users table */}
+        <div className="overflow-hidden rounded-2xl border border-slate-200 bg-white shadow-sm dark:border-slate-700 dark:bg-slate-800">
           <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b border-slate-200 bg-slate-50">
-                  <th className="px-4 py-4 text-left text-sm font-bold text-slate-700">#</th>
-                  <th className="px-4 py-4 text-left text-sm font-bold text-slate-700">Name</th>
-                  <th className="px-4 py-4 text-left text-sm font-bold text-slate-700">Username</th>
-                  <th className="px-4 py-4 text-left text-sm font-bold text-slate-700">Email</th>
-                  <th className="px-4 py-4 text-left text-sm font-bold text-slate-700">Role</th>
-                  <th className="px-4 py-4 text-left text-sm font-bold text-slate-700">Source</th>
-                  <th className="px-4 py-4 text-left text-sm font-bold text-slate-700">Status</th>
-                  <th className="px-4 py-4 text-left text-sm font-bold text-slate-700">Actions</th>
+            <table className="w-full min-w-[1200px]">
+              <thead className="border-b border-slate-200 bg-slate-50 dark:border-slate-700 dark:bg-slate-900">
+                <tr>
+                  {[
+                    "#",
+                    "Name",
+                    "Work ID / User ID",
+                    "Username",
+                    "Email",
+                    "ID Type",
+                    "Role",
+                    "Source",
+                    "Status",
+                    "Details",
+                    "Actions",
+                  ].map((heading) => (
+                    <th
+                      key={heading}
+                      className="px-4 py-4 text-left text-sm font-bold text-slate-700 dark:text-slate-200"
+                    >
+                      {heading}
+                    </th>
+                  ))}
                 </tr>
               </thead>
+
               <tbody>
                 {filteredUsers.length === 0 ? (
                   <tr>
-                    <td colSpan={8} className="px-6 py-12 text-center">
-                      <AlertCircle className="w-12 h-12 text-slate-400 mx-auto mb-3" />
-                      <p className="text-slate-600 font-semibold">No users found matching your criteria.</p>
+                    <td colSpan={11} className="px-6 py-12 text-center">
+                      <AlertCircle className="mx-auto mb-3 h-12 w-12 text-slate-400" />
+                      <p className="font-semibold text-slate-600 dark:text-slate-300">
+                        No user accounts found matching your criteria.
+                      </p>
                     </td>
                   </tr>
                 ) : (
-                  filteredUsers.map((user, index) => (
-                    <tr key={`${user.sourceTable}-${user.sourceId}`} className="border-b border-slate-200 hover:bg-slate-50 transition">
-                      <td className="px-4 py-4 text-sm text-slate-500 font-mono">{index + 1}</td>
-                      <td className="px-4 py-4">
-                        <div className="flex items-center gap-3">
-                          <Avatar user={user} size="sm" />
-                          <div>
-                            <p className="font-semibold text-slate-800 text-sm">
-                              {user.full_name || `${user.first_name || ''} ${user.last_name || ''}`.trim() || 'Unknown'}
-                            </p>
-                            <p className="text-xs text-slate-400">
-                              ID: {(user.user_id || user.id || '').toString().slice(0, 12)}
-                            </p>
+                  filteredUsers.map((user, index) => {
+                    const current = isCurrentAccount(user);
+                    const isPendingRegistration =
+                      user.sourceTable === "pending_registrations";
+                    const pending = isPendingStatus(user.status);
+                    const canApproveOrDecline =
+                      isPendingRegistration && pending;
+
+                    return (
+                      <tr
+                        key={`${user.sourceTable}-${user.sourceId}`}
+                        className="border-b border-slate-200 transition hover:bg-slate-50 dark:border-slate-700 dark:hover:bg-slate-700/30"
+                      >
+                        <td className="px-4 py-4 font-mono text-sm text-slate-500">
+                          {index + 1}
+                        </td>
+
+                        <td className="px-4 py-4">
+                          <div className="flex items-center gap-3">
+                            <Avatar user={user} size="sm" />
+                            <div className="min-w-0">
+                              <p className="max-w-[220px] truncate text-sm font-semibold text-slate-800 dark:text-slate-100">
+                                {user.full_name || "Unknown"}
+                              </p>
+                              <p className="text-xs text-slate-400">
+                                Record:{" "}
+                                {String(
+                                  user.databaseId || user.sourceId || "",
+                                ).slice(0, 18)}
+                              </p>
+                            </div>
                           </div>
-                        </div>
-                      </td>
-                      <td className="px-4 py-4">
-                        <span className="text-sm font-medium text-slate-700">{user.username || user.user_id || 'N/A'}</span>
-                      </td>
-                      <td className="px-4 py-4 text-sm text-slate-600">{user.email || 'N/A'}</td>
-                      <td className="px-4 py-4"><RoleBadge role={user.displayRole} /></td>
-                      <td className="px-4 py-4">
-                        <span className="text-xs px-2 py-1 bg-slate-100 rounded font-mono">{user.sourceTable}</span>
-                      </td>
-                      <td className="px-4 py-4"><StatusBadge user={user} /></td>
-                      <td className="px-4 py-4">
-                        <div className="flex gap-2">
-                          <button onClick={() => openDetails(user)}
-                            className="flex items-center gap-1 px-3 py-2 bg-slate-600 hover:bg-slate-700 text-white rounded-lg text-xs font-bold transition"
-                            title="View account details">
-                            <Info className="w-3 h-3" /> Details
-                          </button>
-                          <button onClick={() => openEditModal(user)}
-                            className="flex items-center gap-1 px-3 py-2 bg-blue-500 hover:bg-blue-600 text-white rounded-lg text-xs font-bold transition"
-                            title="Edit user">
-                            <Edit3 className="w-3 h-3" /> Edit
-                          </button>
-                          <button onClick={() => handleDeleteUser(user)}
-                            className="flex items-center gap-1 px-3 py-2 bg-red-500 hover:bg-red-600 text-white rounded-lg text-xs font-bold transition"
-                            title="Delete user">
-                            <Trash2 className="w-3 h-3" /> Delete
-                          </button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))
+                        </td>
+
+                        <td className="px-4 py-4 font-mono text-sm text-slate-700 dark:text-slate-300">
+                          {user.workId || "N/A"}
+                        </td>
+
+                        <td className="px-4 py-4 text-sm text-slate-700 dark:text-slate-300">
+                          <span className="rounded-lg bg-slate-100 px-2 py-1 font-mono text-xs dark:bg-slate-700 dark:text-slate-200">
+                            {user.username || "N/A"}
+                          </span>
+                        </td>
+
+                        <td className="px-4 py-4 text-sm text-slate-600 dark:text-slate-400">
+                          {user.email || "N/A"}
+                        </td>
+
+                        <td className="px-4 py-4 text-sm text-slate-600 dark:text-slate-400">
+                          {user.id_type ? (
+                            <span className="inline-flex rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700">
+                              {getIdTypeLabel(user.id_type)}
+                            </span>
+                          ) : (
+                            "N/A"
+                          )}
+                        </td>
+
+                        <td className="px-4 py-4">
+                          <RoleBadge role={user.displayRole} />
+                        </td>
+
+                        <td className="px-4 py-4">
+                          <span className="rounded bg-slate-100 px-2 py-1 font-mono text-xs text-slate-600 dark:bg-slate-700 dark:text-slate-300">
+                            {user.sourceTable}
+                          </span>
+                        </td>
+
+                        <td className="px-4 py-4">
+                          <StatusBadge user={user} />
+                        </td>
+
+                        <td className="px-4 py-4">
+                          <div className="flex gap-2">
+                            <button
+                              type="button"
+                              onClick={() => setDetailsUser(user)}
+                              className="flex items-center gap-1 rounded-lg bg-slate-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-slate-700"
+                            >
+                              <Info className="h-3 w-3" />
+                              Details
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => openEditModal(user)}
+                              disabled={current}
+                              title={
+                                current
+                                  ? "You cannot edit the currently signed-in account here"
+                                  : "Edit account"
+                              }
+                              className="flex items-center gap-1 rounded-lg bg-blue-500 px-3 py-2 text-xs font-bold text-white transition hover:bg-blue-600 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              <Edit3 className="h-3 w-3" />
+                              Edit
+                            </button>
+                          </div>
+                        </td>
+
+                        <td className="px-4 py-4">
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteUser(user)}
+                              disabled={current}
+                              title={
+                                current
+                                  ? "You cannot delete the currently signed-in account"
+                                  : "Delete account"
+                              }
+                              className="flex items-center gap-1 rounded-lg bg-red-500 px-3 py-2 text-xs font-bold text-white transition hover:bg-red-600 disabled:cursor-not-allowed disabled:opacity-50"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                              Delete
+                            </button>
+
+                            {canApproveOrDecline && (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleApprovalAction(user, "approved")
+                                  }
+                                  disabled={approvalSavingId !== null}
+                                  className="flex items-center gap-1 rounded-lg bg-emerald-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  {approvalSavingId === user.sourceId ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <CheckCircle className="h-3 w-3" />
+                                  )}
+                                  Approve
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleApprovalAction(user, "rejected")
+                                  }
+                                  disabled={approvalSavingId !== null}
+                                  className="flex items-center gap-1 rounded-lg bg-red-600 px-3 py-2 text-xs font-bold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                                >
+                                  {approvalSavingId === user.sourceId ? (
+                                    <Loader2 className="h-3 w-3 animate-spin" />
+                                  ) : (
+                                    <X className="h-3 w-3" />
+                                  )}
+                                  Decline
+                                </button>
+                              </>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
           </div>
         </div>
 
-        <div className="mt-4 text-sm text-slate-500 text-center">
-          Showing {filteredUsers.length} of {users.length} total users
+        <div className="mt-4 text-center text-sm text-slate-500 dark:text-slate-400">
+          Showing {filteredUsers.length} of {users.length} total accounts
         </div>
       </div>
 
-      {/* ===== DETAILS MODAL ===== */}
-      {detailsUser && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={() => setDetailsUser(null)}>
-          <div className="bg-white rounded-2xl p-6 max-w-2xl w-full shadow-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                <Info className="w-5 h-5 text-slate-600" /> Account Details
-              </h3>
-              <button onClick={() => setDetailsUser(null)} className="p-2 hover:bg-slate-100 rounded-lg transition">
-                <X className="w-5 h-5 text-slate-500" />
+      {/* Approve modal */}
+      {showApproveModal && approveTarget && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black/50 p-4"
+          onClick={() => {
+            if (!approveSaving) {
+              setShowApproveModal(false);
+              setApproveTarget(null);
+            }
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="approve-account-title"
+            className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-slate-800"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 dark:border-slate-700">
+              <div className="flex items-center gap-3">
+                <div className="rounded-xl bg-emerald-100 p-2 text-emerald-600 dark:bg-emerald-900/40">
+                  <CheckCircle className="h-5 w-5" />
+                </div>
+                <div>
+                  <h2
+                    id="approve-account-title"
+                    className="text-xl font-bold text-slate-800 dark:text-slate-100"
+                  >
+                    Approve Account
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {approveTarget.full_name || approveTarget.email}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!approveSaving) {
+                    setShowApproveModal(false);
+                    setApproveTarget(null);
+                  }
+                }}
+                disabled={approveSaving}
+                aria-label="Close"
+                className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 disabled:opacity-50 dark:hover:bg-slate-700"
+              >
+                <X className="h-5 w-5" />
               </button>
             </div>
 
-            <div className="p-4 bg-slate-50 rounded-2xl mb-5 flex items-center gap-4">
-              <Avatar user={detailsUser} size="md" />
-              <div className="flex-1 min-w-0">
-                <p className="text-lg font-bold text-slate-800 truncate">
-                  {detailsUser.full_name || `${detailsUser.first_name || ''} ${detailsUser.last_name || ''}`.trim() || 'Unknown'}
+            <div className="space-y-5 p-6">
+              <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-4 text-sm dark:border-emerald-800 dark:bg-emerald-900/20">
+                <p className="font-bold text-emerald-800 dark:text-emerald-200">
+                  You are about to approve this account
                 </p>
-                <p className="text-sm text-slate-500 truncate">{detailsUser.email || 'No email'}</p>
-                <div className="flex gap-2 mt-1.5 flex-wrap">
+                <p className="mt-1 text-xs leading-relaxed text-emerald-700 dark:text-emerald-300">
+                  This will:
+                  <br />
+                  • Create a Supabase Auth user so they can log in
+                  <br />
+                  • Create a profile record in the profiles table
+                  <br />
+                  • Mark the registration as approved
+                </p>
+              </div>
+
+              {approveError && (
+                <div
+                  role="alert"
+                  className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"
+                >
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <p>{approveError}</p>
+                </div>
+              )}
+
+              <form onSubmit={handleApproveConfirm}>
+                <div className="mb-4">
+                  <label
+                    htmlFor="approve-password"
+                    className="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-200"
+                  >
+                    Your Current Administrator Password *
+                  </label>
+                  <div className="relative">
+                    <input
+                      id="approve-password"
+                      type="password"
+                      required
+                      value={approvePassword}
+                      onChange={(event) =>
+                        setApprovePassword(event.target.value)
+                      }
+                      placeholder="Enter your admin password"
+                      autoComplete="current-password"
+                      className="w-full rounded-xl border border-slate-300 py-2.5 pl-3 pr-11 text-sm outline-none focus:ring-2 focus:ring-emerald-500 dark:border-slate-600 dark:bg-slate-900"
+                    />
+                    <Lock className="absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                  </div>
+                  <p className="mt-1 text-xs text-slate-500">
+                    This verifies that you are authorized to approve this
+                    account.
+                  </p>
+                </div>
+
+                <div className="flex justify-end gap-3 pt-2">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      if (!approveSaving) {
+                        setShowApproveModal(false);
+                        setApproveTarget(null);
+                      }
+                    }}
+                    disabled={approveSaving}
+                    className="rounded-lg border border-slate-300 px-4 py-2.5 font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    disabled={approveSaving || !approvePassword}
+                    className="flex items-center gap-2 rounded-lg bg-emerald-600 px-5 py-2.5 font-bold text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-50"
+                  >
+                    {approveSaving ? (
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    ) : (
+                      <CheckCircle className="h-4 w-4" />
+                    )}
+                    {approveSaving ? "Approving..." : "Approve Account"}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Decline modal */}
+      {showDeclineModal && declineTarget && (
+        <div
+          className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black/50 p-4"
+          onClick={() => {
+            if (!declineSaving) {
+              setShowDeclineModal(false);
+              setDeclineTarget(null);
+              setDeclineReason("");
+            }
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="decline-account-title"
+            className="w-full max-w-md overflow-hidden rounded-2xl bg-white shadow-2xl dark:bg-slate-800"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4 dark:border-slate-700">
+              <div className="flex items-center gap-3">
+                <div className="rounded-xl bg-red-100 p-2 text-red-600 dark:bg-red-900/40">
+                  <X className="h-5 w-5" />
+                </div>
+                <div>
+                  <h2
+                    id="decline-account-title"
+                    className="text-xl font-bold text-slate-800 dark:text-slate-100"
+                  >
+                    Decline Account
+                  </h2>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    {declineTarget.full_name ||
+                      declineTarget.email ||
+                      "this account"}
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => {
+                  if (!declineSaving) {
+                    setShowDeclineModal(false);
+                    setDeclineTarget(null);
+                    setDeclineReason("");
+                  }
+                }}
+                disabled={declineSaving}
+                aria-label="Close"
+                className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 disabled:opacity-50 dark:hover:bg-slate-700"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleDeclineConfirm} className="space-y-5 p-6">
+              <div className="rounded-xl border border-red-200 bg-red-50 p-4 text-sm dark:border-red-800 dark:bg-red-900/20">
+                <p className="font-bold text-red-800 dark:text-red-200">
+                  This will reject the registration
+                </p>
+                <p className="mt-1 text-xs leading-relaxed text-red-700 dark:text-red-300">
+                  The user will not be able to log in with this account. They
+                  will see the reason below the next time they try to sign in.
+                </p>
+              </div>
+
+              {declineError && (
+                <div
+                  role="alert"
+                  className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"
+                >
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <p>{declineError}</p>
+                </div>
+              )}
+
+              <div>
+                <label
+                  htmlFor="decline-reason"
+                  className="mb-1 block text-sm font-semibold text-slate-700 dark:text-slate-200"
+                >
+                  Reason for declining
+                  <span className="ml-1 text-xs font-normal text-slate-400">
+                    (optional, but recommended)
+                  </span>
+                </label>
+                <textarea
+                  id="decline-reason"
+                  rows={3}
+                  value={declineReason}
+                  onChange={(event) =>
+                    setDeclineReason(event.target.value)
+                  }
+                  placeholder="e.g. The submitted ID number does not match the attached photo. Please re-register with a clear image of your valid ID."
+                  maxLength={500}
+                  className="w-full resize-y rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:ring-2 focus:ring-red-500 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-100"
+                />
+                <p className="mt-1 text-xs text-slate-500">
+                  {declineReason.length}/500 characters. This reason is shown
+                  to the user the next time they try to sign in.
+                </p>
+              </div>
+
+              <div className="flex justify-end gap-3">
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (!declineSaving) {
+                      setShowDeclineModal(false);
+                      setDeclineTarget(null);
+                      setDeclineReason("");
+                    }
+                  }}
+                  disabled={declineSaving}
+                  className="rounded-lg border border-slate-300 px-4 py-2.5 font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={declineSaving}
+                  className="flex items-center gap-2 rounded-lg bg-red-600 px-5 py-2.5 font-bold text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {declineSaving ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <X className="h-4 w-4" />
+                  )}
+                  {declineSaving ? "Declining..." : "Decline Account"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
+
+      {/* Create account modal */}
+      {showCreateModal && (
+        <CreateAccountModal
+          key={createRole}
+          role={createRole}
+          form={createForm}
+          setForm={setCreateForm}
+          saving={createSaving}
+          error={createError}
+          onClose={() => {
+            if (!createSaving) {
+              setShowCreateModal(false);
+              setCreateError("");
+            }
+          }}
+          onSubmit={handleCreateAccount}
+        />
+      )}
+
+      {/* Details modal */}
+      {detailsUser && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-4"
+          onClick={() => setDetailsUser(null)}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="account-details-title"
+            className="max-h-[80vh] w-full max-w-5xl overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-800"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between gap-3">
+              <h2
+                id="account-details-title"
+                className="flex items-center gap-2 text-xl font-bold text-slate-800 dark:text-slate-100"
+              >
+                <Info className="h-5 w-5 text-slate-600" />
+                Account Details
+              </h2>
+              <button
+                type="button"
+                onClick={() => setDetailsUser(null)}
+                aria-label="Close details"
+                className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="mb-5 flex items-center gap-4 rounded-2xl bg-slate-50 p-4 dark:bg-slate-900">
+              <Avatar user={detailsUser} />
+              <div className="min-w-0 flex-1">
+                <p className="truncate text-lg font-bold text-slate-800 dark:text-slate-100">
+                  {detailsUser.full_name || detailsUser.email || "Unknown"}
+                </p>
+                <p className="truncate text-sm text-slate-500">
+                  {detailsUser.email || "No email"}
+                </p>
+                <div className="mt-2 flex flex-wrap gap-2">
                   <RoleBadge role={detailsUser.displayRole} />
                   <StatusBadge user={detailsUser} />
-                  <span className="text-xs px-2 py-1 bg-slate-200 text-slate-700 rounded-full font-mono">
+                  {detailsUser.id_type && (
+                    <span className="rounded-full border border-blue-200 bg-blue-50 px-2 py-1 text-xs font-bold text-blue-700">
+                      {getIdTypeLabel(detailsUser.id_type)}
+                    </span>
+                  )}
+                  <span className="rounded-full bg-slate-200 px-2 py-1 font-mono text-xs text-slate-600 dark:bg-slate-700 dark:text-slate-300">
                     {detailsUser.sourceTable}
                   </span>
                 </div>
               </div>
             </div>
 
-            {/* Photos */}
             <div className="mb-5">
-              <p className="text-sm font-bold text-slate-600 mb-3 flex items-center gap-2">
-                <Camera className="w-4 h-4 text-purple-600" /> Photos
-              </p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                {/* Profile Picture */}
-                <div className="p-4 border border-slate-200 rounded-xl bg-white">
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3 flex items-center gap-1">
-                    <Camera className="w-3.5 h-3.5" /> Profile Picture
-                  </p>
-                  <SmartImage
-                    src={resolveImageUrl(detailsUser.avatar_url)}
-                    alt="Profile"
-                    className="w-full h-44 object-cover rounded-lg border border-slate-200 bg-slate-50"
-                    fallback={
-                      <div className="w-full h-44 rounded-lg border-2 border-dashed border-slate-200 bg-slate-50 flex flex-col items-center justify-center text-slate-400">
-                        <Camera className="w-8 h-8 mb-2" />
-                        <p className="text-xs font-semibold">No profile picture uploaded</p>
-                      </div>
-                    }
-                  />
-                </div>
-                {/* ID Picture */}
-                <div className="p-4 border border-slate-200 rounded-xl bg-white">
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wide mb-3 flex items-center gap-1">
-                    <CreditCard className="w-3.5 h-3.5" /> ID Picture
-                  </p>
-                  <SmartImage
-                    src={resolveImageUrl(detailsUser.id_photo_url)}
-                    alt="Government ID"
-                    className="w-full h-44 object-cover rounded-lg border border-slate-200 bg-slate-50"
-                    fallback={
-                      <div className="w-full h-44 rounded-lg border-2 border-dashed border-slate-200 bg-slate-50 flex flex-col items-center justify-center text-slate-400">
-                        <CreditCard className="w-8 h-8 mb-2" />
-                        <p className="text-xs font-semibold">No ID picture uploaded</p>
-                      </div>
-                    }
-                  />
-                </div>
+              <div className="mb-3 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                <p className="flex items-center gap-2 text-sm font-bold text-slate-600 dark:text-slate-300">
+                  <Camera className="h-4 w-4 text-purple-600" />
+                  Identity and Verification Photos
+                </p>
+                {detailsUser.id_type && (
+                  <span className="rounded-full bg-blue-50 px-3 py-1 text-xs font-bold text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                    {getIdTypeLabel(detailsUser.id_type)}
+                  </span>
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <PhotoCard
+                  label="Profile Picture"
+                  value={detailsUser.avatar_url}
+                  alt={`${detailsUser.full_name || "User"} profile picture`}
+                  icon={Camera}
+                />
+                <PhotoCard
+                  label="Front Side of ID"
+                  value={
+                    detailsUser.id_front_image_url ||
+                    detailsUser.id_photo_url ||
+                    detailsUser.id_image_url
+                  }
+                  alt="Front side of government ID"
+                  icon={CreditCard}
+                  contain
+                />
+                <PhotoCard
+                  label="Back Side of ID"
+                  value={detailsUser.id_back_image_url}
+                  alt="Back side of government ID"
+                  icon={CreditCard}
+                  contain
+                />
+                <PhotoCard
+                  label="Person Holding ID"
+                  value={detailsUser.id_holder_image_url}
+                  alt="Person holding government ID"
+                  icon={Camera}
+                  contain
+                />
               </div>
             </div>
 
-            {/* Fields */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-              {getDetailFields(detailsUser).map((field, i) => (
-                <div key={i} className="p-3 border border-slate-200 rounded-xl bg-white">
-                  <p className="text-xs font-bold text-slate-400 uppercase tracking-wide flex items-center gap-1">
-                    <field.icon className="w-3.5 h-3.5" /> {field.label}
-                  </p>
-                  <p className="text-sm font-semibold text-slate-800 mt-1 break-words">{field.value || 'N/A'}</p>
-                </div>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {detailFields.map((field, index) => (
+                <DetailField
+                  key={`${field.label}-${index}`}
+                  icon={field.icon}
+                  label={field.label}
+                  value={field.value}
+                />
               ))}
             </div>
 
-            {getDetailFields(detailsUser).length === 0 && (
-              <p className="text-center text-slate-500 py-6">No additional details available.</p>
+            {detailFields.length === 0 && (
+              <p className="py-6 text-center text-slate-500">
+                No additional details available.
+              </p>
             )}
 
-            <div className="flex gap-3 pt-5 mt-5 border-t border-slate-200">
+            <div className="mt-5 flex flex-col gap-3 border-t border-slate-200 pt-5 sm:flex-row">
               <button
-                onClick={() => { const u = detailsUser; setDetailsUser(null); openEditModal(u); }}
-                className="flex-1 px-4 py-3 bg-blue-600 hover:bg-blue-700 text-white rounded-xl font-bold transition flex items-center justify-center gap-2">
-                <Edit3 className="w-4 h-4" /> Edit Account
+                type="button"
+                onClick={() => {
+                  const user = detailsUser;
+                  setDetailsUser(null);
+                  openEditModal(user);
+                }}
+                disabled={isCurrentAccount(detailsUser)}
+                className="flex flex-1 items-center justify-center gap-2 rounded-xl bg-blue-600 px-4 py-3 font-bold text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                <Edit3 className="h-4 w-4" />
+                Edit Account
               </button>
-              <button onClick={() => setDetailsUser(null)}
-                className="px-6 py-3 border border-slate-300 rounded-xl hover:bg-slate-50 font-bold transition">
+              <button
+                type="button"
+                onClick={() => setDetailsUser(null)}
+                className="rounded-xl border border-slate-300 px-6 py-3 font-bold text-slate-700 transition hover:bg-slate-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
+              >
                 Close
               </button>
             </div>
@@ -606,235 +3028,916 @@ const [showReport, setShowReport] = useState(false);
         </div>
       )}
 
-      {/* ===== EDIT MODAL ===== */}
-      {showEditModal && (
-        <div className="fixed inset-0 bg-black/60 flex items-center justify-center z-50 p-4" onClick={() => setShowEditModal(false)}>
-          <div className="bg-white rounded-2xl p-6 max-w-lg w-full shadow-2xl max-h-[90vh] overflow-y-auto" onClick={e => e.stopPropagation()}>
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-xl font-bold text-slate-800 flex items-center gap-2">
-                <Edit3 className="w-5 h-5 text-blue-600" /> Edit User
-              </h3>
-              <button onClick={() => setShowEditModal(false)} className="p-2 hover:bg-slate-100 rounded-lg transition">
-                <X className="w-5 h-5 text-slate-500" />
+      {/* Edit modal */}
+      {showEditModal && selectedUser && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-black/60 p-4"
+          onClick={() => {
+            if (!saving) setShowEditModal(false);
+          }}
+        >
+          <div
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="edit-account-title"
+            className="max-h-[80vh] w-full max-w-lg overflow-y-auto rounded-2xl bg-white p-6 shadow-2xl dark:bg-slate-800"
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h2
+                id="edit-account-title"
+                className="flex items-center gap-2 text-xl font-bold text-slate-800 dark:text-slate-100"
+              >
+                <Edit3 className="h-5 w-5 text-blue-600" />
+                Edit User
+              </h2>
+              <button
+                type="button"
+                onClick={() => setShowEditModal(false)}
+                disabled={saving}
+                aria-label="Close edit dialog"
+                className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 disabled:opacity-50"
+              >
+                <X className="h-5 w-5" />
               </button>
             </div>
 
-            {selectedUser && (
-              <div className="mb-4 p-3 bg-slate-50 rounded-xl">
-                <p className="text-sm font-bold text-slate-700">Editing: {selectedUser.full_name || selectedUser.email}</p>
-                <p className="text-xs text-slate-500">Table: {selectedUser.sourceTable} · Role: {selectedUser.displayRole}</p>
-              </div>
-            )}
+            <div className="mb-4 rounded-xl bg-slate-50 p-3 dark:bg-slate-900">
+              <p className="text-sm font-bold text-slate-700 dark:text-slate-200">
+                Editing: {selectedUser.full_name || selectedUser.email}
+              </p>
+              <p className="text-xs text-slate-500">
+                Table: {selectedUser.sourceTable} · Role: {selectedUser.displayRole}
+              </p>
+            </div>
 
             {error && (
-              <div className="mb-4 p-3 bg-red-50 border border-red-200 rounded-xl flex items-center gap-2">
-                <AlertCircle className="w-4 h-4 text-red-600 flex-shrink-0" />
-                <p className="text-sm text-red-700">{error}</p>
+              <div
+                role="alert"
+                className="mb-4 flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700"
+              >
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                <p>{error}</p>
               </div>
             )}
 
             <form onSubmit={handleSaveEdit} className="space-y-4">
               <div>
-                <label className="text-sm font-bold text-slate-700">
-                  <User className="w-4 h-4 inline mr-1 text-purple-600" /> Full Name
+                <label
+                  htmlFor="edit-full-name"
+                  className="mb-1 block text-sm font-bold text-slate-700 dark:text-slate-200"
+                >
+                  Full Name
                 </label>
-                <div className="w-full p-2.5 border border-slate-200 rounded-xl bg-slate-100 text-slate-600 mt-1 flex items-center gap-2">
-                  <User className="w-4 h-4 text-slate-400" />
-                  <span className="font-medium">{editForm.full_name || 'Unknown'}</span>
-                </div>
-                <p className="text-xs text-slate-400 mt-1">Name cannot be edited. Contact user to update their profile.</p>
+                <input
+                  id="edit-full-name"
+                  type="text"
+                  required
+                  value={editForm.full_name}
+                  onChange={(event) =>
+                    setEditForm({ ...editForm, full_name: event.target.value })
+                  }
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-purple-500 dark:border-slate-600 dark:bg-slate-900"
+                />
               </div>
 
-              <div>
-                <label className="text-sm font-bold text-slate-700">
-                  <User className="w-4 h-4 inline mr-1 text-purple-600" />
-                  {selectedUser?.sourceTable === 'staff_users' ? 'Work ID' : 'Username'}
-                </label>
-                <input type="text" value={editForm.username}
-                  onChange={e => setEditForm({...editForm, username: e.target.value})}
-                  className="w-full p-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none mt-1"
-                  required placeholder={selectedUser?.sourceTable === 'staff_users' ? 'Work ID number' : 'Username'} />
-              </div>
-
-              <div>
-                <label className="text-sm font-bold text-slate-700">
-                  <Mail className="w-4 h-4 inline mr-1 text-purple-600" /> Email Address
-                </label>
-                <input type="email" value={editForm.email}
-                  onChange={e => setEditForm({...editForm, email: e.target.value})}
-                  className="w-full p-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none mt-1" required />
-              </div>
-
-              {(selectedUser?.sourceTable === 'staff_users' || selectedUser?.sourceTable === 'admin_users') && (
+              {isPortalAccount(selectedUser) && (
                 <div>
-                  <label className="text-sm font-bold text-slate-700">
-                    <Shield className="w-4 h-4 inline mr-1 text-purple-600" /> Role
+                  <label
+                    htmlFor="edit-work-id"
+                    className="mb-1 block text-sm font-bold text-slate-700 dark:text-slate-200"
+                  >
+                    Work ID
                   </label>
-                  <select value={editForm.role}
-                    onChange={e => setEditForm({...editForm, role: e.target.value})}
-                    className="w-full p-2.5 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none mt-1 bg-white">
-                    {selectedUser?.sourceTable === 'staff_users' ? (
-                      <><option value="staff">Staff</option><option value="admin">Admin</option></>
-                    ) : (
-                      <><option value="admin">Admin</option><option value="moderator">Moderator</option></>
-                    )}
-                  </select>
+                  <input
+                    id="edit-work-id"
+                    type="text"
+                    required
+                    minLength={3}
+                    value={editForm.work_id}
+                    onChange={(event) =>
+                      setEditForm({ ...editForm, work_id: event.target.value })
+                    }
+                    autoCapitalize="none"
+                    spellCheck={false}
+                    className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-purple-500 dark:border-slate-600 dark:bg-slate-900"
+                  />
                 </div>
               )}
 
-              {selectedUser?.sourceTable !== 'admin_users' && (
-                <div className="flex items-center gap-3 p-3 bg-slate-50 rounded-xl">
-                  <label className="text-sm font-bold text-slate-700 flex items-center gap-2 cursor-pointer">
-                    <UserCheck className="w-4 h-4 text-green-600" /> Account Active:
-                  </label>
-                  <button type="button"
-                    onClick={() => setEditForm({...editForm, is_active: !editForm.is_active})}
-                    className={`relative w-12 h-6 rounded-full transition cursor-pointer ${editForm.is_active ? 'bg-green-500' : 'bg-red-400'}`}>
-                    <span className={`absolute top-1 w-4 h-4 bg-white rounded-full transition shadow ${editForm.is_active ? 'left-7' : 'left-1'}`} />
-                  </button>
-                  <span className="text-sm font-medium text-slate-700">{editForm.is_active ? 'Active' : 'Inactive'}</span>
-                </div>
-              )}
-
-              <div className="border-t border-slate-200 pt-4">
-                <p className="text-sm font-bold text-slate-600 mb-3 flex items-center gap-2">
-                  <Lock className="w-4 h-4 text-yellow-600" />
-                  Change Password <span className="text-xs font-normal text-slate-400">(leave blank to keep current)</span>
-                </p>
-                <div className="grid grid-cols-2 gap-3">
-                  <div className="relative">
-                    <label className="text-sm font-bold text-slate-700">New Password</label>
-                    <input type={showPassword ? 'text' : 'password'} value={editForm.password}
-                      onChange={e => setEditForm({...editForm, password: e.target.value})}
-                      placeholder="Min 6 characters" minLength={6}
-                      className="w-full p-2.5 pr-10 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none mt-1" />
-                    <button type="button" onClick={() => setShowPassword(!showPassword)}
-                      className="absolute right-3 top-8 text-slate-400 hover:text-slate-600" tabIndex={-1}>
-                      {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                  <div className="relative">
-                    <label className="text-sm font-bold text-slate-700">Confirm Password</label>
-                    <input type={showConfirm ? 'text' : 'password'} value={editForm.confirmPassword}
-                      onChange={e => setEditForm({...editForm, confirmPassword: e.target.value})}
-                      placeholder="Repeat password" minLength={6}
-                      className="w-full p-2.5 pr-10 border border-slate-300 rounded-xl focus:ring-2 focus:ring-purple-500 outline-none mt-1" />
-                    <button type="button" onClick={() => setShowConfirm(!showConfirm)}
-                      className="absolute right-3 top-8 text-slate-400 hover:text-slate-600" tabIndex={-1}>
-                      {showConfirm ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                    </button>
-                  </div>
-                </div>
-                {editForm.password && editForm.password.length > 0 && editForm.password.length < 6 && (
-                  <p className="text-xs text-red-500 mt-1">Password must be at least 6 characters</p>
-                )}
-                {editForm.password && editForm.confirmPassword && editForm.password !== editForm.confirmPassword && (
-                  <p className="text-xs text-red-500 mt-1">Passwords do not match</p>
+              <div>
+                <label
+                  htmlFor="edit-username"
+                  className="mb-1 block text-sm font-bold text-slate-700 dark:text-slate-200"
+                >
+                  Username
+                </label>
+                <input
+                  id="edit-username"
+                  type="text"
+                  required={isPortalAccount(selectedUser)}
+                  minLength={3}
+                  maxLength={50}
+                  pattern="[A-Za-z0-9._-]+"
+                  value={editForm.username}
+                  onChange={(event) =>
+                    setEditForm({ ...editForm, username: event.target.value })
+                  }
+                  autoComplete="username"
+                  autoCapitalize="none"
+                  spellCheck={false}
+                  placeholder="e.g. jdelacruz"
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-purple-500 dark:border-slate-600 dark:bg-slate-900"
+                />
+                {isPortalAccount(selectedUser) && (
+                  <p className="mt-1 text-xs text-slate-500">
+                    Use 3–50 letters, numbers, dots, underscores, or hyphens.
+                  </p>
                 )}
               </div>
 
-              <div className="flex gap-3 pt-2">
-                <button type="submit"
-                  disabled={saving || (editForm.password && editForm.password !== editForm.confirmPassword)}
-                  className="flex-1 px-4 py-3 bg-purple-600 hover:bg-purple-700 disabled:bg-purple-400 text-white rounded-xl font-bold transition flex items-center justify-center gap-2">
-                  {saving ? (
-                    <><div className="animate-spin rounded-full h-4 w-4 border-b-2 border-white"></div> Saving...</>
-                  ) : (
-                    <><Save className="w-4 h-4" /> Save Changes</>
+              <div>
+                <label
+                  htmlFor="edit-email"
+                  className="mb-1 block text-sm font-bold text-slate-700 dark:text-slate-200"
+                >
+                  Email Address
+                </label>
+                <input
+                  id="edit-email"
+                  type="email"
+                  required
+                  value={editForm.email}
+                  onChange={(event) =>
+                    setEditForm({ ...editForm, email: event.target.value })
+                  }
+                  className="w-full rounded-xl border border-slate-300 px-3 py-2.5 text-sm outline-none focus:ring-2 focus:ring-purple-500 dark:border-slate-600 dark:bg-slate-900"
+                />
+              </div>
+
+              {supportsIdType(selectedUser) && (
+                <div>
+                  <label
+                    htmlFor="edit-id-type"
+                    className="mb-1 block text-sm font-bold text-slate-700 dark:text-slate-200"
+                  >
+                    Type of ID
+                  </label>
+                  <div className="relative">
+                    <CreditCard className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <ChevronDown className="pointer-events-none absolute right-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                    <select
+                      id="edit-id-type"
+                      value={editForm.id_type}
+                      onChange={(event) =>
+                        setEditForm({ ...editForm, id_type: event.target.value })
+                      }
+                      className="w-full appearance-none rounded-xl border border-slate-300 bg-white py-2.5 pl-10 pr-10 text-sm outline-none focus:ring-2 focus:ring-purple-500 dark:border-slate-600 dark:bg-slate-900"
+                    >
+                      <option value="">Not provided</option>
+                      {ID_TYPE_OPTIONS.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                </div>
+              )}
+
+              {selectedUser?.sourceTable === "staff_users" && (
+                <div className="flex items-center gap-3 rounded-xl bg-slate-50 p-3 dark:bg-slate-900">
+                  <label className="flex items-center gap-2 text-sm font-bold text-slate-700 dark:text-slate-200">
+                    <UserCheck className="h-4 w-4 text-green-600" />
+                    Account Active:
+                  </label>
+                  <ActiveToggle
+                    value={editForm.is_active}
+                    disabled={saving}
+                    onToggle={() =>
+                      setEditForm({
+                        ...editForm,
+                        is_active: !editForm.is_active,
+                      })
+                    }
+                  />
+                  <span className="text-sm font-medium text-slate-700 dark:text-slate-200">
+                    {editForm.is_active ? "Active" : "Inactive"}
+                  </span>
+                </div>
+              )}
+
+              <div className="border-t border-slate-200 pt-4 dark:border-slate-700">
+                <p className="mb-3 flex items-center gap-2 text-sm font-bold text-slate-600 dark:text-slate-300">
+                  <Lock className="h-4 w-4 text-yellow-600" />
+                  Change Password
+                  <span className="text-xs font-normal text-slate-400">
+                    (leave blank to keep current)
+                  </span>
+                </p>
+
+                <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                  <div className="relative">
+                    <label
+                      htmlFor="edit-password"
+                      className="mb-1 block text-sm font-bold text-slate-700 dark:text-slate-200"
+                    >
+                      New Password
+                    </label>
+                    <input
+                      id="edit-password"
+                      type={showPassword ? "text" : "password"}
+                      value={editForm.password}
+                      onChange={(event) =>
+                        setEditForm({ ...editForm, password: event.target.value })
+                      }
+                      placeholder="Min 6 characters"
+                      minLength={6}
+                      autoComplete="new-password"
+                      className="w-full rounded-xl border border-slate-300 py-2.5 pl-3 pr-10 text-sm outline-none focus:ring-2 focus:ring-purple-500 dark:border-slate-600 dark:bg-slate-900"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((v) => !v)}
+                      aria-label="Toggle password visibility"
+                      className="absolute right-3 top-[34px] text-slate-400 hover:text-slate-600"
+                    >
+                      {showPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </button>
+                  </div>
+
+                  <div className="relative">
+                    <label
+                      htmlFor="edit-confirm-password"
+                      className="mb-1 block text-sm font-bold text-slate-700 dark:text-slate-200"
+                    >
+                      Confirm Password
+                    </label>
+                    <input
+                      id="edit-confirm-password"
+                      type={showConfirmPassword ? "text" : "password"}
+                      value={editForm.confirmPassword}
+                      onChange={(event) =>
+                        setEditForm({
+                          ...editForm,
+                          confirmPassword: event.target.value,
+                        })
+                      }
+                      placeholder="Repeat password"
+                      minLength={6}
+                      autoComplete="new-password"
+                      className="w-full rounded-xl border border-slate-300 py-2.5 pl-3 pr-10 text-sm outline-none focus:ring-2 focus:ring-purple-500 dark:border-slate-600 dark:bg-slate-900"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowConfirmPassword((v) => !v)}
+                      aria-label="Toggle confirmation password visibility"
+                      className="absolute right-3 top-[34px] text-slate-400 hover:text-slate-600"
+                    >
+                      {showConfirmPassword ? (
+                        <EyeOff className="h-4 w-4" />
+                      ) : (
+                        <Eye className="h-4 w-4" />
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {editForm.password &&
+                  editForm.password.length > 0 &&
+                  editForm.password.length < 6 && (
+                    <p className="mt-1 text-xs text-red-600">
+                      Password must be at least 6 characters.
+                    </p>
                   )}
-                </button>
-                <button type="button" onClick={() => setShowEditModal(false)}
-                  className="px-6 py-3 border border-slate-300 rounded-xl hover:bg-slate-50 font-bold transition">
+                {editForm.password &&
+                  editForm.confirmPassword &&
+                  editForm.password !== editForm.confirmPassword && (
+                    <p className="mt-1 text-xs text-red-600">
+                      Passwords do not match.
+                    </p>
+                  )}
+              </div>
+
+              <div className="flex justify-end gap-3 pt-2">
+                <button
+                  type="button"
+                  onClick={() => setShowEditModal(false)}
+                  disabled={saving}
+                  className="rounded-lg border border-slate-300 px-4 py-2.5 font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:text-slate-200 dark:hover:bg-slate-700"
+                >
                   Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={
+                    saving ||
+                    (editForm.password &&
+                      editForm.password !== editForm.confirmPassword)
+                  }
+                  className="flex items-center gap-2 rounded-lg bg-purple-600 px-4 py-2.5 font-bold text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50"
+                >
+                  {saving ? (
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  ) : (
+                    <Save className="h-4 w-4" />
+                  )}
+                  {saving ? "Saving..." : "Save Changes"}
                 </button>
               </div>
             </form>
           </div>
         </div>
-      )}{showReport && (
-  <UserSummaryReportModal onClose={() => setShowReport(false)} />
-)}
+      )}
+
+      {/* Summary report */}
+      {showReport && (
+        <UserSummaryReportModal onClose={() => setShowReport(false)} />
+      )}
     </div>
   );
-};
+}
 
-export default AdminUserManagement;
+/* =============================================================
+ * CREATE ACCOUNT MODAL
+ * ============================================================= */
 
-// =============================================
-// USER ACCOUNTS SUMMARY-ONLY REPORT
-// Adjustable coverage dates — fetches its own data
-// from all four account tables filtered on created_at.
-// Prints aggregates only: no names, emails, or IDs.
-// =============================================
-const UserSummaryReportModal = ({ onClose }) => {
-  const [fromDate, setFromDate] = useState('');
-  const [toDate, setToDate] = useState('');
+function CreateAccountModal({
+  role,
+  form,
+  setForm,
+  saving,
+  error,
+  onClose,
+  onSubmit,
+}) {
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [showRequesterPassword, setShowRequesterPassword] = useState(false);
+
+  const isAdmin = role === "admin";
+
+  const handleChange = (event) => {
+    const { name, value } = event.target;
+    setForm((previous) => ({
+      ...previous,
+      [name]:
+        name === "username"
+          ? value.toLowerCase().replace(/\s+/g, "")
+          : name === "email"
+            ? value.trim().toLowerCase()
+            : value,
+    }));
+  };
+
+  const inputClass =
+    "w-full rounded-xl border border-slate-300 bg-white px-3 py-2.5 text-sm text-slate-800 outline-none transition focus:ring-2 focus:ring-purple-500";
+
+  return (
+    <div
+      className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black/50 p-4"
+      onClick={() => {
+        if (!saving) onClose();
+      }}
+    >
+      <div
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="create-account-title"
+        className="max-h-[92vh] w-full max-w-xl overflow-y-auto rounded-2xl bg-white shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
+      >
+        <div className="flex items-center justify-between border-b border-slate-200 px-6 py-4">
+          <div className="flex items-center gap-3">
+            <div
+              className={`rounded-xl p-2 ${
+                isAdmin
+                  ? "bg-purple-100 text-purple-600"
+                  : "bg-blue-100 text-blue-600"
+              }`}
+            >
+              {isAdmin ? (
+                <Shield className="h-5 w-5" />
+              ) : (
+                <Users className="h-5 w-5" />
+              )}
+            </div>
+            <div>
+              <h2
+                id="create-account-title"
+                className="text-xl font-bold text-slate-800"
+              >
+                Add {isAdmin ? "Admin" : "Staff"} Account
+              </h2>
+              <p className="text-xs text-slate-500">
+                Stored in {isAdmin ? "admin_users" : "staff_users"}
+              </p>
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            disabled={saving}
+            aria-label="Close create account dialog"
+            className="rounded-lg p-2 text-slate-500 transition hover:bg-slate-100 disabled:opacity-50"
+          >
+            <X className="h-5 w-5" />
+          </button>
+        </div>
+
+        <form onSubmit={onSubmit} className="space-y-5 p-6">
+          <div
+            className={`rounded-xl border p-4 text-sm ${
+              isAdmin
+                ? "border-purple-200 bg-purple-50 text-purple-800"
+                : "border-blue-200 bg-blue-50 text-blue-800"
+            }`}
+          >
+            <p className="font-bold">
+              {isAdmin ? "Administrator account" : "Staff account"}
+            </p>
+            <p className="mt-1 text-xs leading-relaxed">
+              This account is stored only in{" "}
+              <strong>{isAdmin ? "admin_users" : "staff_users"}</strong>. Work
+              ID, username, and email are checked before creating or updating
+              an account.
+            </p>
+          </div>
+
+          {error && (
+            <div
+              role="alert"
+              className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700"
+            >
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+              <p>{error}</p>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div>
+              <label
+                htmlFor="create-work-id"
+                className="mb-1 block text-sm font-semibold text-slate-700"
+              >
+                Work ID *
+              </label>
+              <input
+                id="create-work-id"
+                name="work_id"
+                type="text"
+                required
+                minLength={3}
+                value={form.work_id}
+                onChange={handleChange}
+                placeholder="e.g. MDRRMO-001"
+                autoCapitalize="characters"
+                spellCheck={false}
+                className={inputClass}
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="create-username"
+                className="mb-1 block text-sm font-semibold text-slate-700"
+              >
+                Username *
+              </label>
+              <input
+                id="create-username"
+                name="username"
+                type="text"
+                required
+                minLength={3}
+                maxLength={50}
+                pattern="[A-Za-z0-9._-]+"
+                value={form.username}
+                onChange={handleChange}
+                placeholder="e.g. jdelacruz"
+                autoComplete="username"
+                autoCapitalize="none"
+                spellCheck={false}
+                className={inputClass}
+              />
+              <p className="mt-1 text-xs text-slate-500">
+                3–50 letters, numbers, dots, underscores, or hyphens.
+              </p>
+            </div>
+
+            <div className="sm:col-span-2">
+              <label
+                htmlFor="create-full-name"
+                className="mb-1 block text-sm font-semibold text-slate-700"
+              >
+                Full Name *
+              </label>
+              <input
+                id="create-full-name"
+                name="full_name"
+                type="text"
+                required
+                minLength={2}
+                value={form.full_name}
+                onChange={handleChange}
+                placeholder="Juan Dela Cruz"
+                autoComplete="name"
+                className={inputClass}
+              />
+            </div>
+
+            <div className="sm:col-span-2">
+              <label
+                htmlFor="create-email"
+                className="mb-1 block text-sm font-semibold text-slate-700"
+              >
+                Email Address *
+              </label>
+              <input
+                id="create-email"
+                name="email"
+                type="email"
+                required
+                value={form.email}
+                onChange={handleChange}
+                placeholder="name@example.com"
+                autoComplete="email"
+                className={inputClass}
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="create-department"
+                className="mb-1 block text-sm font-semibold text-slate-700"
+              >
+                Department
+              </label>
+              <input
+                id="create-department"
+                name="department"
+                type="text"
+                value={form.department}
+                onChange={handleChange}
+                placeholder="Operations, Medical, etc."
+                className={inputClass}
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="create-mobile"
+                className="mb-1 block text-sm font-semibold text-slate-700"
+              >
+                Mobile Number
+              </label>
+              <input
+                id="create-mobile"
+                name="mobile_number"
+                type="tel"
+                value={form.mobile_number}
+                onChange={handleChange}
+                placeholder="09171234567"
+                autoComplete="tel"
+                className={inputClass}
+              />
+            </div>
+
+            <div>
+              <label
+                htmlFor="create-password"
+                className="mb-1 block text-sm font-semibold text-slate-700"
+              >
+                New Password *
+              </label>
+              <div className="relative">
+                <input
+                  id="create-password"
+                  name="password"
+                  type={showPassword ? "text" : "password"}
+                  required
+                  minLength={6}
+                  value={form.password}
+                  onChange={handleChange}
+                  placeholder="Minimum 6 characters"
+                  autoComplete="new-password"
+                  className={`${inputClass} pr-11`}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword((v) => !v)}
+                  aria-label="Toggle new password visibility"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700"
+                >
+                  {showPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
+            </div>
+
+            <div>
+              <label
+                htmlFor="create-confirm-password"
+                className="mb-1 block text-sm font-semibold text-slate-700"
+              >
+                Confirm Password *
+              </label>
+              <div className="relative">
+                <input
+                  id="create-confirm-password"
+                  name="confirmPassword"
+                  type={showConfirmPassword ? "text" : "password"}
+                  required
+                  minLength={6}
+                  value={form.confirmPassword}
+                  onChange={handleChange}
+                  placeholder="Repeat password"
+                  autoComplete="new-password"
+                  className={`${inputClass} pr-11`}
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowConfirmPassword((v) => !v)}
+                  aria-label="Toggle confirmation password visibility"
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700"
+                >
+                  {showConfirmPassword ? (
+                    <EyeOff className="h-4 w-4" />
+                  ) : (
+                    <Eye className="h-4 w-4" />
+                  )}
+                </button>
+              </div>
+            </div>
+          </div>
+
+          {form.password &&
+            form.confirmPassword &&
+            form.password !== form.confirmPassword && (
+              <p className="text-xs font-semibold text-red-600">
+                Passwords do not match.
+              </p>
+            )}
+
+          <div className="border-t border-slate-200 pt-4">
+            <label
+              htmlFor="requester-password"
+              className="mb-1 block text-sm font-semibold text-slate-700"
+            >
+              Current Administrator Password *
+            </label>
+            <div className="relative">
+              <input
+                id="requester-password"
+                name="requester_password"
+                type={showRequesterPassword ? "text" : "password"}
+                required
+                value={form.requester_password}
+                onChange={handleChange}
+                placeholder="Enter your current password"
+                autoComplete="current-password"
+                className={`${inputClass} pr-11`}
+              />
+              <button
+                type="button"
+                onClick={() => setShowRequesterPassword((v) => !v)}
+                aria-label="Toggle current password visibility"
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-700"
+              >
+                {showRequesterPassword ? (
+                  <EyeOff className="h-4 w-4" />
+                ) : (
+                  <Eye className="h-4 w-4" />
+                )}
+              </button>
+            </div>
+            <p className="mt-1 text-xs text-slate-500">
+              This verifies that the current administrator is authorized to
+              create or update another account.
+            </p>
+          </div>
+
+          <div className="flex justify-end gap-3 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              disabled={saving}
+              className="rounded-lg border border-slate-300 px-4 py-2.5 font-bold text-slate-700 transition hover:bg-slate-50 disabled:opacity-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="submit"
+              disabled={saving}
+              className="flex items-center gap-2 rounded-lg bg-purple-600 px-5 py-2.5 font-bold text-white transition hover:bg-purple-700 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              {saving ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Plus className="h-4 w-4" />
+              )}
+              {saving
+                ? "Saving Account..."
+                : `Save ${isAdmin ? "Admin" : "Staff"} Account`}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+/* =============================================================
+ * USER ACCOUNTS SUMMARY REPORT
+ * ============================================================= */
+
+function ReportCard({ label, value, sub, color }) {
+  return (
+    <div className={`rounded-xl border p-4 ${color}`}>
+      <p className="text-xs font-bold opacity-70">{label}</p>
+      <p className="mt-1 text-2xl font-bold">{value}</p>
+      {sub && <p className="mt-1 text-xs opacity-70">{sub}</p>}
+    </div>
+  );
+}
+
+function ReportCountTable({ title, data, total, percent, max = 12 }) {
+  return (
+    <div className="print-break-avoid">
+      <h2 className="mb-3 font-bold text-slate-800">{title}</h2>
+
+      {data.length === 0 ? (
+        <p className="text-sm text-slate-500">
+          No accounts in the covered range.
+        </p>
+      ) : (
+        <table className="w-full border-collapse text-sm">
+          <thead>
+            <tr className="bg-slate-100">
+              <th className="border border-slate-200 p-2 text-left font-bold text-slate-700">
+                Name
+              </th>
+              <th className="border border-slate-200 p-2 text-center font-bold text-slate-700">
+                Count
+              </th>
+              <th className="border border-slate-200 p-2 text-center font-bold text-slate-700">
+                Share
+              </th>
+            </tr>
+          </thead>
+          <tbody>
+            {data.slice(0, max).map((entry) => (
+              <tr key={entry.name} className="border-b border-slate-100">
+                <td className="border border-slate-200 p-2 font-semibold text-slate-700">
+                  {prettyStatus(entry.name)}
+                </td>
+                <td className="border border-slate-200 p-2 text-center text-slate-600">
+                  {entry.count}
+                </td>
+                <td className="border border-slate-200 p-2 text-center text-slate-600">
+                  {percent(entry.count)}%
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+
+      {data.length > max && (
+        <p className="mt-2 text-xs text-slate-500">
+          …and {data.length - max} more entries.
+        </p>
+      )}
+
+      {total !== undefined && (
+        <p className="mt-1 text-xs text-slate-400">
+          Total in coverage: {total}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function UserSummaryReportModal({ onClose }) {
+  const [fromDate, setFromDate] = useState("");
+  const [toDate, setToDate] = useState("");
   const [rows, setRows] = useState([]);
   const [fetching, setFetching] = useState(true);
-  const [fetchError, setFetchError] = useState('');
+  const [fetchError, setFetchError] = useState("");
 
-  const todayKey = (() => {
-    const d = new Date();
-    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
-  })();
+  const todayKey = useMemo(() => {
+    const date = new Date();
+    return [
+      date.getFullYear(),
+      String(date.getMonth() + 1).padStart(2, "0"),
+      String(date.getDate()).padStart(2, "0"),
+    ].join("-");
+  }, []);
 
-  const applyPreset = (from, to) => { setFromDate(from); setToDate(to); };
+  const applyPreset = (from, to) => {
+    setFromDate(from);
+    setToDate(to);
+  };
 
-  // ---- Fetch minimal rows from every account table (no PII) ----
-  // Selected columns only: role/status flags + timestamps. Names, emails,
-  // passwords, and IDs are never pulled into the report.
   useEffect(() => {
+    let cancelled = false;
+
     const fetchRows = async () => {
       setFetching(true);
-      setFetchError('');
+      setFetchError("");
+
       try {
-        const range = (q) => {
-          let n = q;
-          if (fromDate) n = n.gte('created_at', `${fromDate}T00:00:00`);
-          if (toDate) n = n.lte('created_at', `${toDate}T23:59:59.999999`);
-          return n;
+        const applyRange = (query) => {
+          let next = query;
+          if (fromDate) {
+            next = next.gte("created_at", `${fromDate}T00:00:00.000Z`);
+          }
+          if (toDate) {
+            next = next.lte("created_at", `${toDate}T23:59:59.999999`);
+          }
+          return next;
         };
 
-        const [profilesRes, staffRes, adminRes, pendingRes] = await Promise.all([
-          range(supabase.from('profiles').select('id, role, is_active, created_at')),
-          range(supabase.from('staff_users').select('id, role, department, is_active, created_at')),
-          range(supabase.from('admin_users').select('id, role, created_at')),
-          range(supabase.from('pending_registrations').select('id, status, role, created_at')),
-        ]);
+        const [profilesRes, staffRes, adminRes, pendingRes] =
+          await Promise.all([
+            applyRange(
+              supabase
+                .from("profiles")
+                .select("id, role, is_active, created_at"),
+            ),
+            applyRange(
+              supabase
+                .from("staff_users")
+                .select("id, role, department, is_active, created_at"),
+            ),
+            applyRange(
+              supabase
+                .from("admin_users")
+                .select("id, role, created_at"),
+            ),
+            applyRange(
+              supabase
+                .from("pending_registrations")
+                .select("id, status, role, created_at"),
+            ),
+          ]);
 
-        const firstError = [profilesRes, staffRes, adminRes, pendingRes].find((r) => r.error);
-        if (firstError) throw firstError.error;
+        const firstError = [
+          profilesRes,
+          staffRes,
+          adminRes,
+          pendingRes,
+        ].find((result) => result.error);
 
-        const normalize = (d, table) => (d || []).map((r) => ({
-          table,
-          role: r.role,
-          status: r.status !== undefined ? r.status : (r.is_active === false ? 'inactive' : 'approved'),
-          department: r.department,
-          created_at: r.created_at,
-        }));
+        if (firstError?.error) throw firstError.error;
 
-        setRows([
-          ...normalize(profilesRes.data, 'profiles'),
-          ...normalize(staffRes.data, 'staff_users'),
-          ...normalize(adminRes.data, 'admin_users'),
-          ...normalize(pendingRes.data, 'pending_registrations'),
-        ]);
+        const normalize = (data, table) =>
+          (data || []).map((row) => ({
+            table,
+            role: row.role,
+            status:
+              row.status ??
+              (row.is_active === false ? "inactive" : "approved"),
+            department: row.department,
+            created_at: row.created_at,
+          }));
+
+        const combined = [
+          ...normalize(profilesRes.data, "profiles"),
+          ...normalize(staffRes.data, "staff_users"),
+          ...normalize(adminRes.data, "admin_users"),
+          ...normalize(pendingRes.data, "pending_registrations"),
+        ];
+
+        if (!cancelled) setRows(combined);
       } catch (err) {
-        console.error('Error fetching report data:', err);
-        setFetchError(err.message);
+        console.error("Error fetching report data:", err);
+        if (!cancelled) {
+          setFetchError(err?.message || "Unable to load report data.");
+        }
       } finally {
-        setFetching(false);
+        if (!cancelled) setFetching(false);
       }
     };
+
     fetchRows();
+    return () => {
+      cancelled = true;
+    };
   }, [fromDate, toDate]);
 
-  // ---- All stats computed from fetched rows ----
   const stats = useMemo(() => {
-    const countBy = (field, fallback) => {
+    const countBy = (field, fallback = "unknown") => {
       const counts = {};
-      rows.forEach((r) => {
-        const key = r[field] || fallback;
+      rows.forEach((row) => {
+        const key = row[field] || fallback;
         counts[key] = (counts[key] || 0) + 1;
       });
       return Object.entries(counts)
@@ -842,29 +3945,53 @@ const UserSummaryReportModal = ({ onClose }) => {
         .sort((a, b) => b.count - a.count);
     };
 
-    const roleData = countBy('role', 'user');
-    const statusData = countBy('status', 'unknown');
-    const sourceData = countBy('table', 'other');
-    const departmentData = countBy('department', 'Not Specified');
+    const roleData = countBy("role", "user");
+    const statusData = countBy("status");
+    const sourceData = countBy("table", "other");
+    const departmentData = countBy("department", "Not Specified");
 
-    // Registrations per month (from created_at, covering the selected range)
-    const MONTHS = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
-    const monthly = {};
-    rows.forEach((r) => {
-      if (!r.created_at) return;
-      const d = new Date(r.created_at);
-      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
-      monthly[key] = (monthly[key] || 0) + 1;
+    const monthlyCounts = {};
+    rows.forEach((row) => {
+      if (!row.created_at) return;
+      const date = new Date(row.created_at);
+      if (Number.isNaN(date.getTime())) return;
+      const key = [
+        date.getFullYear(),
+        String(date.getMonth() + 1).padStart(2, "0"),
+      ].join("-");
+      monthlyCounts[key] = (monthlyCounts[key] || 0) + 1;
     });
-    const monthlyData = Object.entries(monthly)
-      .sort((a, b) => a[0].localeCompare(b[0]))
-      .map(([key, count]) => ({
-        name: `${MONTHS[Number(key.split('-')[1]) - 1]} ${key.slice(2, 4)}`,
-        count,
-      }));
 
-    const activeCount = rows.filter((r) => r.status === 'approved' || r.status === true).length;
-    const pendingCount = rows.filter((r) => r.status === 'pending').length;
+    const months = [
+      "Jan", "Feb", "Mar", "Apr", "May", "Jun",
+      "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+    ];
+
+    const monthlyData = Object.entries(monthlyCounts)
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([key, count]) => {
+        const year = key.slice(0, 4);
+        const monthNumber = Number(key.slice(5, 7));
+        return {
+          name: `${months[monthNumber - 1]} ${year.slice(2)}`,
+          count,
+        };
+      });
+
+    const activeCount = rows.filter(
+      (row) => row.status === "approved" || row.status === true,
+    ).length;
+    const pendingCount = rows.filter(
+      (row) => isPendingStatus(row.status),
+    ).length;
+
+    const busiestMonth =
+      monthlyData.length > 0
+        ? monthlyData.reduce(
+            (largest, current) =>
+              current.count > largest.count ? current : largest,
+          )
+        : null;
 
     return {
       roleData,
@@ -874,324 +4001,602 @@ const UserSummaryReportModal = ({ onClose }) => {
       monthlyData,
       activeCount,
       pendingCount,
-      topRole: roleData[0] || null,
-      busiestMonth: monthlyData.reduce((a, b) => (b.count > (a?.count ?? -1) ? b : a), null),
+      busiestMonth,
     };
   }, [rows]);
 
-  const pct = (count) => (rows.length ? Math.round((count / rows.length) * 100) : 0);
+  const percent = (count) =>
+    rows.length > 0 ? Math.round((count / rows.length) * 100) : 0;
 
-  const PIE_COLORS = ['#8b5cf6', '#3b82f6', '#10b981', '#f59e0b', '#ec4899', '#6366f1'];
-  const BAR_COLORS = ['#6366f1', '#8b5cf6', '#ec4899', '#f43f5e', '#f59e0b'];
+  const pieColors = [
+    "#8b5cf6",
+    "#3b82f6",
+    "#10b981",
+    "#f59e0b",
+    "#ec4899",
+    "#6366f1",
+  ];
 
-  const generatedAt = new Date().toLocaleString('en-US', {
-    year: 'numeric', month: 'long', day: 'numeric', hour: '2-digit', minute: '2-digit',
+  const generatedAt = new Date().toLocaleString("en-US", {
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
   });
+
   const rangeLabel =
     fromDate || toDate
-      ? `${fromDate || 'Start'} → ${toDate || 'End'}`
-      : 'All dates';
+      ? `${fromDate || "Start"} → ${toDate || "End"}`
+      : "All dates";
 
-  const Card = ({ label, value, sub, color }) => (
-    <div className={`p-4 rounded-xl border ${color}`}>
-      <p className="text-xs font-bold opacity-70">{label}</p>
-      <p className="text-2xl font-bold mt-1">{value}</p>
-      {sub && <p className="text-xs opacity-70 mt-1">{sub}</p>}
-    </div>
-  );
+  const escapeHtml = (value) =>
+    String(value ?? "")
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
 
-  const CountTable = ({ title, data, total, max = 12 }) => (
-    <div className="print-break-avoid">
-      <h2 className="font-bold text-slate-800 mb-3">{title}</h2>
-      {data.length === 0 ? (
-        <p className="text-sm text-slate-500">No data in the covered range.</p>
-      ) : (
-        <table className="w-full text-sm border-collapse">
-          <thead>
-            <tr className="bg-slate-100">
-              <th className="p-2 text-left font-bold border border-slate-200 text-slate-700">Name</th>
-              <th className="p-2 text-center font-bold border border-slate-200 text-slate-700">Count</th>
-              <th className="p-2 text-center font-bold border border-slate-200 text-slate-700">Share</th>
-            </tr>
-          </thead>
-          <tbody>
-            {data.slice(0, max).map((d) => (
-              <tr key={d.name} className="border-b border-slate-100">
-                <td className="p-2 border border-slate-200 font-semibold text-slate-700">{d.name}</td>
-                <td className="p-2 border border-slate-200 text-center text-slate-600">{d.count}</td>
-                <td className="p-2 border border-slate-200 text-center text-slate-600">{pct(d.count)}%</td>
+  const handlePrint = () => {
+    if (fetching || fetchError) return;
+
+    const card = (label, value, sub) => `
+      <div class="card">
+        <div class="card-label">${escapeHtml(label)}</div>
+        <div class="card-value">${escapeHtml(value)}</div>
+        ${sub ? `<div class="card-sub">${escapeHtml(sub)}</div>` : ""}
+      </div>`;
+
+    const topCards = `
+      ${card("Total Accounts", rows.length, "In coverage")}
+      ${card("Active", stats.activeCount, `${percent(stats.activeCount)}% of total`)}
+      ${card(
+        "Pending",
+        stats.pendingCount,
+        stats.pendingCount > 0 ? "Awaiting approval" : "None pending",
+      )}
+      ${card(
+        "Busiest Month",
+        stats.busiestMonth ? stats.busiestMonth.name : "—",
+        stats.busiestMonth
+          ? `${stats.busiestMonth.count} registrations`
+          : "No data",
+      )}
+    `;
+
+    const roleCards =
+      stats.roleData.length === 0
+        ? `<p class="muted">No accounts in the covered range.</p>`
+        : `<div class="grid-4">${stats.roleData
+            .map((entry) =>
+              card(
+                prettyStatus(entry.name),
+                entry.count,
+                `${percent(entry.count)}% of total`,
+              ),
+            )
+            .join("")}</div>`;
+
+    const countTable = (title, data) => {
+      const rowsHtml =
+        data.length === 0
+          ? `<tr><td colspan="3">No accounts in the covered range.</td></tr>`
+          : data
+              .map(
+                (entry) => `
+          <tr>
+            <td>${escapeHtml(prettyStatus(entry.name))}</td>
+            <td class="center">${entry.count}</td>
+            <td class="center">${percent(entry.count)}%</td>
+          </tr>`,
+              )
+              .join("");
+
+      return `
+        <div class="section avoid-break">
+          <h2 class="section-title">${escapeHtml(title)}</h2>
+          <table>
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th class="center">Count</th>
+                <th class="center">Share</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-      {data.length > max && (
-        <p className="text-xs text-slate-500 mt-2">…and {data.length - max} more entries.</p>
-      )}
-      {total !== undefined && (
-        <p className="text-xs text-slate-400 mt-1">Total in coverage: {total}</p>
-      )}
-    </div>
-  );
+            </thead>
+            <tbody>${rowsHtml}</tbody>
+          </table>
+        </div>`;
+    };
+
+    const html = `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>User Accounts Summary Report</title>
+  <style>
+    @page { size: A4 portrait; margin: 12mm; }
+    * { box-sizing: border-box; }
+    html, body {
+      margin: 0; padding: 0;
+      background: #ffffff;
+      color: #000000;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif;
+      font-size: 12px;
+      line-height: 1.45;
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
+    h1 { margin: 0; font-size: 20px; text-align: center; color: #000; }
+    h2, .section-title {
+      margin: 0 0 10px;
+      font-size: 14px;
+      font-weight: 800;
+      color: #000;
+      border-bottom: 1px solid #cbd5e1;
+      padding-bottom: 6px;
+    }
+    .header {
+      text-align: center;
+      border-bottom: 2px solid #000;
+      padding-bottom: 14px;
+      margin-bottom: 18px;
+    }
+    .muted { color: #334155; font-size: 11px; }
+    .badge {
+      display: inline-block;
+      border: 1px solid #cbd5e1;
+      border-radius: 999px;
+      padding: 2px 10px;
+      font-size: 11px;
+      font-weight: 600;
+      margin: 2px;
+      background: #fff;
+    }
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-bottom: 18px;
+    }
+    .card {
+      border-radius: 10px;
+      padding: 10px 12px;
+      background: #ffffff;
+      border: 1px solid #cbd5e1;
+      color: #000000;
+    }
+    .card-label { font-size: 10px; font-weight: 700; }
+    .card-value { font-size: 20px; font-weight: 800; margin-top: 2px; word-break: break-word; }
+    .card-sub { font-size: 10px; margin-top: 2px; color: #334155; }
+    .section { margin-bottom: 18px; }
+    table { width: 100%; border-collapse: collapse; table-layout: fixed; }
+    th, td {
+      border: 1px solid #cbd5e1;
+      padding: 6px 7px;
+      text-align: left;
+      vertical-align: top;
+      word-wrap: break-word;
+      background: #ffffff;
+      color: #000000;
+    }
+    th { font-size: 10px; border-bottom: 2px solid #94a3b8; }
+    td.center, th.center { text-align: center; }
+    thead { display: table-header-group; }
+    tr { page-break-inside: avoid; break-inside: avoid; }
+    .avoid-break { page-break-inside: avoid; break-inside: avoid; }
+    .footer {
+      border-top: 1px solid #cbd5e1;
+      padding-top: 10px;
+      text-align: center;
+      color: #334155;
+      font-size: 10px;
+      margin-top: 16px;
+    }
+    @media print {
+      html, body {
+        height: auto !important;
+        overflow: visible !important;
+        background: #ffffff !important;
+        color: #000000 !important;
+      }
+      * {
+        background: #ffffff !important;
+        background-color: #ffffff !important;
+        box-shadow: none !important;
+        color: #000000 !important;
+      }
+      table, th, td, .card {
+        background: #ffffff !important;
+        border-color: #cbd5e1 !important;
+        color: #000000 !important;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="header avoid-break">
+    <p class="muted" style="font-weight:700;letter-spacing:0.15em;text-transform:uppercase">E-MDRRMO</p>
+    <h1>USER ACCOUNTS SUMMARY REPORT</h1>
+    <p style="margin-top:10px">
+      <span class="badge">Coverage: ${escapeHtml(rangeLabel)}</span>
+      <span class="badge">${rows.length} account${rows.length === 1 ? "" : "s"}</span>
+    </p>
+    <p class="muted" style="margin-top:8px">Generated: ${escapeHtml(generatedAt)}</p>
+  </div>
+
+  <div class="section avoid-break">
+    <div class="grid-4">${topCards}</div>
+  </div>
+
+  <div class="section avoid-break">
+    <h2 class="section-title">Role Overview</h2>
+    ${roleCards}
+  </div>
+
+  ${countTable("Accounts by Role", stats.roleData)}
+  ${countTable("Accounts by Status", stats.statusData)}
+  ${countTable("Accounts by Source Table", stats.sourceData)}
+  ${countTable("Staff by Department", stats.departmentData)}
+
+  <div class="footer avoid-break">
+    <p>This report is system-generated and reflects data at the time of generation. Account names and contact details are omitted by design.</p>
+    <p>© ${new Date().getFullYear()} E-MDRRMO</p>
+  </div>
+</body>
+</html>`;
+
+    const existing = document.getElementById("user-summary-print-frame");
+    if (existing) existing.remove();
+
+    const iframe = document.createElement("iframe");
+    iframe.id = "user-summary-print-frame";
+    iframe.setAttribute("title", "User Accounts Summary Print");
+    iframe.style.position = "fixed";
+    iframe.style.right = "0";
+    iframe.style.bottom = "0";
+    iframe.style.width = "0";
+    iframe.style.height = "0";
+    iframe.style.border = "0";
+    iframe.style.opacity = "0";
+    iframe.style.pointerEvents = "none";
+    document.body.appendChild(iframe);
+
+    const frameDoc = iframe.contentDocument || iframe.contentWindow.document;
+    frameDoc.open();
+    frameDoc.write(html);
+    frameDoc.close();
+
+    const triggerPrint = () => {
+      try {
+        iframe.contentWindow.focus();
+        iframe.contentWindow.print();
+      } catch (err) {
+        console.error("Print failed:", err);
+      }
+      setTimeout(() => {
+        try {
+          iframe.remove();
+        } catch {
+          /* ignore */
+        }
+      }, 60_000);
+    };
+
+    if (iframe.contentWindow.document.readyState === "complete") {
+      setTimeout(triggerPrint, 300);
+    } else {
+      iframe.onload = () => setTimeout(triggerPrint, 300);
+    }
+  };
 
   return (
-    <>
-      {/* Print CSS: full-length multi-page PDF, only the report body visible */}
-      <style>{`
-        @media print {
-          @page { size: A4 portrait; margin: 12mm; }
-          body { background: #ffffff !important; }
-          body * { visibility: hidden; }
-          .report-overlay {
-            position: static !important;
-            overflow: visible !important;
-            padding: 0 !important;
-            background: none !important;
-          }
-          .report-print, .report-print * { visibility: visible; }
-          .report-print {
-            position: absolute !important;
-            top: 0 !important;
-            left: 0 !important;
-            width: 100% !important;
-            max-width: none !important;
-            max-height: none !important;
-            margin: 0 !important;
-            box-shadow: none !important;
-            border: none !important;
-            border-radius: 0 !important;
-          }
-          .report-print .print-hidden { display: none !important; }
-          .report-print .print-break-avoid { break-inside: avoid; page-break-inside: avoid; }
-          .report-print .print-section { break-inside: avoid; page-break-inside: avoid; }
-          * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
-        }
-      `}</style>
-
+    <div
+      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4"
+      onClick={onClose}
+    >
       <div
-        className="report-overlay fixed inset-0 z-50 bg-black/60 flex items-start justify-center p-3 sm:p-4 overflow-y-auto"
-        onClick={onClose}
+        className="my-8 w-full max-w-4xl rounded-2xl border border-slate-200 bg-white shadow-2xl"
+        onClick={(event) => event.stopPropagation()}
       >
-        <div
-          className="report-print bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-4xl my-8"
-          onClick={(e) => e.stopPropagation()}
-        >
-          {/* ===== Toolbar (screen only) ===== */}
-          <div className="print-hidden sticky top-0 z-10 bg-white/95 backdrop-blur border-b border-slate-200 rounded-t-2xl">
-            <div className="flex items-center justify-between gap-3 px-6 pt-4 pb-3">
-              <div className="flex items-center gap-2 min-w-0">
-                <div className="w-9 h-9 rounded-xl bg-purple-100 flex items-center justify-center flex-shrink-0">
-                  <Users className="w-5 h-5 text-purple-600" />
-                </div>
-                <div className="min-w-0">
-                  <h3 className="font-bold text-slate-800 leading-tight truncate">User Accounts Summary Report</h3>
-                  <p className="text-xs text-slate-400 leading-tight">Adjust coverage, then print</p>
-                </div>
+        <div className="sticky top-0 z-10 rounded-t-2xl border-b border-slate-200 bg-white/95 backdrop-blur">
+          <div className="flex items-center justify-between gap-3 px-6 pb-3 pt-4">
+            <div className="flex min-w-0 items-center gap-2">
+              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-purple-100">
+                <Users className="h-5 w-5 text-purple-600" />
               </div>
-              <div className="flex items-center gap-2 flex-shrink-0">
-                <button
-                  type="button"
-                  onClick={() => window.print()}
-                  disabled={fetching}
-                  className="flex items-center gap-2 px-4 py-2 bg-purple-600 hover:bg-purple-700 disabled:opacity-50 text-white rounded-xl font-bold text-sm transition"
-                >
-                  <Download className="w-4 h-4" />
-                  {fetching ? 'Loading…' : 'Print / Save PDF'}
-                </button>
-                <button
-                  type="button"
-                  onClick={onClose}
-                  aria-label="Close report"
-                  className="p-2 rounded-xl hover:bg-slate-200 text-slate-500 transition"
-                >
-                  <X className="w-5 h-5" />
-                </button>
+              <div className="min-w-0">
+                <h3 className="truncate font-bold leading-tight text-slate-800">
+                  User Accounts Summary Report
+                </h3>
+                <p className="text-xs leading-tight text-slate-400">
+                  Adjust coverage, then print
+                </p>
               </div>
             </div>
-
-            {/* Coverage controls */}
-            <div className="flex flex-wrap items-center gap-2 px-6 pb-4">
-              <span className="text-xs font-bold uppercase tracking-wide text-slate-400">Coverage</span>
-              <input
-                type="date"
-                value={fromDate}
-                onChange={(e) => setFromDate(e.target.value)}
-                className="px-2 py-2 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-              />
-              <span className="text-slate-400 text-sm">→</span>
-              <input
-                type="date"
-                value={toDate}
-                onChange={(e) => setToDate(e.target.value)}
-                className="px-2 py-2 border border-slate-300 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
-              />
-              <div className="flex items-center gap-1 ml-1 bg-slate-100 rounded-xl p-1">
-                {[
-                  { label: 'All Time', from: '', to: '' },
-                  { label: 'This Month', from: `${todayKey.slice(0, 8)}01`, to: todayKey },
-                  { label: 'Today', from: todayKey, to: todayKey },
-                ].map((p) => {
-                  const active = fromDate === p.from && toDate === p.to;
-                  return (
-                    <button
-                      key={p.label}
-                      type="button"
-                      onClick={() => applyPreset(p.from, p.to)}
-                      className={`px-3 py-1.5 text-xs font-bold rounded-lg transition ${
-                        active
-                          ? 'bg-purple-600 text-white shadow-sm'
-                          : 'text-slate-600 hover:bg-white hover:text-slate-800'
-                      }`}
-                    >
-                      {p.label}
-                    </button>
-                  );
-                })}
-              </div>
-              <span className="ml-auto text-xs font-semibold text-slate-500 bg-slate-100 px-3 py-1.5 rounded-full">
-                {rows.length} account{rows.length === 1 ? '' : 's'} loaded
-              </span>
+            <div className="flex shrink-0 items-center gap-2">
+              <button
+                type="button"
+                onClick={handlePrint}
+                disabled={fetching || Boolean(fetchError)}
+                className="flex items-center gap-2 rounded-xl bg-purple-600 px-4 py-2 text-sm font-bold text-white transition hover:bg-purple-700 disabled:opacity-50"
+              >
+                <Download className="h-4 w-4" />
+                {fetching ? "Loading..." : "Print / Save PDF"}
+              </button>
+              <button
+                type="button"
+                onClick={onClose}
+                aria-label="Close report"
+                className="rounded-xl p-2 text-slate-500 transition hover:bg-slate-200"
+              >
+                <X className="h-5 w-5" />
+              </button>
             </div>
           </div>
 
-          {/* ===== Report body ===== */}
-          <div className="p-8 text-slate-800">
-            {/* Report header */}
-            <div className="text-center border-b-2 border-slate-800 pb-5 mb-6 print-section">
-              <p className="text-xs font-bold tracking-[0.2em] text-slate-400 uppercase">E-MDRRMO</p>
-              <h1 className="text-2xl font-black text-slate-900 mt-1">USER ACCOUNTS SUMMARY REPORT</h1>
-              <div className="flex flex-wrap items-center justify-center gap-2 mt-3">
-                <span className="text-xs font-semibold text-slate-600 bg-slate-100 px-3 py-1 rounded-full">
-                  Coverage: {rangeLabel}
-                </span>
-                <span className="text-xs font-semibold text-purple-700 bg-purple-50 px-3 py-1 rounded-full">
-                  {rows.length} account{rows.length === 1 ? '' : 's'}
-                </span>
-              </div>
-              <p className="text-xs text-slate-400 mt-2">Generated: {generatedAt}</p>
+          <div className="flex flex-wrap items-center gap-2 px-6 pb-4">
+            <span className="text-xs font-bold uppercase tracking-wide text-slate-400">
+              Coverage
+            </span>
+            <input
+              type="date"
+              max={todayKey}
+              value={fromDate}
+              onChange={(event) => setFromDate(event.target.value)}
+              className="rounded-xl border border-slate-300 px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-500"
+            />
+            <span className="text-sm text-slate-400">→</span>
+            <input
+              type="date"
+              max={todayKey}
+              value={toDate}
+              onChange={(event) => setToDate(event.target.value)}
+              className="rounded-xl border border-slate-300 px-2 py-2 text-sm outline-none focus:ring-2 focus:ring-purple-500"
+            />
+            <div className="ml-1 flex items-center gap-1 rounded-xl bg-slate-100 p-1">
+              {[
+                { label: "All Time", from: "", to: "" },
+                {
+                  label: "This Month",
+                  from: `${todayKey.slice(0, 8)}01`,
+                  to: todayKey,
+                },
+                { label: "Today", from: todayKey, to: todayKey },
+              ].map((preset) => {
+                const active =
+                  fromDate === preset.from && toDate === preset.to;
+                return (
+                  <button
+                    key={preset.label}
+                    type="button"
+                    onClick={() => applyPreset(preset.from, preset.to)}
+                    className={`rounded-lg px-3 py-1.5 text-xs font-bold transition ${
+                      active
+                        ? "bg-purple-600 text-white shadow-sm"
+                        : "text-slate-600 hover:bg-white"
+                    }`}
+                  >
+                    {preset.label}
+                  </button>
+                );
+              })}
             </div>
-
-            {fetchError ? (
-              <div className="p-4 mb-6 bg-red-50 border border-red-200 rounded-xl text-sm text-red-700">
-                Failed to load report data: {fetchError}
-              </div>
-            ) : fetching ? (
-              <div className="py-16 text-center text-slate-500 font-semibold">
-                Loading report data…
-              </div>
-            ) : (
-              <>
-                {/* Highlights */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8 print-break-avoid">
-                  <Card label="Total Accounts" value={rows.length} sub="In coverage" color="bg-blue-50 border-blue-200 text-blue-700" />
-                  <Card
-                    label="Active"
-                    value={stats.activeCount}
-                    sub={`${pct(stats.activeCount)}% of total`}
-                    color="bg-green-50 border-green-200 text-green-700"
-                  />
-                  <Card
-                    label="Pending Registrations"
-                    value={stats.pendingCount}
-                    sub={stats.pendingCount > 0 ? 'Awaiting approval' : 'None pending'}
-                    color="bg-yellow-50 border-yellow-200 text-yellow-700"
-                  />
-                  <Card
-                    label="Busiest Month"
-                    value={stats.busiestMonth ? stats.busiestMonth.name : '—'}
-                    sub={stats.busiestMonth ? `${stats.busiestMonth.count} registrations` : 'No data'}
-                    color="bg-violet-50 border-violet-200 text-violet-700"
-                  />
-                </div>
-
-                {/* Role overview */}
-                <div className="mb-8 print-section">
-                  <h2 className="font-bold text-slate-800 mb-3">Role Overview</h2>
-                  {stats.roleData.length === 0 ? (
-                    <p className="text-sm text-slate-500">No accounts in the covered range.</p>
-                  ) : (
-                    <div className={`grid gap-3 ${stats.roleData.length >= 4 ? 'grid-cols-2 md:grid-cols-4' : stats.roleData.length === 3 ? 'grid-cols-3' : 'grid-cols-2'}`}>
-                      {stats.roleData.map((s, i) => (
-                        <Card
-                          key={s.name}
-                          label={s.name.charAt(0).toUpperCase() + s.name.slice(1)}
-                          value={s.count}
-                          sub={`${pct(s.count)}% of total`}
-                          color={
-                            s.name === 'admin'
-                              ? 'bg-purple-50 border-purple-200 text-purple-700'
-                              : s.name === 'staff'
-                                ? 'bg-indigo-50 border-indigo-200 text-indigo-700'
-                                : 'bg-green-50 border-green-200 text-green-700'
-                          }
-                        />
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Role distribution (pie) */}
-                {stats.roleData.length > 0 && (
-                  <div className="mb-8 print-section">
-                    <h2 className="font-bold text-slate-800 mb-3">Role Distribution</h2>
-                    <div className="w-full h-[260px]">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <PieChart>
-                          <Pie
-                            data={stats.roleData.map((r) => ({ ...r, value: r.count }))}
-                            innerRadius={60}
-                            outerRadius={95}
-                            paddingAngle={5}
-                            dataKey="value"
-                          >
-                            {stats.roleData.map((_, i) => (
-                              <Cell key={i} fill={PIE_COLORS[i % PIE_COLORS.length]} />
-                            ))}
-                          </Pie>
-                          <Tooltip />
-                          <Legend wrapperStyle={{ paddingTop: '10px' }} />
-                        </PieChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-                )}
-
-                {/* Registrations per month (bar) */}
-                {stats.monthlyData.length > 0 && (
-                  <div className="mb-8 print-section">
-                    <h2 className="font-bold text-slate-800 mb-3">Registrations per Month</h2>
-                    <div className="w-full h-[240px]">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <BarChart data={stats.monthlyData}>
-                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#e0e0e0" />
-                          <XAxis dataKey="name" fontSize={10} tickLine={false} axisLine={false} />
-                          <YAxis allowDecimals={false} fontSize={10} tickLine={false} axisLine={false} />
-                          <Tooltip cursor={{ fill: 'rgba(0,0,0,0.05)' }} />
-                          <Bar dataKey="count" fill="#6366f1" radius={[10, 10, 0, 0]} barSize={40} />
-                        </BarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  </div>
-                )}
-
-                {/* Count tables */}
-                <div className="space-y-8 mb-8">
-                  <div className="print-section"><CountTable title="Accounts by Role" data={stats.roleData} total={rows.length} /></div>
-                  <div className="print-section"><CountTable title="Accounts by Status" data={stats.statusData} total={rows.length} /></div>
-                  <div className="print-section"><CountTable title="Accounts by Source Table" data={stats.sourceData} total={rows.length} /></div>
-                  <div className="print-section"><CountTable title="Staff by Department" data={stats.departmentData} max={12} /></div>
-                </div>
-
-                {/* Footer */}
-                <div className="pt-4 border-t border-slate-200 text-center text-xs text-slate-500 print-break-avoid">
-                  <p>This report is system-generated and reflects data at the time of generation. Account names and contact details are omitted by design.</p>
-                  <p className="mt-1">© 2023 Your Organization Name</p>
-                </div>
-              </>
-            )}
+            <span className="ml-auto rounded-full bg-slate-100 px-3 py-1.5 text-xs font-semibold text-slate-500">
+              {rows.length} account{rows.length === 1 ? "" : "s"} loaded
+            </span>
           </div>
         </div>
+
+        <div className="p-8 text-slate-800 max-h-[70vh] overflow-y-auto">
+          <div className="mb-6 border-b-2 border-slate-800 pb-5 text-center">
+            <p className="text-xs font-bold uppercase tracking-[0.2em] text-slate-400">
+              E-MDRRMO
+            </p>
+            <h1 className="mt-1 text-2xl font-black text-slate-900">
+              USER ACCOUNTS SUMMARY REPORT
+            </h1>
+            <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+              <span className="rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold text-slate-600">
+                Coverage: {rangeLabel}
+              </span>
+              <span className="rounded-full bg-purple-50 px-3 py-1 text-xs font-semibold text-purple-700">
+                {rows.length} account{rows.length === 1 ? "" : "s"}
+              </span>
+            </div>
+            <p className="mt-2 text-xs text-slate-400">
+              Generated: {generatedAt}
+            </p>
+          </div>
+
+          {fetchError ? (
+            <div className="mb-6 rounded-xl border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+              Failed to load report data: {fetchError}
+            </div>
+          ) : fetching ? (
+            <div className="py-16 text-center font-semibold text-slate-500">
+              Loading report data...
+            </div>
+          ) : (
+            <>
+              <div className="mb-8 grid grid-cols-2 gap-3 md:grid-cols-4">
+                <ReportCard
+                  label="Total Accounts"
+                  value={rows.length}
+                  sub="In coverage"
+                  color="border-blue-200 bg-blue-50 text-blue-700"
+                />
+                <ReportCard
+                  label="Active"
+                  value={stats.activeCount}
+                  sub={`${percent(stats.activeCount)}% of total`}
+                  color="border-emerald-200 bg-emerald-50 text-emerald-700"
+                />
+                <ReportCard
+                  label="Pending"
+                  value={stats.pendingCount}
+                  sub={
+                    stats.pendingCount > 0
+                      ? "Awaiting approval"
+                      : "None pending"
+                  }
+                  color="border-yellow-200 bg-yellow-50 text-yellow-700"
+                />
+                <ReportCard
+                  label="Busiest Month"
+                  value={stats.busiestMonth ? stats.busiestMonth.name : "—"}
+                  sub={
+                    stats.busiestMonth
+                      ? `${stats.busiestMonth.count} registrations`
+                      : "No data"
+                  }
+                  color="border-violet-200 bg-violet-50 text-violet-700"
+                />
+              </div>
+
+              <div className="mb-8">
+                <h2 className="mb-3 font-bold text-slate-800">
+                  Role Overview
+                </h2>
+                {stats.roleData.length === 0 ? (
+                  <p className="text-sm text-slate-500">
+                    No accounts in the covered range.
+                  </p>
+                ) : (
+                  <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
+                    {stats.roleData.map((entry) => (
+                      <ReportCard
+                        key={entry.name}
+                        label={prettyStatus(entry.name)}
+                        value={entry.count}
+                        sub={`${percent(entry.count)}% of total`}
+                        color={
+                          entry.name === "admin"
+                            ? "border-purple-200 bg-purple-50 text-purple-700"
+                            : entry.name === "staff"
+                              ? "border-indigo-200 bg-indigo-50 text-indigo-700"
+                              : "border-emerald-200 bg-emerald-50 text-emerald-700"
+                        }
+                      />
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {stats.roleData.length > 0 && (
+                <div className="mb-8">
+                  <h2 className="mb-3 font-bold text-slate-800">
+                    Role Distribution
+                  </h2>
+                  <div className="h-[260px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <PieChart>
+                        <Pie
+                          data={stats.roleData.map((entry) => ({
+                            ...entry,
+                            value: entry.count,
+                          }))}
+                          innerRadius={60}
+                          outerRadius={95}
+                          paddingAngle={5}
+                          dataKey="value"
+                          nameKey="name"
+                        >
+                          {stats.roleData.map((_, index) => (
+                            <Cell
+                              key={index}
+                              fill={pieColors[index % pieColors.length]}
+                            />
+                          ))}
+                        </Pie>
+                        <Tooltip />
+                        <Legend wrapperStyle={{ paddingTop: "10px" }} />
+                      </PieChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
+
+              {stats.monthlyData.length > 0 && (
+                <div className="mb-8">
+                  <h2 className="mb-3 font-bold text-slate-800">
+                    Registrations per Month
+                  </h2>
+                  <div className="h-[240px] w-full">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <BarChart data={stats.monthlyData}>
+                        <CartesianGrid
+                          strokeDasharray="3 3"
+                          vertical={false}
+                          stroke="#e0e0e0"
+                        />
+                        <XAxis
+                          dataKey="name"
+                          fontSize={10}
+                          tickLine={false}
+                          axisLine={false}
+                        />
+                        <YAxis
+                          allowDecimals={false}
+                          fontSize={10}
+                          tickLine={false}
+                          axisLine={false}
+                        />
+                        <Tooltip cursor={{ fill: "rgba(0,0,0,0.05)" }} />
+                        <Bar
+                          dataKey="count"
+                          fill="#6366f1"
+                          radius={[10, 10, 0, 0]}
+                          barSize={40}
+                        />
+                      </BarChart>
+                    </ResponsiveContainer>
+                  </div>
+                </div>
+              )}
+
+              <div className="mb-8 space-y-8">
+                <ReportCountTable
+                  title="Accounts by Role"
+                  data={stats.roleData}
+                  total={rows.length}
+                  percent={percent}
+                />
+                <ReportCountTable
+                  title="Accounts by Status"
+                  data={stats.statusData}
+                  total={rows.length}
+                  percent={percent}
+                />
+                <ReportCountTable
+                  title="Accounts by Source Table"
+                  data={stats.sourceData}
+                  total={rows.length}
+                  percent={percent}
+                />
+                <ReportCountTable
+                  title="Staff by Department"
+                  data={stats.departmentData}
+                  percent={percent}
+                />
+              </div>
+
+              <div className="border-t border-slate-200 pt-4 text-center text-xs text-slate-500">
+                <p>
+                  This report is system-generated and reflects data at the
+                  time of generation. Account names and contact details are
+                  omitted by design.
+                </p>
+                <p className="mt-1">
+                  © {new Date().getFullYear()} E-MDRRMO
+                </p>
+              </div>
+            </>
+          )}
+        </div>
       </div>
-    </>
+    </div>
   );
-};
+}
+
+export default AdminUserManagement;

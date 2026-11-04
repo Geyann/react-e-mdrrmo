@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { supabase } from "../createClient";
+import { parseHazardTypeFromDescription, CATEGORY_ICONS } from "../utils/HazardTaxonomy";
 
 // ⚠️ TODO: Confirm this against Supabase Dashboard → Storage and set it once, correctly.
 // The previous version guessed between "hazard-photos", "hazard_photos", and "photos"
@@ -174,7 +175,9 @@ const AdminApproval = () => {
                     <div>{report.date_observed}</div>
                     <div style={{ fontSize: "12px", color: "#64748b" }}>{report.time_observed}</div>
                   </td>
-                  <td style={{ padding: "12px 16px" }}>{report.hazard_category}</td>
+                  <td style={{ padding: "12px 16px" }}>
+                    {(CATEGORY_ICONS[(report.hazard_category || "").toLowerCase()] || "")} {report.hazard_category}
+                  </td>
                   <td style={{ padding: "12px 16px" }}>
                     <span style={{ padding: "4px 8px", borderRadius: "12px", fontSize: "12px", ...getPriorityStyle(report.risk_level) }}>
                       {report.risk_level}
@@ -210,7 +213,10 @@ const AdminApproval = () => {
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "15px", fontSize: "14px", marginBottom: "20px" }}>
               <div><strong>Reporter Name:</strong> {selectedReport.reporter_name || "Anonymous"}</div>
               <div><strong>Contact:</strong> {selectedReport.reporter_contact || "N/A"}</div>
-              <div><strong>Category / Risk:</strong> {selectedReport.hazard_category} ({selectedReport.risk_level})</div>
+              <div><strong>Category / Risk:</strong> {(CATEGORY_ICONS[(selectedReport.hazard_category || "").toLowerCase()] || "")} {selectedReport.hazard_category} ({selectedReport.risk_level})</div>
+              {parseHazardTypeFromDescription(selectedReport.hazard_description) && (
+                <div><strong>Hazard Type:</strong> {parseHazardTypeFromDescription(selectedReport.hazard_description)}</div>
+              )}
               <div style={{ gridColumn: "span 2" }}><strong>Address Location:</strong> {selectedReport.address}</div>
               <div style={{ gridColumn: "span 2" }}><strong>Exact Landmark:</strong> {selectedReport.landmark}</div>
               <div><strong>Date Logged:</strong> {selectedReport.date_observed}</div>
