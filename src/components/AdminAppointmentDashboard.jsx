@@ -103,25 +103,6 @@ const AdminDashboard = () => {
     };
 
     // ─────────────────────────────────────────────────────────────
-    // Notification helper
-    // ─────────────────────────────────────────────────────────────
-    const createNotification = async (userId, title, message, type, relatedId) => {
-        if (!userId) return;
-        try {
-            const { error } = await supabase.from("notifications").insert({
-                user_id: userId,
-                title,
-                message,
-                type,
-                related_id: relatedId,
-            });
-            if (error) console.error("Notification insert error:", error);
-        } catch (err) {
-            console.error("Failed to create notification:", err);
-        }
-    };
-
-    // ─────────────────────────────────────────────────────────────
     // Auto-mark date unavailable when volume limit is reached
     // ─────────────────────────────────────────────────────────────
     const autoMarkUnavailableIfFull = async (date, limit, currentBookingCount) => {
@@ -452,37 +433,6 @@ const AdminDashboard = () => {
                     throw error;
                 }
                 return;
-            }
-
-            // Send notification to the user
-            const targetAuthUserId = updatedRow?.user_id_from_auth || null;
-
-            if (targetAuthUserId) {
-                if (newStatus === "approved") {
-                    await createNotification(
-                        targetAuthUserId,
-                        "Appointment Approved",
-                        `Your appointment for "${updatedRow.purpose || "appointment"}" on ${updatedRow.date || ""} at ${updatedRow.time || ""} has been approved.`,
-                        "success",
-                        appointmentId
-                    );
-                } else if (newStatus === "rejected") {
-                    await createNotification(
-                        targetAuthUserId,
-                        "Appointment Declined",
-                        `Your appointment for "${updatedRow.purpose || "appointment"}" on ${updatedRow.date || ""} at ${updatedRow.time || ""} has been declined.\n\nReason: ${reason || "No reason provided."}`,
-                        "error",
-                        appointmentId
-                    );
-                } else if (newStatus === "pending") {
-                    await createNotification(
-                        targetAuthUserId,
-                        "Appointment Reset",
-                        `Your appointment for "${updatedRow.purpose || "appointment"}" on ${updatedRow.date || ""} at ${updatedRow.time || ""} has been reset to pending.`,
-                        "info",
-                        appointmentId
-                    );
-                }
             }
 
             // If approving, check the date's volume limit
@@ -1287,7 +1237,7 @@ const AdminDashboard = () => {
                 {/* VOLUME LIMIT MODAL                                            */}
                 {/* ============================================================= */}
                 {showVolumeModal && (
-                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+                    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-5000 p-4">
                         <div className="bg-white rounded-2xl p-6 w-full max-w-md shadow-2xl border border-slate-200">
                             <h3 className="text-xl font-bold text-slate-800 mb-4">
                                 Set Volume Limit for <span className="text-purple-600">{selectedDate}</span>
@@ -1345,7 +1295,7 @@ const AdminDashboard = () => {
                 {/* ============================================================= */}
                 {selectedAppointment && (
                     <div
-                        className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4"
+                        className="fixed inset-0 z-5000 flex items-start justify-center overflow-y-auto bg-black/50 p-4"
                         onClick={() => {
                             if (!declineSaving) setSelectedAppointmentId(null);
                         }}
@@ -1432,7 +1382,7 @@ const AdminDashboard = () => {
                                         value={selectedAppointment.purpose}
                                     />
                                     <DetailRow
-                                        icon={Calendar}
+                                        icon={CalendarDays}
                                         label="Date"
                                         value={selectedAppointment.date}
                                     />
@@ -1615,9 +1565,8 @@ const AdminDashboard = () => {
                                         The requester will see this reason
                                     </p>
                                     <p className="mt-1 text-xs leading-relaxed text-red-700">
-                                        The reason you enter below is shown to the resident in
-                                        their notification and on their appointment tracking
-                                        page.
+                                        The reason you enter below is shown to the resident on
+                                        their appointment tracking page.
                                     </p>
                                 </div>
 
@@ -2085,7 +2034,7 @@ const AdminAppointmentsSummaryReportModal = ({
     );
 
     return (
-        <div className="fixed inset-0 bg-black/50 flex items-start justify-center z-50 p-4 overflow-y-auto">
+        <div className="fixed inset-0 bg-black/50 flex items-start justify-center z-5000 p-4 overflow-y-auto">
             <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-3xl my-8">
                 <div className="flex flex-wrap items-center justify-between gap-3 p-4 border-b border-slate-200 sticky top-0 bg-white z-10 rounded-t-2xl">
                     <h3 className="font-bold text-slate-800">Appointments Summary Report</h3>

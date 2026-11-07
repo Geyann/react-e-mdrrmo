@@ -197,6 +197,36 @@ const Lightbox = ({ images, currentIndex, onClose, onPrev, onNext }) => {
 // ════════════════════════════════════════════════════════════════════════════
 //  DETAIL PANEL
 // ════════════════════════════════════════════════════════════════════════════
+const EDITABLE_FIELDS = [
+  'hazard_category',
+  'risk_level',
+  'address',
+  'landmark',
+  'date_observed',
+  'time_observed',
+  'hazard_description',
+  'recommended_action',
+  'reporter_name',
+  'reporter_contact',
+  'latitude',
+  'longitude',
+];
+
+const buildEditForm = (report) => ({
+  hazard_category: report?.hazard_category || '',
+  risk_level: (report?.risk_level || '').toLowerCase(),
+  address: report?.address || '',
+  landmark: report?.landmark || '',
+  date_observed: report?.date_observed || '',
+  time_observed: report?.time_observed || '',
+  hazard_description: report?.hazard_description || '',
+  recommended_action: report?.recommended_action || '',
+  reporter_name: report?.reporter_name || '',
+  reporter_contact: report?.reporter_contact || '',
+  latitude: report?.latitude != null ? String(report.latitude) : '',
+  longitude: report?.longitude != null ? String(report.longitude) : '',
+});
+
 const DetailPanel = ({
   report,
   onClose,
@@ -210,14 +240,21 @@ const DetailPanel = ({
   onAssign,
   onClearAssignment,
   onUpdateReviewStatus,
+  onUpdateDetails,
   saving,
 }) => {
   const [selectedStaffId, setSelectedStaffId] = useState('');
   const [assignError, setAssignError] = useState('');
+  const [isEditing, setIsEditing] = useState(false);
+  const [editForm, setEditForm] = useState(() => buildEditForm(report));
+  const [editError, setEditError] = useState('');
 
   useEffect(() => {
     setSelectedStaffId('');
     setAssignError('');
+    setIsEditing(false);
+    setEditError('');
+    setEditForm(buildEditForm(report));
   }, [report?.id]);
 
   if (!report) return null;
@@ -231,6 +268,12 @@ const DetailPanel = ({
   const assignedStaffId = report.assigned_to_staff_id;
   const assignedName = report.assigned_to_name;
   const hasAssignment = Boolean(assignedStaffId);
+
+  // Staff/admin can edit while reviewing (pending or under_review). Resolved stays read-only unless reset.
+  const canEditDetails =
+    reviewStatus === 'pending' ||
+    reviewStatus === 'under_review' ||
+    displayStatus === 'pending';
 
   const handleAssign = async () => {
     setAssignError('');
@@ -246,6 +289,87 @@ const DetailPanel = ({
     await onAssign(report, chosen);
     setSelectedStaffId('');
   };
+
+  const startEdit = () => {
+    setEditForm(buildEditForm(report));
+    setEditError('');
+    setIsEditing(true);
+  };
+
+  const cancelEdit = () => {
+    setEditForm(buildEditForm(report));
+    setEditError('');
+    setIsEditing(false);
+  };
+
+  const onEditChange = (field, value) => {
+    setEditForm((prev) => ({ ...prev, [field]: value }));
+  };
+
+  const handleSaveDetails = async () => {
+    setEditError('');
+    if (!editForm.address?.trim()) {
+      setEditError('Address is required.');
+      return;
+    }
+    if (!editForm.hazard_description?.trim()) {
+      setEditError('Description is required.');
+      return;
+    }
+    if (!editForm.hazard_category?.trim()) {
+      setEditError('Category is required.');
+      return;
+    }
+    if (!editForm.risk_level?.trim()) {
+      setEditError('Risk level is required.');
+      return;
+    }
+
+    const lat = editForm.latitude.trim() === '' ? null : parseFloat(editForm.latitude);
+    const lng = editForm.longitude.trim() === '' ? null : parseFloat(editForm.longitude);
+    if (editForm.latitude.trim() !== '' && !Number.isFinite(lat)) {
+      setEditError('Latitude must be a valid number.');
+      return;
+    }
+    if (editForm.longitude.trim() !== '' && !Number.isFinite(lng)) {
+      setEditError('Longitude must be a valid number.');
+      return;
+    }
+
+    const payload = {
+      hazard_category: editForm.hazard_category.trim(),
+      risk_level: editForm.risk_level.trim().toLowerCase(),
+      address: editForm.address.trim(),
+      landmark: editForm.landmark.trim() || null,
+      date_observed: editForm.date_observed.trim() || null,
+      time_observed: editForm.time_observed.trim() || null,
+      hazard_description: editForm.hazard_description.trim(),
+      recommended_action: editForm.recommended_action.trim() || null,
+      reporter_name: editForm.reporter_name.trim() || null,
+      reporter_contact: editForm.reporter_contact.trim() || null,
+      latitude: lat,
+      longitude: lng,
+    };
+
+    const ok = await onUpdateDetails(report, payload);
+    if (ok) {
+      setIsEditing(false);
+      setEditError('');
+    }
+  };
+
+  const categoryOptions = (() => {
+    const base = CATEGORIES.filter((c) => c.id !== 'all');
+    const current = (editForm.hazard_category || report.hazard_category || '').trim();
+    if (
+      current &&
+      !base.some((c) => c.id.toLowerCase() === current.toLowerCase() || c.label.toLowerCase() === current.toLowerCase())
+    ) {
+      return [{ id: current, label: current }, ...base];
+    }
+    return base;
+  })();
+  const riskOptions = RISK_LEVELS.filter((r) => r.id !== 'all');
 
   return (
     <div className="w-[420px] bg-slate-50 border-l border-slate-200 overflow-y-auto flex flex-col h-full font-sans shrink-0">
@@ -409,55 +533,252 @@ const DetailPanel = ({
         </div>
       )}
 
-      {/* Details */}
-      <div className="px-5 py-4 space-y-5 flex-1">
-        <div>
-          <p className="text-sm text-slate-900 font-semibold mb-1">Description</p>
-          <p className="text-sm text-slate-700 leading-relaxed">
-            {report.hazard_description || 'No description provided.'}
+      {/* Details (view / edit) */}
+      <div className="px-5 py-4 space-y-4 flex-1">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-sm text-slate-900 font-semibold">Report Details</p>
+          {canEditDetails && !isEditing && (
+            <button
+              type="button"
+              onClick={startEdit}
+              disabled={saving}
+              className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-indigo-300 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 transition disabled:opacity-50"
+            >
+              Edit details
+            </button>
+          )}
+          {isEditing && (
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={cancelEdit}
+                disabled={saving}
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg border border-slate-300 bg-white text-slate-700 hover:bg-slate-50 transition disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={handleSaveDetails}
+                disabled={saving}
+                className="px-3 py-1.5 text-xs font-semibold rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 transition disabled:opacity-50"
+              >
+                {saving ? 'Saving…' : 'Save changes'}
+              </button>
+            </div>
+          )}
+        </div>
+
+        {editError && (
+          <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+            {editError}
           </p>
-        </div>
+        )}
 
-        <div className="grid grid-cols-2 gap-4">
-          <div>
-            <p className="text-sm text-slate-900 font-semibold mb-1">Reporter</p>
-            <p className="text-sm text-slate-700">{report.reporter_name || 'Anonymous'}</p>
-          </div>
-          <div>
-            <p className="text-sm text-slate-900 font-semibold mb-1">Contact</p>
-            <p className="text-sm text-slate-700">{report.reporter_contact || 'N/A'}</p>
-          </div>
-          <div>
-            <p className="text-sm text-slate-900 font-semibold mb-1">Date Observed</p>
-            <p className="text-sm text-slate-700">{report.date_observed || 'N/A'}</p>
-          </div>
-          <div>
-            <p className="text-sm text-slate-900 font-semibold mb-1">Time Observed</p>
-            <p className="text-sm text-slate-700">{report.time_observed || 'N/A'}</p>
-          </div>
-        </div>
+        {isEditing ? (
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Category</label>
+                <select
+                  value={editForm.hazard_category}
+                  onChange={(e) => onEditChange('hazard_category', e.target.value)}
+                  className="w-full px-2.5 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="">Select category…</option>
+                  {categoryOptions.map((c) => (
+                    <option key={c.id} value={c.id}>
+                      {c.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Risk level</label>
+                <select
+                  value={editForm.risk_level}
+                  onChange={(e) => onEditChange('risk_level', e.target.value)}
+                  className="w-full px-2.5 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="">Select risk…</option>
+                  {riskOptions.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </div>
 
-        <div>
-          <p className="text-sm text-slate-900 font-semibold mb-1">Location</p>
-          <p className="text-sm text-slate-700">{report.address || 'No address'}</p>
-          {report.landmark && (
-            <p className="text-sm text-slate-600 mt-1">Near: {report.landmark}</p>
-          )}
-          {hasValidCoords(report) && (
-            <p className="text-sm text-slate-500 mt-1">
-              {parseFloat(report.latitude).toFixed(5)}, {parseFloat(report.longitude).toFixed(5)}
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1">Description *</label>
+              <textarea
+                rows={3}
+                value={editForm.hazard_description}
+                onChange={(e) => onEditChange('hazard_description', e.target.value)}
+                className="w-full px-2.5 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-y"
+              />
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1">Recommended action</label>
+              <textarea
+                rows={2}
+                value={editForm.recommended_action}
+                onChange={(e) => onEditChange('recommended_action', e.target.value)}
+                className="w-full px-2.5 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500 resize-y"
+              />
+            </div>
+
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Reporter</label>
+                <input
+                  type="text"
+                  value={editForm.reporter_name}
+                  onChange={(e) => onEditChange('reporter_name', e.target.value)}
+                  className="w-full px-2.5 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Contact</label>
+                <input
+                  type="text"
+                  value={editForm.reporter_contact}
+                  onChange={(e) => onEditChange('reporter_contact', e.target.value)}
+                  className="w-full px-2.5 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Date observed</label>
+                <input
+                  type="date"
+                  value={editForm.date_observed || ''}
+                  onChange={(e) => onEditChange('date_observed', e.target.value)}
+                  className="w-full px-2.5 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Time observed</label>
+                <input
+                  type="time"
+                  value={(editForm.time_observed || '').toString().slice(0, 5)}
+                  onChange={(e) => onEditChange('time_observed', e.target.value)}
+                  className="w-full px-2.5 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+            </div>
+
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1">Address *</label>
+              <input
+                type="text"
+                value={editForm.address}
+                onChange={(e) => onEditChange('address', e.target.value)}
+                className="w-full px-2.5 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-semibold text-slate-600 mb-1">Landmark</label>
+              <input
+                type="text"
+                value={editForm.landmark}
+                onChange={(e) => onEditChange('landmark', e.target.value)}
+                className="w-full px-2.5 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Latitude</label>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="e.g. 14.32000"
+                  value={editForm.latitude}
+                  onChange={(e) => onEditChange('latitude', e.target.value)}
+                  className="w-full px-2.5 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-semibold text-slate-600 mb-1">Longitude</label>
+                <input
+                  type="text"
+                  inputMode="decimal"
+                  placeholder="e.g. 120.76000"
+                  value={editForm.longitude}
+                  onChange={(e) => onEditChange('longitude', e.target.value)}
+                  className="w-full px-2.5 py-2 text-sm border border-slate-300 rounded-lg bg-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+            </div>
+            <p className="text-[11px] text-slate-500">
+              Corrections are logged in Admin remarks so admins can review what changed.
             </p>
-          )}
-        </div>
+          </div>
+        ) : (
+          <>
+            <div>
+              <p className="text-xs font-semibold text-slate-500 mb-1">Description</p>
+              <p className="text-sm text-slate-700 leading-relaxed">
+                {report.hazard_description || 'No description provided.'}
+              </p>
+            </div>
 
-        {report.recommended_action && (
-          <div>
-            <p className="text-sm text-slate-900 font-semibold mb-1">Recommended Action</p>
-            <p className="text-sm text-slate-700 italic">{report.recommended_action}</p>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <p className="text-xs font-semibold text-slate-500 mb-1">Reporter</p>
+                <p className="text-sm text-slate-700">{report.reporter_name || 'Anonymous'}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-slate-500 mb-1">Contact</p>
+                <p className="text-sm text-slate-700">{report.reporter_contact || 'N/A'}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-slate-500 mb-1">Date Observed</p>
+                <p className="text-sm text-slate-700">{report.date_observed || 'N/A'}</p>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-slate-500 mb-1">Time Observed</p>
+                <p className="text-sm text-slate-700">{report.time_observed || 'N/A'}</p>
+              </div>
+            </div>
+
+            <div>
+              <p className="text-xs font-semibold text-slate-500 mb-1">Location</p>
+              <p className="text-sm text-slate-700">{report.address || 'No address'}</p>
+              {report.landmark && (
+                <p className="text-sm text-slate-600 mt-1">Near: {report.landmark}</p>
+              )}
+              {hasValidCoords(report) && (
+                <p className="text-sm text-slate-500 mt-1">
+                  {parseFloat(report.latitude).toFixed(5)}, {parseFloat(report.longitude).toFixed(5)}
+                </p>
+              )}
+            </div>
+
+            {report.recommended_action && (
+              <div>
+                <p className="text-xs font-semibold text-slate-500 mb-1">Recommended Action</p>
+                <p className="text-sm text-slate-700 italic">{report.recommended_action}</p>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* Change log / admin remarks — always visible so admin can review staff corrections */}
+        {report.admin_remarks && (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-3">
+            <p className="text-xs font-semibold text-amber-800 mb-1.5 flex items-center gap-1.5">
+              <span className="inline-block w-1.5 h-1.5 rounded-full bg-amber-500" />
+              Admin / staff notes & corrections
+            </p>
+            <pre className="text-xs text-amber-900 whitespace-pre-wrap font-sans leading-relaxed">
+              {report.admin_remarks}
+            </pre>
           </div>
         )}
 
-        <div className="pt-3 border-t border-slate-200">
+        <div className="pt-2 border-t border-slate-200">
           <p className="text-sm text-slate-500">
             Submitted {timeAgo(report.created_at) || formatDate(report.created_at)}
           </p>
@@ -716,6 +1037,7 @@ const AdminHazardMap = () => {
   const [showReport, setShowReport] = useState(false);
   const [staffMembers, setStaffMembers] = useState([]);
   const [saving, setSaving] = useState(false);
+  const [showTools, setShowTools] = useState(false);
 
   const flippedBoundary = useMemo(() => naicBoundaryRaw.map((c) => [c[1], c[0]]), []);
   const bounds = useMemo(() => L.latLngBounds(flippedBoundary), [flippedBoundary]);
@@ -902,7 +1224,10 @@ const AdminHazardMap = () => {
         if (staffRaw) {
           try {
             const parsed = JSON.parse(staffRaw);
-            reviewerStaffId = parsed?.id ?? null;
+            // hazard_reports.reviewed_by_staff_id is bigint (staff_users.id).
+            // The stored session id can be a UUID, so only keep numeric ids.
+            const rawId = parsed?.staff_id ?? parsed?.id;
+            reviewerStaffId = /^\d+$/.test(String(rawId ?? '')) ? Number(rawId) : null;
             reviewerName = parsed?.full_name || parsed?.username || null;
           } catch {
             /* ignore */
@@ -927,11 +1252,17 @@ const AdminHazardMap = () => {
         };
         if (reviewerAuthId) payload.reviewed_by = reviewerAuthId;
 
-        const { error } = await supabase
+        const { data: updated, error } = await supabase
           .from('hazard_reports')
           .update(payload)
-          .eq('id', report.id);
+          .eq('id', report.id)
+          .select('id, review_status');
         if (error) throw error;
+        if (!updated || updated.length === 0) {
+          throw new Error(
+            'No row was updated. Check the hazard_reports UPDATE policy (RLS) for your role.',
+          );
+        }
 
         const msg =
           newReviewStatus === 'resolved'
@@ -940,11 +1271,13 @@ const AdminHazardMap = () => {
               ? 'Marked as under review'
               : 'Review reset to pending';
         showSnackbar(msg, 'success');
-        window.dispatchEvent(new Event('mdrrmo:notif-refresh'));
         await fetchReports();
       } catch (err) {
         console.error('Review status update error:', err);
-        showSnackbar('Failed to update review status', 'error');
+        showSnackbar(
+          `Failed to update review status: ${err?.message || 'unknown error'}`,
+          'error',
+        );
       } finally {
         setSaving(false);
       }
@@ -1011,6 +1344,122 @@ const AdminHazardMap = () => {
       } catch (err) {
         console.error('Clear assignment error:', err);
         showSnackbar('Failed to clear assignment', 'error');
+      } finally {
+        setSaving(false);
+      }
+    },
+    [fetchReports, saving, showSnackbar],
+  );
+
+  // ── Update report details (staff corrections during review) ──
+  const updateDetails = useCallback(
+    async (report, payload) => {
+      if (saving) return false;
+      setSaving(true);
+      try {
+        // Resolve who is making the edit (staff session preferred)
+        let editorName = 'Staff';
+        const staffRaw = localStorage.getItem('currentStaff');
+        if (staffRaw) {
+          try {
+            const parsed = JSON.parse(staffRaw);
+            editorName =
+              parsed?.full_name || parsed?.username || parsed?.email || editorName;
+          } catch {
+            /* ignore */
+          }
+        } else {
+          const {
+            data: { user },
+          } = await supabase.auth.getUser();
+          if (user) {
+            editorName =
+              user.user_metadata?.full_name || user.email || editorName;
+          }
+        }
+
+        const fieldLabels = {
+          hazard_category: 'Category',
+          risk_level: 'Risk level',
+          address: 'Address',
+          landmark: 'Landmark',
+          date_observed: 'Date observed',
+          time_observed: 'Time observed',
+          hazard_description: 'Description',
+          recommended_action: 'Recommended action',
+          reporter_name: 'Reporter',
+          reporter_contact: 'Contact',
+          latitude: 'Latitude',
+          longitude: 'Longitude',
+        };
+
+        const changes = [];
+        for (const key of Object.keys(payload)) {
+          const before = report[key];
+          const after = payload[key];
+          const beforeStr =
+            before == null || before === ''
+              ? '(empty)'
+              : String(before);
+          const afterStr =
+            after == null || after === ''
+              ? '(empty)'
+              : String(after);
+          // Normalize comparison for numbers
+          const same =
+            String(before ?? '').trim().toLowerCase() ===
+            String(after ?? '').trim().toLowerCase();
+          if (!same) {
+            changes.push(
+              `• ${fieldLabels[key] || key}: "${beforeStr}" → "${afterStr}"`,
+            );
+          }
+        }
+
+        if (changes.length === 0) {
+          showSnackbar('No changes detected', 'info');
+          return true;
+        }
+
+        const stamp = new Date().toLocaleString('en-PH', {
+          year: 'numeric',
+          month: 'short',
+          day: 'numeric',
+          hour: '2-digit',
+          minute: '2-digit',
+        });
+        const logBlock = `[Correction by ${editorName} · ${stamp}]\n${changes.join('\n')}`;
+        const prevRemarks = (report.admin_remarks || '').trim();
+        const nextRemarks = prevRemarks
+          ? `${logBlock}\n---\n${prevRemarks}`
+          : logBlock;
+
+        const { error } = await supabase
+          .from('hazard_reports')
+          .update({
+            ...payload,
+            admin_remarks: nextRemarks,
+            // Keep under review when staff is correcting details
+            review_status:
+              report.review_status === 'resolved'
+                ? report.review_status
+                : 'under_review',
+          })
+          .eq('id', report.id);
+
+        if (error) throw error;
+
+        showSnackbar('Report details updated', 'success');
+        window.dispatchEvent(new Event('mdrrmo:notif-refresh'));
+        await fetchReports();
+        return true;
+      } catch (err) {
+        console.error('Update details error:', err);
+        showSnackbar(
+          `Failed to update details: ${err?.message || 'unknown error'}`,
+          'error',
+        );
+        return false;
       } finally {
         setSaving(false);
       }
@@ -1097,6 +1546,21 @@ const AdminHazardMap = () => {
       setSaving(false);
     }
   }, [fetchReports, reports, saving, showSnackbar]);
+
+  const activeFilterCount =
+    (selectedCategory !== 'all' ? 1 : 0) +
+    (selectedRisk !== 'all' ? 1 : 0) +
+    (selectedStatus !== 'all' ? 1 : 0) +
+    (selectedReview !== 'all' ? 1 : 0) +
+    (showPendingOnly ? 1 : 0);
+
+  const resetFilters = () => {
+    setSelectedCategory('all');
+    setSelectedRisk('all');
+    setSelectedStatus('all');
+    setSelectedReview('all');
+    setShowPendingOnly(false);
+  };
 
   // ── Render ──
   return (
@@ -1222,38 +1686,8 @@ const AdminHazardMap = () => {
 
       {/* Main layout */}
       <div className="flex flex-1 overflow-hidden relative">
-        {/* LEFT SIDEBAR */}
-        <div className="w-80 h-full bg-white border-r border-slate-200 flex flex-col shrink-0">
-          <div className="p-4 border-b border-slate-200">
-            <h2 className="text-sm text-purple-700 font-semibold mb-3">Quick Actions</h2>
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                onClick={() => setShowPendingOnly(!showPendingOnly)}
-                className={`px-3 py-2 text-sm font-semibold rounded-lg border transition flex items-center justify-center gap-1 ${
-                  showPendingOnly
-                    ? 'bg-amber-600 border-amber-500 text-white'
-                    : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
-                }`}
-              >
-                Pending
-              </button>
-              <button
-                onClick={() =>
-                  setConfirmAction({
-                    title: 'Approve All Pending?',
-                    message: `This will approve ${stats.pending} pending reports. They will appear on the user heatmap.`,
-                    action: `Approve ${stats.pending}`,
-                    onConfirm: batchApprove,
-                  })
-                }
-                disabled={stats.pending === 0 || saving}
-                className="px-3 py-2 text-sm font-semibold rounded-lg border bg-emerald-600 border-emerald-500 text-white hover:bg-emerald-700 transition flex items-center justify-center gap-1 disabled:opacity-50"
-              >
-                Approve All
-              </button>
-            </div>
-          </div>
-
+        {/* LEFT SIDEBAR — search + reports, full height top to bottom */}
+        <div className="w-80 h-full bg-white border-r border-slate-200 flex flex-col shrink-0 shadow-sm">
           <div className="p-4 border-b border-slate-200">
             <div className="relative">
               <svg
@@ -1277,62 +1711,6 @@ const AdminHazardMap = () => {
                 className="w-full pl-9 pr-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-900 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-purple-500"
               />
             </div>
-          </div>
-
-          <div className="p-4 border-b border-slate-200 space-y-3">
-            <h2 className="text-sm text-purple-700 font-semibold">Filters</h2>
-            <select
-              value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value)}
-              className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-500"
-            >
-              {CATEGORIES.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {CATEGORY_ICONS[c.id] || ''} {c.label}
-                </option>
-              ))}
-            </select>
-            <div className="grid grid-cols-2 gap-2">
-              <select
-                value={selectedRisk}
-                onChange={(e) => setSelectedRisk(e.target.value)}
-                className="px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-500"
-              >
-                {RISK_LEVELS.map((r) => (
-                  <option key={r.id} value={r.id}>
-                    {r.label}
-                  </option>
-                ))}
-              </select>
-              <select
-                value={selectedStatus}
-                onChange={(e) => setSelectedStatus(e.target.value)}
-                className="px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-500"
-              >
-                {STATUSES.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-            <select
-              value={selectedReview}
-              onChange={(e) => setSelectedReview(e.target.value)}
-              className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-500"
-            >
-              {REVIEW_STATUSES.map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.label}
-                </option>
-              ))}
-            </select>
-            <button
-              onClick={() => setIsRealistic(!isRealistic)}
-              className="w-full px-3 py-2 text-sm font-semibold rounded-lg border bg-purple-600 border-purple-500 text-white hover:bg-purple-700 transition"
-            >
-              {isRealistic ? 'Standard Map' : 'Satellite View'}
-            </button>
           </div>
 
           {/* Reports list */}
@@ -1429,6 +1807,139 @@ const AdminHazardMap = () => {
             </div>
           )}
 
+          {/* Filter toggle button (left side of map) */}
+          <button
+            onClick={() => setShowTools((v) => !v)}
+            aria-expanded={showTools}
+            title="Quick actions & filters"
+            className={`absolute top-6 left-6 z-[1001] flex items-center gap-2 px-3 py-2.5 rounded-xl border shadow-lg text-sm font-semibold transition ${
+              showTools
+                ? 'bg-purple-600 border-purple-500 text-white'
+                : 'bg-white border-slate-200 text-purple-700 hover:bg-purple-50'
+            }`}
+          >
+            <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
+                d="M3 4h18M6 12h12M10 20h4" />
+            </svg>
+            Filters
+            {activeFilterCount > 0 && (
+              <span className="min-w-[1.25rem] h-5 px-1 rounded-full bg-amber-500 text-white text-xs flex items-center justify-center">
+                {activeFilterCount}
+              </span>
+            )}
+          </button>
+
+          {/* Quick actions & filters panel */}
+          {showTools && (
+            <div className="absolute top-20 left-6 z-[1001] w-72 max-h-[calc(100%-6rem)] overflow-y-auto bg-white border border-slate-200 rounded-2xl shadow-2xl p-4">
+              <div className="flex items-center justify-between mb-3">
+                <h2 className="text-sm font-bold text-slate-900">Quick Actions & Filters</h2>
+                <button
+                  onClick={() => setShowTools(false)}
+                  className="p-1 rounded-md text-slate-500 hover:bg-slate-100"
+                  aria-label="Close"
+                >
+                  ✕
+                </button>
+              </div>
+          <div className="pb-3 border-b border-slate-200">
+            <h2 className="text-sm text-purple-700 font-semibold mb-3">Quick Actions</h2>
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                onClick={() => setShowPendingOnly(!showPendingOnly)}
+                className={`px-3 py-2 text-sm font-semibold rounded-lg border transition flex items-center justify-center gap-1 ${
+                  showPendingOnly
+                    ? 'bg-amber-600 border-amber-500 text-white'
+                    : 'bg-white border-slate-300 text-slate-700 hover:bg-slate-50'
+                }`}
+              >
+                Pending
+              </button>
+              <button
+                onClick={() =>
+                  setConfirmAction({
+                    title: 'Approve All Pending?',
+                    message: `This will approve ${stats.pending} pending reports. They will appear on the user heatmap.`,
+                    action: `Approve ${stats.pending}`,
+                    onConfirm: batchApprove,
+                  })
+                }
+                disabled={stats.pending === 0 || saving}
+                className="px-3 py-2 text-sm font-semibold rounded-lg border bg-emerald-600 border-emerald-500 text-white hover:bg-emerald-700 transition flex items-center justify-center gap-1 disabled:opacity-50"
+              >
+                Approve All
+              </button>
+            </div>
+          </div>
+
+          <div className="pt-3 space-y-3">
+            <h2 className="text-sm text-purple-700 font-semibold">Filters</h2>
+            <select
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value)}
+              className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-500"
+            >
+              {CATEGORIES.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {CATEGORY_ICONS[c.id] || ''} {c.label}
+                </option>
+              ))}
+            </select>
+            <div className="grid grid-cols-2 gap-2">
+              <select
+                value={selectedRisk}
+                onChange={(e) => setSelectedRisk(e.target.value)}
+                className="px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              >
+                {RISK_LEVELS.map((r) => (
+                  <option key={r.id} value={r.id}>
+                    {r.label}
+                  </option>
+                ))}
+              </select>
+              <select
+                value={selectedStatus}
+                onChange={(e) => setSelectedStatus(e.target.value)}
+                className="px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              >
+                {STATUSES.map((s) => (
+                  <option key={s.id} value={s.id}>
+                    {s.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <select
+              value={selectedReview}
+              onChange={(e) => setSelectedReview(e.target.value)}
+              className="w-full px-3 py-2 bg-white border border-slate-300 rounded-lg text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-purple-500"
+            >
+              {REVIEW_STATUSES.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.label}
+                </option>
+              ))}
+            </select>
+            <button
+              onClick={() => setIsRealistic(!isRealistic)}
+              className="w-full px-3 py-2 text-sm font-semibold rounded-lg border bg-purple-600 border-purple-500 text-white hover:bg-purple-700 transition"
+            >
+              {isRealistic ? 'Standard Map' : 'Satellite View'}
+            </button>
+          </div>
+
+              {activeFilterCount > 0 && (
+                <button
+                  onClick={resetFilters}
+                  className="mt-3 w-full px-3 py-2 text-sm font-semibold rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50 transition"
+                >
+                  Reset filters
+                </button>
+              )}
+            </div>
+          )}
+
           <div className="absolute bottom-6 left-6 z-[1000] bg-white border border-slate-200 rounded-xl p-4 shadow-xl">
             <p className="text-sm text-slate-900 font-semibold mb-2">Risk Level</p>
             {[
@@ -1460,26 +1971,7 @@ const AdminHazardMap = () => {
             </div>
           </div>
 
-          <div className="absolute top-6 left-6 z-[1000] bg-white border border-slate-200 rounded-xl px-4 py-3 shadow-md">
-            <div className="flex items-center gap-4 text-xs font-medium flex-wrap">
-              <span className="text-slate-600">
-                Showing: <strong className="text-slate-900">{filteredReports.length}</strong>
-              </span>
-              <span className="text-slate-300">|</span>
-              <span className="text-slate-600">
-                Pending: <strong className="text-amber-600">{stats.pending}</strong>
-              </span>
-              <span className="text-slate-600">
-                Critical: <strong className="text-red-600">{stats.critical}</strong>
-              </span>
-              <span className="text-slate-600">
-                High: <strong className="text-orange-600">{stats.high}</strong>
-              </span>
-              <span className="text-slate-600">
-                In Review: <strong className="text-indigo-600">{stats.underReview}</strong>
-              </span>
-            </div>
-          </div>
+          
 
           <MapContainer
             bounds={bounds}
@@ -1570,6 +2062,7 @@ const AdminHazardMap = () => {
             onAssign={assignToStaff}
             onClearAssignment={clearAssignment}
             onUpdateReviewStatus={updateReviewStatus}
+            onUpdateDetails={updateDetails}
             saving={saving}
           />
         )}

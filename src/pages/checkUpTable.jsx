@@ -571,10 +571,6 @@ export default function CheckUpTable() {
       await fetchCheckups(false);
 
       setSuccess(`Request #${row.id} declined.`);
-
-      window.dispatchEvent(
-        new Event("mdrrmo:notif-refresh"),
-      );
     } catch (err) {
       console.error("Error declining check-up:", err);
 
@@ -643,9 +639,6 @@ export default function CheckUpTable() {
           `Request #${row.id} approved. It is now available in the staff check-up queue.`,
         );
 
-        window.dispatchEvent(
-          new Event("mdrrmo:notif-refresh"),
-        );
       } catch (err) {
         console.error("Error approving check-up:", err);
 
@@ -1143,13 +1136,15 @@ export default function CheckUpTable() {
               {/* Decline reason banner (visible to requester) */}
 
               {normalizeStatus(selectedCheckup.status) === "Declined" &&
-                selectedCheckup.review_notes && (
+                (selectedCheckup.review_notes || selectedCheckup.staffNote) && (
                   <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 dark:border-amber-800 dark:bg-amber-950/30">
                     <p className="text-xs font-bold uppercase tracking-wide text-amber-700 dark:text-amber-300">
-                      Decline Reason (visible to requester)
+                      {selectedCheckup.review_notes
+                        ? "Decline Reason (visible to requester)"
+                        : "Declined by staff (visible to requester)"}
                     </p>
                     <p className="mt-1 whitespace-pre-line text-sm text-amber-900 dark:text-amber-100">
-                      {selectedCheckup.review_notes}
+                      {selectedCheckup.review_notes || selectedCheckup.staffNote}
                     </p>
                   </div>
                 )}
@@ -1984,7 +1979,7 @@ function CheckUpSummaryReportModal({ onClose }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4"
+      className="fixed inset-0 z-5000 flex items-start justify-center overflow-y-auto bg-black/50 p-4"
       onClick={onClose}
     >
       <div

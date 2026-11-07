@@ -410,7 +410,7 @@ export default function InventoryReportPreview({
   return (
     <>
       <div
-        className="inventory-report-overlay fixed inset-0 z-[100] flex items-start justify-center overflow-y-auto bg-black/50 p-4"
+        className="inventory-report-overlay fixed inset-0 z-[1000] flex items-start justify-center overflow-y-auto bg-black/50 p-4"
         onClick={onClose}
       >
         <div

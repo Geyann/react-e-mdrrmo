@@ -1995,59 +1995,7 @@ export default function Profile() {
                   </section>
                 )}
 
-              {/* Profile actions */}
-              <section className="border-t border-slate-200 pt-6 dark:border-slate-800">
-                <SectionHeading
-                  icon={Pencil}
-                  title="Profile Actions"
-                  description="Manage your account or return to your portal dashboard."
-                />
-
-                <div className="flex flex-col gap-3 sm:flex-row">
-                  {isResident && (
-                    <button
-                      type="button"
-                      onClick={() =>
-                        navigate("/edit-profile")
-                      }
-                      className={`${GRADIENT_CLASS} inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl px-6 py-3 text-sm font-black text-white shadow-lg shadow-blue-600/20 transition hover:-translate-y-0.5 hover:brightness-105`}
-                    >
-                      <Pencil className="h-4 w-4" />
-
-                      Edit Profile
-                    </button>
-                  )}
-
-                  <button
-                    type="button"
-                    onClick={() =>
-                      navigate(backPath)
-                    }
-                    className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl border border-slate-300 bg-white px-6 py-3 text-sm font-black text-slate-700 transition hover:border-indigo-300 hover:bg-indigo-50 dark:border-slate-700 dark:bg-slate-950 dark:text-slate-200 dark:hover:border-indigo-800 dark:hover:bg-indigo-950/40"
-                  >
-                    <ArrowLeft className="h-4 w-4" />
-
-                    Back to Dashboard
-                  </button>
-
-                  <button
-                    type="button"
-                    onClick={handleLogout}
-                    disabled={loggingOut}
-                    className="inline-flex min-h-12 flex-1 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-red-600 to-rose-700 px-6 py-3 text-sm font-black text-white shadow-lg shadow-red-600/20 transition hover:-translate-y-0.5 hover:brightness-105 disabled:cursor-not-allowed disabled:opacity-50"
-                  >
-                    {loggingOut ? (
-                      <Loader2 className="h-4 w-4 animate-spin" />
-                    ) : (
-                      <LogOut className="h-4 w-4" />
-                    )}
-
-                    {loggingOut
-                      ? "Signing out..."
-                      : "Sign out"}
-                  </button>
-                </div>
-              </section>
+             
 
               {/* Footer */}
               <p className="text-center text-xs leading-5 text-slate-400 dark:text-slate-500">

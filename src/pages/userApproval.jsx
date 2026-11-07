@@ -3399,7 +3399,7 @@ function CreateAccountModal({
 
   return (
     <div
-      className="fixed inset-0 z-[100] flex items-center justify-center overflow-y-auto bg-black/50 p-4"
+      className="fixed inset-0 z-[1000] flex items-center justify-center overflow-y-auto bg-black/50 p-4"
       onClick={() => {
         if (!saving) onClose();
       }}
@@ -3484,7 +3484,7 @@ function CreateAccountModal({
                 htmlFor="create-work-id"
                 className="mb-1 block text-sm font-semibold text-slate-700"
               >
-                Work ID *
+                Work ID <span className="text-red-500">*</span>
               </label>
               <input
                 id="create-work-id"
@@ -3506,7 +3506,7 @@ function CreateAccountModal({
                 htmlFor="create-username"
                 className="mb-1 block text-sm font-semibold text-slate-700"
               >
-                Username *
+                Username <span className="text-red-500">*</span>
               </label>
               <input
                 id="create-username"
@@ -3534,7 +3534,7 @@ function CreateAccountModal({
                 htmlFor="create-full-name"
                 className="mb-1 block text-sm font-semibold text-slate-700"
               >
-                Full Name *
+                Full Name <span className="text-red-500">*</span>
               </label>
               <input
                 id="create-full-name"
@@ -3555,7 +3555,7 @@ function CreateAccountModal({
                 htmlFor="create-email"
                 className="mb-1 block text-sm font-semibold text-slate-700"
               >
-                Email Address *
+                Email Address <span className="text-red-500">*</span>
               </label>
               <input
                 id="create-email"
@@ -3575,7 +3575,7 @@ function CreateAccountModal({
                 htmlFor="create-department"
                 className="mb-1 block text-sm font-semibold text-slate-700"
               >
-                Department
+                Department <span className="text-red-500">*</span>
               </label>
               <input
                 id="create-department"
@@ -3593,7 +3593,7 @@ function CreateAccountModal({
                 htmlFor="create-mobile"
                 className="mb-1 block text-sm font-semibold text-slate-700"
               >
-                Mobile Number
+                Mobile Number <span className="text-red-500">*</span>
               </label>
               <input
                 id="create-mobile"
@@ -3612,7 +3612,7 @@ function CreateAccountModal({
                 htmlFor="create-password"
                 className="mb-1 block text-sm font-semibold text-slate-700"
               >
-                New Password *
+                New Password <span className="text-red-500">*</span>
               </label>
               <div className="relative">
                 <input
@@ -3647,7 +3647,7 @@ function CreateAccountModal({
                 htmlFor="create-confirm-password"
                 className="mb-1 block text-sm font-semibold text-slate-700"
               >
-                Confirm Password *
+                Confirm Password <span className="text-red-500">*</span>
               </label>
               <div className="relative">
                 <input
@@ -3691,7 +3691,7 @@ function CreateAccountModal({
               htmlFor="requester-password"
               className="mb-1 block text-sm font-semibold text-slate-700"
             >
-              Current Administrator Password *
+              Current Administrator Password <span className="text-red-500">*</span>
             </label>
             <div className="relative">
               <input
@@ -4292,7 +4292,7 @@ function UserSummaryReportModal({ onClose }) {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center overflow-y-auto bg-black/50 p-4"
+      className="fixed inset-0 z-5000 flex items-start justify-center overflow-y-auto bg-black/50 p-4"
       onClick={onClose}
     >
       <div

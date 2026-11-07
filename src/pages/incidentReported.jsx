@@ -1080,7 +1080,7 @@ const IncidentSummaryReportModal = ({ onClose }) => {
 
   return (
     <div
-      className="fixed inset-0 z-50 bg-black/60 flex items-start justify-center p-3 sm:p-4 overflow-y-auto"
+      className="fixed inset-0 z-5000 bg-black/60 flex items-start justify-center p-3 sm:p-4 overflow-y-auto"
       onClick={onClose}
     >
       <div

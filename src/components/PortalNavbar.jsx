@@ -1,6 +1,9 @@
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
+  useMemo,
+  useRef,
   useState,
 } from "react";
 import {
@@ -22,21 +25,16 @@ import { supabase } from "../createClient";
 import logo from "../Images/logo.png";
 import Notification from "./notification";
 
-const SIDEBAR_STORAGE_KEY =
-  "mdrrmo_portal_sidebar_collapsed";
+const SIDEBAR_STORAGE_KEY = "mdrrmo_portal_sidebar_collapsed";
 const SIDEBAR_EXPANDED_WIDTH = "17rem";
 const SIDEBAR_COLLAPSED_WIDTH = "5rem";
+const BADGE_POLL_MS = 15000;
+const BADGE_REFRESH_EVENT = "mdrrmo:badge-refresh";
 
 function readSidebarPreference() {
-  if (typeof window === "undefined") {
-    return false;
-  }
+  if (typeof window === "undefined") return false;
   try {
-    return (
-      window.localStorage.getItem(
-        SIDEBAR_STORAGE_KEY,
-      ) === "true"
-    );
+    return window.localStorage.getItem(SIDEBAR_STORAGE_KEY) === "true";
   } catch {
     return false;
   }
@@ -49,8 +47,55 @@ function saveSidebarPreference(collapsed) {
       collapsed ? "true" : "false",
     );
   } catch {
-    // The preference still works in memory when storage
-    // is unavailable.
+    // Preference still works in memory when storage is unavailable.
+  }
+}
+
+/**
+ * Normalize status for case-insensitive comparison.
+ */
+function normStatus(value) {
+  return String(value ?? "")
+    .trim()
+    .toLowerCase();
+}
+
+/**
+ * Fetch pending count for a single badge config.
+ * Returns 0 on any error so the UI stays quiet.
+ */
+async function fetchBadgeCount(badge) {
+  if (!badge?.table || !badge?.statusField) return 0;
+
+  try {
+    const statuses = (badge.statuses || ["pending"]).map(normStatus);
+
+    // Prefer exact match when only one status is expected (faster + simpler RLS).
+    // Fall back to fetching a limited set and counting client-side when multiple
+    // casing variants are listed.
+    if (statuses.length === 1) {
+      const { count, error } = await supabase
+        .from(badge.table)
+        .select("*", { count: "exact", head: true })
+        .ilike(badge.statusField, statuses[0]);
+
+      if (error) return 0;
+      return typeof count === "number" ? count : 0;
+    }
+
+    // Multiple status spellings — pull recent rows and count matches.
+    const { data, error } = await supabase
+      .from(badge.table)
+      .select(badge.statusField)
+      .limit(500);
+
+    if (error || !Array.isArray(data)) return 0;
+
+    return data.filter((row) =>
+      statuses.includes(normStatus(row[badge.statusField])),
+    ).length;
+  } catch {
+    return 0;
   }
 }
 
@@ -65,20 +110,81 @@ export default function PortalNavbar({
   const navigate = useNavigate();
   const location = useLocation();
   const { showAlert, showConfirm } = useDialog();
-  const [collapsed, setCollapsed] =
-    useState(readSidebarPreference);
-  const [mobileOpen, setMobileOpen] =
-    useState(false);
-  const [loggingOut, setLoggingOut] =
-    useState(false);
 
-  const activeLink = links.find(
-    (link) => link.to === location.pathname,
-  );
+  const [collapsed, setCollapsed] = useState(readSidebarPreference);
+  const [mobileOpen, setMobileOpen] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  // Badge counts keyed by link.to
+  const [badgeCounts, setBadgeCounts] = useState({});
+  const pollRef = useRef(null);
+  const mountedRef = useRef(true);
+
+  const activeLink = links.find((link) => link.to === location.pathname);
   const pageTitle =
     location.pathname === profilePath
       ? "Profile"
       : activeLink?.label || portalTitle;
+
+  // Links that need badge polling
+  const badgeLinks = useMemo(
+    () => links.filter((link) => link.badge),
+    [links],
+  );
+
+  /* =========================================================
+     BADGE COUNTS — poll + refresh on focus / custom event
+  ========================================================= */
+  const loadBadges = useCallback(async () => {
+    if (!badgeLinks.length) return;
+
+    const results = await Promise.all(
+      badgeLinks.map(async (link) => {
+        const count = await fetchBadgeCount(link.badge);
+        return [link.to, count];
+      }),
+    );
+
+    if (!mountedRef.current) return;
+
+    setBadgeCounts((prev) => {
+      const next = { ...prev };
+      for (const [to, count] of results) {
+        next[to] = count;
+      }
+      return next;
+    });
+  }, [badgeLinks]);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    loadBadges();
+
+    // Poll while the portal is open
+    pollRef.current = window.setInterval(loadBadges, BADGE_POLL_MS);
+
+    const onFocus = () => loadBadges();
+    const onCustomRefresh = () => loadBadges();
+
+    window.addEventListener("focus", onFocus);
+    window.addEventListener(BADGE_REFRESH_EVENT, onCustomRefresh);
+
+    // Also refresh when the existing notification system signals a change
+    window.addEventListener("mdrrmo:notif-refresh", onCustomRefresh);
+
+    return () => {
+      mountedRef.current = false;
+      if (pollRef.current) window.clearInterval(pollRef.current);
+      window.removeEventListener("focus", onFocus);
+      window.removeEventListener(BADGE_REFRESH_EVENT, onCustomRefresh);
+      window.removeEventListener("mdrrmo:notif-refresh", onCustomRefresh);
+    };
+  }, [loadBadges]);
+
+  // Refresh badges when the user navigates (e.g. after opening a queue page)
+  useEffect(() => {
+    loadBadges();
+  }, [location.pathname, loadBadges]);
 
   /* =========================================================
      SIDEBAR PREFERENCE AND CONTENT WIDTH
@@ -105,55 +211,43 @@ export default function PortalNavbar({
      CLOSE MOBILE DRAWER WITH ESCAPE
   ========================================================= */
   useEffect(() => {
-    if (!mobileOpen) {
-      return undefined;
-    }
+    if (!mobileOpen) return undefined;
+
     const handleEscape = (event) => {
-      if (event.key === "Escape") {
-        setMobileOpen(false);
-      }
+      if (event.key === "Escape") setMobileOpen(false);
     };
-    window.addEventListener(
-      "keydown",
-      handleEscape,
-    );
-    return () => {
-      window.removeEventListener(
-        "keydown",
-        handleEscape,
-      );
-    };
+
+    window.addEventListener("keydown", handleEscape);
+    return () => window.removeEventListener("keydown", handleEscape);
   }, [mobileOpen]);
 
   /* =========================================================
      LOGOUT
   ========================================================= */
   const handleLogout = async () => {
-    if (loggingOut) {
-      return;
-    }
+    if (loggingOut) return;
+
     const confirmed = await showConfirm(
       `Sign out of the ${portalTitle.toLowerCase()}?`,
     );
-    if (!confirmed) {
-      return;
-    }
+    if (!confirmed) return;
+
     setLoggingOut(true);
     setMobileOpen(false);
+
     try {
       await supabase.auth.signOut();
     } catch {
-      // Manual staff sessions may not have a Supabase
-      // Auth session.
+      // Manual staff sessions may not have a Supabase Auth session.
     }
+
     try {
       window.localStorage.removeItem(sessionKey);
     } catch {
       // Ignore local storage errors.
     }
-    navigate(logoutPath, {
-      replace: true,
-    });
+
+    navigate(logoutPath, { replace: true });
   };
 
   /* =========================================================
@@ -163,9 +257,7 @@ export default function PortalNavbar({
     [
       "group relative flex min-h-11 w-full items-center gap-3 rounded-xl text-sm font-bold transition",
       "justify-start px-3 py-2.5",
-      collapsed
-        ? "lg:justify-center lg:px-2"
-        : "lg:justify-start lg:px-4",
+      collapsed ? "lg:justify-center lg:px-2" : "lg:justify-start lg:px-4",
       isActive
         ? "bg-white text-purple-700 shadow-lg"
         : "text-white hover:bg-white/15 hover:text-white",
@@ -175,12 +267,38 @@ export default function PortalNavbar({
     [
       "flex min-h-11 w-full items-center gap-3 rounded-xl text-sm font-bold transition",
       "justify-start px-3 py-2.5",
-      collapsed
-        ? "lg:justify-center lg:px-2"
-        : "lg:justify-start lg:px-4",
+      collapsed ? "lg:justify-center lg:px-2" : "lg:justify-start lg:px-4",
       "text-white hover:bg-white/15 hover:text-white",
       "disabled:cursor-not-allowed disabled:opacity-50",
     ].join(" ");
+
+  /**
+   * Small red badge shown on the nav item.
+   * Works in both expanded and collapsed sidebar states.
+   */
+  const renderBadge = (count, isActive) => {
+    if (!count || count < 1) return null;
+
+    const display = count > 99 ? "99+" : String(count);
+
+    return (
+      <span
+        className={[
+          "absolute flex items-center justify-center rounded-full font-extrabold leading-none tabular-nums shadow-sm",
+          // Position: top-right of the icon area when collapsed, right side when expanded
+          collapsed
+            ? "right-1 top-1 h-4 min-w-4 px-1 text-[9px] lg:right-1.5 lg:top-1.5"
+            : "right-2 top-1/2 h-5 min-w-5 -translate-y-1/2 px-1.5 text-[10px]",
+          isActive
+            ? "bg-red-600 text-white"
+            : "bg-red-500 text-white ring-2 ring-blue-600/40",
+        ].join(" ")}
+        aria-label={`${count} pending`}
+      >
+        {display}
+      </span>
+    );
+  };
 
   return (
     <>
@@ -194,9 +312,7 @@ export default function PortalNavbar({
             {/* Mobile open/close button */}
             <button
               type="button"
-              onClick={() =>
-                setMobileOpen((open) => !open)
-              }
+              onClick={() => setMobileOpen((open) => !open)}
               aria-label={
                 mobileOpen
                   ? "Close navigation sidebar"
@@ -216,9 +332,7 @@ export default function PortalNavbar({
             {/* Desktop show/hide button */}
             <button
               type="button"
-              onClick={() =>
-                setCollapsed((value) => !value)
-              }
+              onClick={() => setCollapsed((value) => !value)}
               aria-label={
                 collapsed
                   ? "Show navigation sidebar"
@@ -233,17 +347,12 @@ export default function PortalNavbar({
               ) : (
                 <PanelLeftClose className="h-4 w-4" />
               )}
-              <span className="hidden xl:inline">
-               
-              </span>
+              <span className="hidden xl:inline" />
             </button>
 
             {/* Brand */}
-            <Link
-              to={homePath}
-              className="flex min-w-0 items-center gap-2.5"
-            >
-              <div className="flex h-15 w-15 shrink-0 items-center justify-center  ">
+            <Link to={homePath} className="flex min-w-0 items-center gap-2.5">
+              <div className="flex h-15 w-15 shrink-0 items-center justify-center">
                 <img
                   src={logo}
                   alt="MDRRMO logo"
@@ -259,7 +368,7 @@ export default function PortalNavbar({
           </div>
 
           {/* Right side */}
-          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2 ">
             <Notification />
             <Link
               to={profilePath}
@@ -269,17 +378,7 @@ export default function PortalNavbar({
             >
               <UserRound className="h-5 w-5" />
             </Link>
-            <button
-              type="button"
-              onClick={handleLogout}
-              disabled={loggingOut}
-              className="hidden items-center gap-2 rounded-xl border border-white/20 bg-white/10 px-4 py-2.5 text-sm font-bold text-white transition hover:bg-white/20 disabled:cursor-not-allowed disabled:opacity-50 sm:flex"
-            >
-              <LogOut className="h-4 w-4" />
-              {loggingOut
-                ? "Signing out..."
-                : "Sign out"}
-            </button>
+           
           </div>
         </div>
       </header>
@@ -304,62 +403,75 @@ export default function PortalNavbar({
         aria-label={`${portalTitle} navigation`}
         className={[
           "fixed bottom-0 left-0 top-16 z-[1020] flex w-[17rem] flex-col overflow-y-auto overflow-x-hidden border-r border-white/15 bg-gradient-to-b from-blue-600 via-blue-600 to-purple-700 p-3 shadow-2xl transition-all duration-300 lg:z-[900]",
-          collapsed
-            ? "lg:w-20"
-            : "lg:w-[17rem]",
+          collapsed ? "lg:w-20" : "lg:w-[17rem]",
           mobileOpen
             ? "visible translate-x-0"
             : "invisible -translate-x-full lg:visible lg:translate-x-0",
         ].join(" ")}
       >
         {/* Mobile drawer heading */}
-        <div className="mb-4 rounded-2xl border border-white/20 bg-white/10 p-4 text-white text-center lg:hidden">
-         
-          <p className="mt-1 text-sm font-black">
-            {portalTitle}
-          </p>
+        <div className="mb-4 rounded-2xl border border-white/20 bg-white/10 p-4 text-center text-white lg:hidden">
+          <p className="mt-1 text-sm font-black">{portalTitle}</p>
         </div>
 
         {/* Main navigation links */}
         <nav className="flex-1 space-y-1.5">
           {links.map((link) => {
             const Icon = link.icon;
+            const count = badgeCounts[link.to] || 0;
+
             return (
               <NavLink
                 key={link.to}
                 to={link.to}
-                onClick={() =>
-                  setMobileOpen(false)
-                }
+                onClick={() => setMobileOpen(false)}
                 className={getNavigationClass}
-                title={link.label}
-                aria-label={link.label}
+                title={
+                  count > 0
+                    ? `${link.label} (${count} pending)`
+                    : link.label
+                }
+                aria-label={
+                  count > 0
+                    ? `${link.label}, ${count} pending`
+                    : link.label
+                }
               >
-                <Icon className="h-5 w-5 shrink-0" />
-                {/* Mobile label */}
-                <span className="truncate lg-hidden">
-                  {link.label}
-                </span>
-               
-             
+                {({ isActive }) => (
+                  <>
+                    <span className="relative shrink-0">
+                      <Icon className="h-5 w-5" />
+                      {/* Compact badge on the icon when sidebar is collapsed */}
+                      {collapsed && renderBadge(count, isActive)}
+                    </span>
+
+                    {/* Label — hidden on large screens when collapsed */}
+                    <span
+                      className={[
+                        "truncate",
+                        collapsed ? "lg:hidden" : "",
+                      ].join(" ")}
+                    >
+                      {link.label}
+                    </span>
+
+                    {/* Expanded-state badge (right side of the row) */}
+                    {!collapsed && renderBadge(count, isActive)}
+                  </>
+                )}
               </NavLink>
             );
           })}
         </nav>
 
-        {/* Profile and logout — visible in mobile drawer; also useful when sidebar is expanded on desktop */}
+        {/* Profile and logout */}
         <div className="mt-5 space-y-1.5 border-t border-white/15 pt-4">
-          {/* Profile link (mobile + expanded desktop) */}
-        
-
-          {/* Logout button — always visible in mobile drawer; on desktop only when sidebar expanded */}
           <button
             type="button"
             onClick={handleLogout}
             disabled={loggingOut}
             className={[
               getUtilityClass(),
-              // On large screens hide when collapsed so it doesn't look awkward as an icon-only button
               collapsed ? "lg:hidden" : "",
             ].join(" ")}
             title="Sign out"
@@ -374,4 +486,17 @@ export default function PortalNavbar({
       </aside>
     </>
   );
+}
+
+/**
+ * Call this after approving / rejecting / updating a report so the
+ * sidebar badges refresh immediately instead of waiting for the next poll.
+ *
+ * Example (inside an admin action handler):
+ *   window.dispatchEvent(new Event("mdrrmo:badge-refresh"));
+ */
+export function refreshPortalBadges() {
+  if (typeof window !== "undefined") {
+    window.dispatchEvent(new Event(BADGE_REFRESH_EVENT));
+  }
 }

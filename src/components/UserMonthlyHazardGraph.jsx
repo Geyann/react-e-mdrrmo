@@ -537,7 +537,7 @@ export default function UserMonthlyHazardGraph() {
               id="hazard-monthly-chart-title"
               className="text-lg font-black text-slate-800 dark:text-slate-100"
             >
-              Monthly Natural Disaster Reports
+              Natural Disaster Reports
             </h2>
 
             <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
@@ -550,12 +550,12 @@ export default function UserMonthlyHazardGraph() {
         <div className="flex flex-wrap items-center gap-2">
           {/* Hazard category filter */}
           <select
-            aria-label="Filter hazard reports by category"
+            aria-label="Filter Natural hazard reports by category"
             value={selectedType}
             onChange={(event) => setSelectedType(event.target.value)}
             className="max-w-[220px] rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm font-semibold text-slate-700 outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
           >
-            <option value="all">All hazard categories</option>
+            <option value="all">All Natural hazard categories</option>
 
             {availableTypes.map((type) => (
               <option key={type.key} value={type.key}>
@@ -580,7 +580,7 @@ export default function UserMonthlyHazardGraph() {
             <CalendarDays className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
 
             <select
-              aria-label="Filter hazard reports by year"
+              aria-label="Filter Natural hazard reports by year"
               value={selectedYear}
               onChange={(event) => setSelectedYear(event.target.value)}
               className="appearance-none rounded-xl border border-slate-300 bg-white py-2 pl-9 pr-8 text-sm font-semibold text-slate-700 outline-none transition focus:border-orange-500 focus:ring-2 focus:ring-orange-500/20 dark:border-slate-600 dark:bg-slate-800 dark:text-slate-200"
@@ -692,7 +692,7 @@ export default function UserMonthlyHazardGraph() {
                   : "text-slate-600 hover:bg-slate-100 dark:text-slate-300 dark:hover:bg-slate-700"
               }`}
             >
-              Hazard Category
+             Natural Hazard Category
             </button>
 
             <button
@@ -719,7 +719,7 @@ export default function UserMonthlyHazardGraph() {
               </div>
 
               <p className="mt-4 font-bold text-slate-700 dark:text-slate-200">
-                No hazard reports found
+                No Natural hazard reports found
               </p>
 
               <p className="mt-1 max-w-sm text-sm text-slate-500 dark:text-slate-400">
