@@ -1,3 +1,8 @@
+// ============================================================
+// src/pages/CheckUp.jsx
+// Schema aligned. This form no longer creates notifications.
+// ============================================================
+
 "use client";
 
 import {
@@ -19,10 +24,8 @@ import {
   LogIn,
   MapPin,
   Phone,
-  Shield,
   User,
 } from "lucide-react";
-
 import { supabase } from "../createClient";
 
 import RequestFormShell, {
@@ -35,17 +38,16 @@ import RequestFormShell, {
    ACTOR RESOLUTION
 
    Resident:
-     userId = profiles.user_id
-     staffId = null
-     reporter_name = logged-in account name
+     profileId      = profiles.id          (uuid)
+     profileUserId  = profiles.user_id     (text)  → outPatientCheckUp.userId
+     staffId        = null
+     reporter_name  = logged-in account name
 
    Staff/Admin:
-     userId = null
-     staffId = staff_users.id
-     reporter_name = manually entered reporter name
-
-   outPatientCheckUp.userId references profiles.user_id.
-   Therefore, do not insert profiles.id into userId.
+     profileId      = null
+     profileUserId  = null
+     staffId        = staff_users.id
+     reporter_name  = manually entered
    ══════════════════════════════════════════════════════════════════ */
 
 const PROFILE_COLUMNS = [
@@ -64,16 +66,9 @@ const PROFILE_COLUMNS = [
 const readLocal = (key) => {
   try {
     const raw = localStorage.getItem(key);
-
-    if (!raw) {
-      return null;
-    }
-
+    if (!raw) return null;
     const parsed = JSON.parse(raw);
-
-    return parsed && typeof parsed === "object"
-      ? parsed
-      : null;
+    return parsed && typeof parsed === "object" ? parsed : null;
   } catch {
     return null;
   }
@@ -90,14 +85,10 @@ const cleanName = (...parts) =>
 async function getAuthUser() {
   try {
     const { data, error } = await supabase.auth.getUser();
-
-    if (!error && data?.user) {
-      return data.user;
-    }
+    if (!error && data?.user) return data.user;
   } catch {
-    // No Supabase Auth session.
+    // No Supabase Auth session
   }
-
   return null;
 }
 
@@ -109,12 +100,9 @@ async function lookupResident(email, authId = null) {
         .select(PROFILE_COLUMNS)
         .eq("id", authId)
         .maybeSingle();
-
-      if (!error && data?.user_id) {
-        return data;
-      }
+      if (!error && data?.user_id) return data;
     } catch {
-      // Try the next lookup method.
+      /* try next method */
     }
   }
 
@@ -125,33 +113,23 @@ async function lookupResident(email, authId = null) {
         .select(PROFILE_COLUMNS)
         .eq("email", email)
         .maybeSingle();
-
-      if (!error && data?.user_id) {
-        return data;
-      }
+      if (!error && data?.user_id) return data;
     } catch {
-      // Try the RPC fallback.
+      /* try RPC */
     }
   }
 
   if (email) {
     try {
-      const { data, error } = await supabase.rpc(
-        "lookup_resident_identity",
-        {
-          p_email: email,
-        },
-      );
-
+      const { data, error } = await supabase.rpc("lookup_resident_identity", {
+        p_email: email,
+      });
       if (!error && data) {
         const row = Array.isArray(data) ? data[0] : data;
-
-        if (row?.user_id) {
-          return row;
-        }
+        if (row?.user_id) return row;
       }
     } catch {
-      // No resident profile found.
+      /* no resident profile */
     }
   }
 
@@ -168,12 +146,9 @@ async function lookupStaff(workId, email = null) {
         )
         .eq("user_id", workId)
         .maybeSingle();
-
-      if (!error && data) {
-        return data;
-      }
+      if (!error && data) return data;
     } catch {
-      // Try the RPC fallback.
+      /* try next */
     }
   }
 
@@ -186,95 +161,62 @@ async function lookupStaff(workId, email = null) {
         )
         .eq("email", email)
         .maybeSingle();
-
-      if (!error && data) {
-        return data;
-      }
+      if (!error && data) return data;
     } catch {
-      // Try the RPC fallback.
+      /* try RPC */
     }
   }
 
   try {
-    const { data, error } = await supabase.rpc(
-      "lookup_staff_identity",
-      {
-        p_user_id: workId,
-      },
-    );
-
+    const { data, error } = await supabase.rpc("lookup_staff_identity", {
+      p_user_id: workId,
+    });
     if (!error && data) {
       const row = Array.isArray(data) ? data[0] : data;
-
-      if (row) {
-        return row;
-      }
+      if (row) return row;
     }
   } catch {
-    // No staff profile found.
+    /* no staff profile */
   }
 
   return null;
 }
 
-function buildResidentActor(
-  profile,
-  fallback = {},
-  authUser = null,
-) {
-  const profileUserId = String(
-    profile.user_id || "",
-  ).trim();
-
-  if (!profileUserId) {
-    return null;
-  }
+function buildResidentActor(profile, fallback = {}, authUser = null) {
+  const profileUserId = String(profile.user_id || "").trim();
+  if (!profileUserId) return null;
 
   const email =
-    profile.email ||
-    fallback.email ||
-    authUser?.email ||
-    "";
+    profile.email || fallback.email || authUser?.email || "";
 
   const displayName =
     profile.full_name ||
-    cleanName(
-      profile.first_name,
-      profile.middle_name,
-      profile.last_name,
-    ) ||
+    cleanName(profile.first_name, profile.middle_name, profile.last_name) ||
     fallback.full_name ||
     fallback.username ||
     email ||
     "Resident";
 
   const contact =
-    profile.mobile_number ||
-    fallback.mobile_number ||
-    email;
+    profile.mobile_number || fallback.mobile_number || email;
 
   return {
     kind: "resident",
-    profileId: profile.id,
-    profileUserId,
+    profileId: profile.id,          // uuid
+    profileUserId,                  // text  → outPatientCheckUp.userId
     staffId: null,
     workId: "",
     displayName,
     contact,
     email,
-    role:
-      profile.role ||
-      fallback.role ||
-      "user",
+    role: profile.role || fallback.role || "user",
     department: "",
     active: profile.is_active !== false,
   };
 }
 
 function buildStaffActor(row, localStaff = {}) {
-  const workId = String(
-    row.user_id || localStaff.user_id || "",
-  ).trim();
+  const workId = String(row.user_id || localStaff.user_id || "").trim();
 
   return {
     kind: "staff",
@@ -296,63 +238,29 @@ function buildStaffActor(row, localStaff = {}) {
       row.email ||
       localStaff.email ||
       "",
-    email:
-      row.email ||
-      localStaff.email ||
-      "",
-    role:
-      row.role ||
-      localStaff.role ||
-      "staff",
-    department:
-      row.department ||
-      localStaff.department ||
-      "",
+    email: row.email || localStaff.email || "",
+    role: row.role || localStaff.role || "staff",
+    department: row.department || localStaff.department || "",
     active: row.is_active !== false,
   };
 }
 
 async function resolveActor() {
   try {
-    /*
-     * Staff sessions use currentStaff and must be checked first
-     * because manually authenticated staff normally do not have
-     * a Supabase Auth session.
-     */
+    // Staff sessions first (manual login, usually no Supabase Auth session)
     const localStaff = readLocal("currentStaff");
-
     if (localStaff) {
-      const workId = String(
-        localStaff.user_id || "",
-      ).trim();
-
+      const workId = String(localStaff.user_id || "").trim();
       if (!workId) {
-        return {
-          kind: "error",
-          reason: "missing-id",
-        };
+        return { kind: "error", reason: "missing-id" };
       }
 
-      const staffRow = await lookupStaff(
-        workId,
-        localStaff.email || null,
-      );
-
+      const staffRow = await lookupStaff(workId, localStaff.email || null);
       if (!staffRow) {
-        return {
-          kind: "error",
-          reason: "staff-not-found",
-        };
+        return { kind: "error", reason: "staff-not-found" };
       }
-
-      if (
-        staffRow.is_active === false ||
-        localStaff.is_active === false
-      ) {
-        return {
-          kind: "error",
-          reason: "staff-inactive",
-        };
+      if (staffRow.is_active === false || localStaff.is_active === false) {
+        return { kind: "error", reason: "staff-inactive" };
       }
 
       return buildStaffActor(staffRow, localStaff);
@@ -361,95 +269,48 @@ async function resolveActor() {
     const localUser = readLocal("currentUser");
     const authUser = await getAuthUser();
 
-    /*
-     * Try the local resident session first.
-     */
+    // Local resident session
     if (localUser) {
-      const localProfile = await lookupResident(
-        localUser.email || "",
-      );
-
+      const localProfile = await lookupResident(localUser.email || "");
       if (localProfile) {
         if (localProfile.is_active === false) {
-          return {
-            kind: "error",
-            reason: "account-inactive",
-          };
+          return { kind: "error", reason: "account-inactive" };
         }
-
-        const actor = buildResidentActor(
-          localProfile,
-          localUser,
-          null,
-        );
-
-        if (actor) {
-          return actor;
-        }
+        const actor = buildResidentActor(localProfile, localUser, null);
+        if (actor) return actor;
       }
     }
 
-    /*
-     * OAuth or migrated Supabase Auth user.
-     */
+    // OAuth / Supabase Auth user
     if (authUser) {
-      const profile = await lookupResident(
-        authUser.email || "",
-        authUser.id,
-      );
-
+      const profile = await lookupResident(authUser.email || "", authUser.id);
       if (!profile) {
-        return {
-          kind: "error",
-          reason: "profile-missing",
-        };
+        return { kind: "error", reason: "profile-missing" };
       }
-
       if (profile.is_active === false) {
-        return {
-          kind: "error",
-          reason: "account-inactive",
-        };
+        return { kind: "error", reason: "account-inactive" };
       }
 
-      const actor = buildResidentActor(
-        profile,
-        {},
-        authUser,
-      );
+      const actor = buildResidentActor(profile, {}, authUser);
+      if (actor) return actor;
 
-      if (actor) {
-        return actor;
-      }
-
-      return {
-        kind: "error",
-        reason: "profile-owner-id-missing",
-      };
+      return { kind: "error", reason: "profile-owner-id-missing" };
     }
 
     if (localUser) {
-      return {
-        kind: "error",
-        reason: "profile-missing",
-      };
+      return { kind: "error", reason: "profile-missing" };
     }
 
-    return {
-      kind: "none",
-    };
+    return { kind: "none" };
   } catch (error) {
-    console.error(
-      "Actor resolution error:",
-      error,
-    );
-
-    return {
-      kind: "error",
-      reason: "lookup-failed",
-    };
+    console.error("Actor resolution error:", error);
+    return { kind: "error", reason: "lookup-failed" };
   }
 }
+
+/* ══════════════════════════════════════════════════════════════════
+   FORM CONFIG
+   ══════════════════════════════════════════════════════════════════ */
 
 const INITIAL_FORM = {
   patientName: "",
@@ -460,6 +321,7 @@ const INITIAL_FORM = {
   preferredDate: "",
   preferredTime: "",
   mobility: "",
+  specificMobility: "",
   patientFor: "",
   specificVehicle: "",
   escort: "",
@@ -473,33 +335,83 @@ function buildInitialForm(actor) {
       contactDetails: actor.contact || "",
     };
   }
-
-  return {
-    ...INITIAL_FORM,
-  };
+  return { ...INITIAL_FORM };
 }
 
 const TEXT_FIELDS = [
   {
     label: "Location / Address",
     name: "location",
-    placeholder:
-      "Barangay, purok, street, or landmark",
+    placeholder: "Barangay, purok, street, or landmark",
     autoComplete: "street-address",
   },
   {
     label: "Hospital Name",
     name: "hospitalName",
-    placeholder:
-      "Enter the destination hospital",
+    placeholder: "Enter the destination hospital",
     autoComplete: "organization",
   },
   {
     label: "Patient Contact Details",
     name: "contactDetails",
-    placeholder:
-      "Patient phone number or email",
+    placeholder: "Patient phone number or email",
     autoComplete: "tel",
+  },
+];
+
+/**
+ * Mobility aids. The label is what gets saved in outPatientCheckUp.mobility
+ * (so admin/staff pages and reports show it as-is). Choosing "other" asks the
+ * resident to specify the device, and the typed text is saved instead.
+ */
+const MOBILITY_OPTIONS = [
+  {
+    value: "Canes",
+    label: "Canes",
+    description:
+      "Light balance support or a minor reduction in lower-body weight bearing. Includes single-point canes and multi-legged quad canes.",
+  },
+  {
+    value: "Walking Sticks",
+    label: "Walking Sticks",
+    description:
+      "Light balance support or a minor reduction in lower-body weight bearing. Includes single-point canes and multi-legged quad canes.",
+  },
+  {
+    value: "Crutches",
+    label: "Crutches",
+    description:
+      "Transfer weight from the legs to the upper body, commonly after lower-limb fractures or surgery. Underarm or forearm crutches.",
+  },
+  {
+    value: "Walkers",
+    label: "Walkers",
+    description:
+      "Multi-point contact for high stability. Standard walkers must be lifted; rollators have wheels, hand brakes, and often a seat and storage pouch.",
+  },
+    {
+    value: "Rollators",
+    label: "Rollators",
+    description:
+      "Multi-point contact for high stability. Standard walkers must be lifted; rollators have wheels, hand brakes, and often a seat and storage pouch.",
+  },
+  {
+    value: "Wheelchairs",
+    label: "Wheelchairs",
+    description:
+      "Manual or electric/motorized, for patients who cannot walk or cannot tolerate standing for long periods.",
+  },
+  {
+    value: "Mobility Scooters",
+    label: "Mobility Scooters",
+    description:
+      "Battery-powered seated devices with handlebars, for patients who can walk short distances but need seated support for longer outings.",
+  },
+  {
+    value: "other",
+    label: "Other Support Devices — specify below",
+    description:
+      "For example: commode chair, transfer bench, stairlift, or prosthesis.",
   },
 ];
 
@@ -507,62 +419,30 @@ const SELECT_FIELDS = [
   {
     label: "Mobility Requirement",
     name: "mobility",
-    options: [
-      {
-        value: "stretcher",
-        label: "Stretcher",
-      },
-      {
-        value: "wheel-chair",
-        label: "Wheel Chair",
-      },
-      {
-        value: "walker",
-        label: "Walker",
-      },
-    ],
+    options: MOBILITY_OPTIONS.map(({ value, label }) => ({ value, label })),
   },
   {
     label: "Patient For",
     name: "patientFor",
     options: [
-      {
-        value: "admission",
-        label: "Admission",
-      },
-      {
-        value: "discharge",
-        label: "Discharge",
-      },
-      {
-        value: "check-up",
-        label: "Check Up",
-      },
+      { value: "admission", label: "Admission" },
+      { value: "discharge", label: "Discharge" },
+      { value: "check-up", label: "Check Up" },
     ],
   },
   {
-    label: "Escort / Vehicle",
+    label: "Escort",
     name: "escort",
     options: [
-      {
-        value: "medical",
-        label: "Medical Vehicle",
-      },
-      {
-        value: "family",
-        label: "Family Vehicle",
-      },
-      {
-        value: "other",
-        label: "Other — specify below",
-      },
+      { value: "medical", label: "Medical" },
+      { value: "family", label: "Family" },
+      { value: "other", label: "Other — specify below" },
     ],
   },
 ];
 
 function todayStr() {
   const date = new Date();
-
   return [
     date.getFullYear(),
     String(date.getMonth() + 1).padStart(2, "0"),
@@ -574,139 +454,92 @@ function prettyRole(role) {
   if (role === "admin") return "Admin";
   if (role === "moderator") return "Moderator";
   if (role === "staff") return "Staff";
-
   return "Resident";
 }
 
 function dashboardPathFor(actor) {
   if (!actor) return "/home";
-
   if (actor.kind === "staff") {
-    return actor.role === "admin"
-      ? "/admin/dashboard"
-      : "/staff/dashboard";
+    return actor.role === "admin" ? "/admin/dashboard" : "/staff/dashboard";
   }
-
   return "/home";
 }
 
 const ERROR_COPY = {
   "missing-id":
     "Your staff session is missing its work ID. Please sign out and log in again.",
-
   "staff-not-found":
     "Your staff account could not be verified. Ask an administrator to confirm your staff_users row.",
-
   "staff-inactive":
     "Your staff account has been deactivated. Contact your administrator.",
-
   "profile-missing":
     "We could not match your account to a resident profile. Make sure your registration was approved, then sign out and sign in again.",
-
   "profile-owner-id-missing":
     "Your approved profile is missing profiles.user_id. Ask an administrator to repair your profile before submitting a check-up request.",
-
   "account-inactive":
     "Your account has been deactivated. Contact an administrator.",
-
   "lookup-failed":
     "We could not verify your account right now. Please try again.",
 };
 
+/* ══════════════════════════════════════════════════════════════════
+   MAIN PAGE
+   ══════════════════════════════════════════════════════════════════ */
+
 export default function CheckUp() {
   const navigate = useNavigate();
 
-  const [form, setForm] =
-    useState(INITIAL_FORM);
-
-  const [actor, setActor] =
-    useState(null);
-
-  const [resolving, setResolving] =
-    useState(true);
-
-  const [submitting, setSubmitting] =
-    useState(false);
-
-  const [error, setError] =
-    useState("");
-
-  const [submitted, setSubmitted] =
-    useState(false);
-
-  const [submittedInfo, setSubmittedInfo] =
-    useState(null);
+  const [form, setForm] = useState(INITIAL_FORM);
+  const [actor, setActor] = useState(null);
+  const [resolving, setResolving] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState("");
+  const [submitted, setSubmitted] = useState(false);
+  const [submittedInfo, setSubmittedInfo] = useState(null);
 
   const isStaff = actor?.kind === "staff";
-  const isResident =
-    actor?.kind === "resident";
+  const isResident = actor?.kind === "resident";
 
   useEffect(() => {
     let cancelled = false;
 
     const resolve = async () => {
       const who = await resolveActor();
-
-      if (cancelled) {
-        return;
-      }
+      if (cancelled) return;
 
       if (who.kind === "error") {
         setActor(who);
-
-        setError(
-          ERROR_COPY[who.reason] ||
-            "Could not verify your account.",
-        );
-
+        setError(ERROR_COPY[who.reason] || "Could not verify your account.");
         setResolving(false);
-
         return;
       }
 
       setActor(who);
-
-      if (
-        who.kind === "resident" ||
-        who.kind === "staff"
-      ) {
-        setForm(
-          buildInitialForm(who),
-        );
+      if (who.kind === "resident" || who.kind === "staff") {
+        setForm(buildInitialForm(who));
       }
-
       setResolving(false);
     };
 
     resolve();
-
     return () => {
       cancelled = true;
     };
   }, []);
 
-  const handleChange = useCallback(
-    (event) => {
-      const { name, value } = event.target;
-
-      setForm((previous) => {
-        const next = {
-          ...previous,
-          [name]: value,
-        };
-
-        if (
-          name === "escort" &&
-          value !== "other"
-        ) {
-          next.specificVehicle = "";
-        }
-
-        return next;
-      });
-    },
-    [],
-  );
+  const handleChange = useCallback((event) => {
+    const { name, value } = event.target;
+    setForm((previous) => {
+      const next = { ...previous, [name]: value };
+      if (name === "escort" && value !== "other") {
+        next.specificVehicle = "";
+      }
+      if (name === "mobility" && value !== "other") {
+        next.specificMobility = "";
+      }
+      return next;
+    });
+  }, []);
 
   const handleReset = useCallback(() => {
     setForm(buildInitialForm(actor));
@@ -716,191 +549,119 @@ export default function CheckUp() {
   const handleSubmit = useCallback(
     async (event) => {
       event.preventDefault();
-
-      if (submitting || resolving) {
-        return;
-      }
+      if (submitting || resolving) return;
 
       setError("");
 
-      if (
-        !actor ||
-        actor.kind === "none" ||
-        actor.kind === "error"
-      ) {
-        setError(
-          "You must be signed in to submit a check-up request.",
-        );
-
+      if (!actor || actor.kind === "none" || actor.kind === "error") {
+        setError("You must be signed in to submit a check-up request.");
         return;
       }
 
-      const patientName =
-        form.patientName.trim();
-
+      const patientName = form.patientName.trim();
       const reporterName = isStaff
         ? form.reporterName.trim()
-        : String(
-            actor.displayName || "",
-          ).trim();
+        : String(actor.displayName || "").trim();
 
       if (!patientName) {
-        setError(
-          "Patient name is required.",
-        );
-
+        setError("Patient name is required.");
         return;
       }
-
       if (!reporterName) {
         setError(
           isStaff
             ? "Reporter name is required."
             : "Your account name could not be determined.",
         );
-
         return;
       }
-
       if (isStaff && !actor.staffId) {
-        setError(
-          "Your staff account ID could not be determined.",
-        );
-
+        setError("Your staff account ID could not be determined.");
+        return;
+      }
+      if (isResident && !actor.profileUserId) {
+        setError("Your resident profile ID could not be determined.");
         return;
       }
 
-      if (
-        isResident &&
-        !actor.profileUserId
-      ) {
-        setError(
-          "Your resident profile ID could not be determined.",
-        );
-
+      if (form.mobility === "other" && !form.specificMobility.trim()) {
+        setError("Please specify the mobility support device.");
         return;
       }
 
       setSubmitting(true);
 
       try {
+        const finalMobility =
+          form.mobility === "other"
+            ? form.specificMobility.trim()
+            : form.mobility;
+
         const finalEscort =
           form.escort === "other"
-            ? form.specificVehicle.trim() ||
-              "Other"
+            ? form.specificVehicle.trim() || "Other"
             : form.escort;
 
+        // ── Insert into outPatientCheckUp ──────────────────────────
+        // userId  = profiles.user_id (text)  for residents
+        // staffId = staff_users.id           for staff
         const checkUpRequest = {
           patientName,
           reporter_name: reporterName,
-
           location: form.location.trim(),
-          hospitalName:
-            form.hospitalName.trim(),
-          contactDetails:
-            form.contactDetails.trim(),
-          preferredDate:
-            form.preferredDate,
-          preferredTime:
-            form.preferredTime,
-          mobility: form.mobility,
+          hospitalName: form.hospitalName.trim(),
+          contactDetails: form.contactDetails.trim(),
+          preferredDate: form.preferredDate,
+          preferredTime: form.preferredTime,
+          mobility: finalMobility,
           patientFor: form.patientFor,
           escort: finalEscort,
-
           status: "Pending",
-
-          /*
-           * Resident:
-           *   profiles.user_id is the FK target.
-           *
-           * Staff:
-           *   userId is null.
-           */
-          userId: isStaff
-            ? null
-            : actor.profileUserId,
-
-          /*
-           * Staff/Admin:
-           *   staff_users.id is the FK target.
-           *
-           * Resident:
-           *   staffId is null.
-           */
-          staffId: isStaff
-            ? actor.staffId
-            : null,
+          userId: isStaff ? null : actor.profileUserId, // text
+          staffId: isStaff ? actor.staffId : null,
         };
 
-        const { data, error: insertError } =
-          await supabase
-            .from("outPatientCheckUp")
-            .insert([checkUpRequest])
-            .select("id")
-            .single();
+        const { data, error: insertError } = await supabase
+          .from("outPatientCheckUp")
+          .insert([checkUpRequest])
+          .select("id")
+          .single();
 
         if (insertError) {
-          if (
-            insertError.message?.includes(
-              "reporter_name",
-            )
-          ) {
+          if (insertError.message?.includes("reporter_name")) {
             throw new Error(
               "The database is missing the reporter_name column. Run the required ALTER TABLE migration first.",
             );
           }
-
-          throw new Error(
-            insertError.message,
-          );
+          throw new Error(insertError.message);
         }
 
-        window.dispatchEvent(
-          new Event(
-            "mdrrmo:notif-refresh",
-          ),
-        );
+        // Refresh UI panels
+        window.dispatchEvent(new Event("mdrrmo:badge-refresh"));
 
         setSubmittedInfo({
           id: data?.id ?? null,
           patientName,
-          hospitalName:
-            form.hospitalName.trim(),
-          preferredDate:
-            form.preferredDate,
-          preferredTime:
-            form.preferredTime,
+          hospitalName: form.hospitalName.trim(),
+          preferredDate: form.preferredDate,
+          preferredTime: form.preferredTime,
         });
 
         setSubmitted(true);
-
-        setForm(
-          buildInitialForm(actor),
-        );
+        setForm(buildInitialForm(actor));
       } catch (submitError) {
-        console.error(
-          "Check-up submit error:",
-          submitError,
-        );
-
+        console.error("Check-up submit error:", submitError);
         setError(
-          submitError?.message ||
-            "Failed to submit the check-up request.",
+          submitError?.message || "Failed to submit the check-up request.",
         );
       } finally {
         setSubmitting(false);
       }
     },
-    [
-      actor,
-      form,
-      isResident,
-      isStaff,
-      resolving,
-      submitting,
-    ],
+    [actor, form, isResident, isStaff, resolving, submitting],
   );
 
+  /* ── Loading state ─────────────────────────────────────────────── */
   if (resolving) {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 dark:bg-slate-950">
@@ -908,11 +669,9 @@ export default function CheckUp() {
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-r from-blue-600 via-blue-600 to-purple-600 shadow-xl">
             <Loader2 className="h-8 w-8 animate-spin text-white" />
           </div>
-
           <p className="mt-5 text-sm font-black text-slate-700 dark:text-slate-200">
             Checking your account...
           </p>
-
           <p className="mt-1 text-xs text-slate-500 dark:text-slate-400">
             Please wait while we verify your request identity.
           </p>
@@ -921,32 +680,23 @@ export default function CheckUp() {
     );
   }
 
-  if (
-    !actor ||
-    actor.kind === "none" ||
-    actor.kind === "error"
-  ) {
+  /* ── Not signed in / account error ─────────────────────────────── */
+  if (!actor || actor.kind === "none" || actor.kind === "error") {
     return (
       <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 dark:bg-slate-950">
         <div className="w-full max-w-md overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
           <div className="flex h-2 bg-gradient-to-r from-blue-600 via-blue-600 to-purple-600" />
-
           <div className="p-8 text-center">
             <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-rose-100 dark:bg-rose-950/50">
               <HeartPlus className="h-8 w-8 text-rose-600" />
             </div>
-
             <h2 className="mt-5 text-xl font-black text-slate-900 dark:text-white">
-              {actor?.kind === "none"
-                ? "Sign in required"
-                : "Account not ready"}
+              {actor?.kind === "none" ? "Sign in required" : "Account not ready"}
             </h2>
-
             <p className="mt-3 text-sm leading-6 text-slate-500 dark:text-slate-400">
               {error ||
                 "You need an approved account before submitting a check-up request."}
             </p>
-
             <Link
               to="/login"
               className="mt-6 inline-flex min-h-12 items-center justify-center gap-2 rounded-xl bg-gradient-to-r from-blue-600 via-blue-600 to-purple-600 px-6 py-3 text-sm font-black text-white shadow-lg transition hover:brightness-105"
@@ -960,21 +710,19 @@ export default function CheckUp() {
     );
   }
 
+  /* ── Success state ─────────────────────────────────────────────── */
   if (submitted) {
     return (
       <CheckUpSuccess
         info={submittedInfo}
         isStaff={isStaff}
-        onGoToDashboard={() =>
-          navigate(dashboardPathFor(actor))
-        }
-        onSubmitAnother={() =>
-          setSubmitted(false)
-        }
+        onGoToDashboard={() => navigate(dashboardPathFor(actor))}
+        onSubmitAnother={() => setSubmitted(false)}
       />
     );
   }
 
+  /* ── Form ──────────────────────────────────────────────────────── */
   return (
     <RequestFormShell
       icon={HeartPlus}
@@ -983,12 +731,8 @@ export default function CheckUp() {
       description="Provide the patient's travel and care requirements so MDRRMO personnel can prepare the appropriate response."
       account={{
         name: actor.displayName,
-        detail:
-          actor.contact ||
-          "No contact number available",
-        badge: isStaff
-          ? prettyRole(actor.role)
-          : "Resident",
+        detail: actor.contact || "No contact number available",
+        badge: isStaff ? prettyRole(actor.role) : "Resident",
       }}
       onSubmit={handleSubmit}
       onReset={handleReset}
@@ -998,27 +742,29 @@ export default function CheckUp() {
       footerNote={
         isStaff
           ? "Staff submissions are reviewed by an administrator before the patient is scheduled."
-          : "You will be notified once an administrator reviews your request."
+          : "An administrator will review your request, then MDRRMO staff will complete it. Track its progress in My Requests."
       }
     >
       {isStaff ? (
         <div className="mb-7 flex items-start gap-3 rounded-2xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800 dark:border-amber-800/70 dark:bg-amber-950/40 dark:text-amber-200">
           <Info className="mt-0.5 h-5 w-5 shrink-0 text-amber-600" />
-
           <p className="text-xs leading-6">
-            You are signed in as {prettyRole(actor.role)}. Enter the patient name and the name of the person filing this request. Your staff account will be linked automatically.
+            You are signed in as {prettyRole(actor.role)}. Enter the patient
+            name and the name of the person filing this request. Your staff
+            account will be linked automatically.
           </p>
         </div>
       ) : (
         <div className="mb-7 flex items-start gap-3 rounded-2xl border border-blue-200 bg-blue-50 p-4 text-sm text-blue-800 dark:border-blue-800/70 dark:bg-blue-950/40 dark:text-blue-200">
           <User className="mt-0.5 h-5 w-5 shrink-0 text-blue-600" />
-
           <p className="text-xs leading-6">
-            Your reporter name and account ID are attached automatically. You only need to provide the patient and request information.
+            Your reporter name and account ID are attached automatically. You
+            only need to provide the patient and request information.
           </p>
         </div>
       )}
 
+      {/* 01 – Patient & Reporter */}
       <section>
         <FormSectionHeading
           icon={User}
@@ -1026,13 +772,8 @@ export default function CheckUp() {
           title="Patient & Reporter"
           description="Confirm who the patient is and who is filing this request."
         />
-
         <div className="grid gap-5 md:grid-cols-2">
-          <FormField
-            id="patientName"
-            label="Patient Name"
-            required
-          >
+          <FormField id="patientName" label="Patient Name" required>
             <input
               id="patientName"
               name="patientName"
@@ -1057,15 +798,10 @@ export default function CheckUp() {
           >
             <div className="relative">
               <User className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-
               <input
                 id="reporterName"
                 name="reporterName"
-                value={
-                  isStaff
-                    ? form.reporterName
-                    : actor.displayName
-                }
+                value={isStaff ? form.reporterName : actor.displayName}
                 onChange={handleChange}
                 placeholder={
                   isStaff
@@ -1073,14 +809,10 @@ export default function CheckUp() {
                     : "Automatically taken from your account"
                 }
                 className={`${FORM_INPUT_CLASS} pl-11 ${
-                  isStaff
-                    ? ""
-                    : "cursor-not-allowed bg-slate-200 dark:bg-slate-800"
+                  isStaff ? "" : "cursor-not-allowed bg-slate-200 dark:bg-slate-800"
                 }`}
                 readOnly={!isStaff}
-                tabIndex={
-                  isStaff ? 0 : -1
-                }
+                tabIndex={isStaff ? 0 : -1}
                 required={isStaff}
                 aria-readonly={!isStaff}
               />
@@ -1091,6 +823,7 @@ export default function CheckUp() {
 
       <div className="my-8 h-px bg-slate-200 dark:bg-slate-700" />
 
+      {/* 02 – Location & Destination */}
       <section>
         <FormSectionHeading
           icon={MapPin}
@@ -1098,7 +831,6 @@ export default function CheckUp() {
           title="Location & Destination"
           description="Tell us where the patient is located and where they need to go."
         />
-
         <div className="grid gap-5">
           {TEXT_FIELDS.map((field) => (
             <FormField
@@ -1111,29 +843,19 @@ export default function CheckUp() {
                 {field.name === "location" && (
                   <MapPin className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 )}
-
                 {field.name === "hospitalName" && (
                   <Building2 className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 )}
-
-                {field.name ===
-                  "contactDetails" && (
+                {field.name === "contactDetails" && (
                   <Phone className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 )}
-
                 <input
                   id={field.name}
                   name={field.name}
-                  value={
-                    form[field.name]
-                  }
+                  value={form[field.name]}
                   onChange={handleChange}
-                  placeholder={
-                    field.placeholder
-                  }
-                  autoComplete={
-                    field.autoComplete
-                  }
+                  placeholder={field.placeholder}
+                  autoComplete={field.autoComplete}
                   className={`${FORM_INPUT_CLASS} pl-11`}
                   required
                 />
@@ -1145,6 +867,7 @@ export default function CheckUp() {
 
       <div className="my-8 h-px bg-slate-200 dark:bg-slate-700" />
 
+      {/* 03 – Preferred Schedule */}
       <section>
         <FormSectionHeading
           icon={CalendarDays}
@@ -1152,16 +875,10 @@ export default function CheckUp() {
           title="Preferred Schedule"
           description="Choose the preferred date and time for the patient."
         />
-
         <div className="grid gap-5 md:grid-cols-2">
-          <FormField
-            id="preferredDate"
-            label="Preferred Date"
-            required
-          >
+          <FormField id="preferredDate" label="Preferred Date" required>
             <div className="relative">
               <CalendarDays className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-
               <input
                 id="preferredDate"
                 name="preferredDate"
@@ -1175,14 +892,9 @@ export default function CheckUp() {
             </div>
           </FormField>
 
-          <FormField
-            id="preferredTime"
-            label="Preferred Time"
-            required
-          >
+          <FormField id="preferredTime" label="Preferred Time" required>
             <div className="relative">
               <Clock3 className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-
               <input
                 id="preferredTime"
                 name="preferredTime"
@@ -1199,6 +911,7 @@ export default function CheckUp() {
 
       <div className="my-8 h-px bg-slate-200 dark:bg-slate-700" />
 
+      {/* 04 – Mobility & Assistance */}
       <section>
         <FormSectionHeading
           icon={Accessibility}
@@ -1206,7 +919,6 @@ export default function CheckUp() {
           title="Mobility & Assistance"
           description="Select the support and escort required for the patient."
         />
-
         <div className="grid gap-5 md:grid-cols-2">
           {SELECT_FIELDS.map((field) => (
             <FormField
@@ -1214,21 +926,15 @@ export default function CheckUp() {
               id={field.name}
               label={field.label}
               required
-              className={
-                field.name === "escort"
-                  ? "md:col-span-2"
-                  : ""
-              }
+              className={field.name === "escort" ? "md:col-span-2" : ""}
             >
               <div className="relative">
                 {field.name === "mobility" && (
                   <Accessibility className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 )}
-
                 {field.name === "escort" && (
                   <Ambulance className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
                 )}
-
                 <select
                   id={field.name}
                   name={field.name}
@@ -1237,15 +943,9 @@ export default function CheckUp() {
                   className={`${FORM_INPUT_CLASS} pl-11`}
                   required
                 >
-                  <option value="">
-                    Select an option
-                  </option>
-
+                  <option value="">Select an option</option>
                   {field.options.map((option) => (
-                    <option
-                      key={option.value}
-                      value={option.value}
-                    >
+                    <option key={option.value} value={option.value}>
                       {option.label}
                     </option>
                   ))}
@@ -1254,6 +954,39 @@ export default function CheckUp() {
             </FormField>
           ))}
         </div>
+
+        {form.mobility && (
+          <p className="mt-3 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-xs leading-5 text-slate-600 dark:border-slate-700 dark:bg-slate-800/60 dark:text-slate-300">
+            {
+              MOBILITY_OPTIONS.find((option) => option.value === form.mobility)
+                ?.description
+            }
+          </p>
+        )}
+
+        {form.mobility === "other" && (
+          <div className="mt-5">
+            <FormField
+              id="specificMobility"
+              label="Specify Mobility Support Device"
+              required
+            >
+              <div className="relative">
+                <Accessibility className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+                <input
+                  id="specificMobility"
+                  name="specificMobility"
+                  value={form.specificMobility}
+                  onChange={handleChange}
+                  placeholder="e.g. Commode chair, transfer bench, stairlift, prosthesis"
+                  className={`${FORM_INPUT_CLASS} pl-11`}
+                  maxLength={100}
+                  required
+                />
+              </div>
+            </FormField>
+          </div>
+        )}
 
         {form.escort === "other" && (
           <div className="mt-5">
@@ -1264,7 +997,6 @@ export default function CheckUp() {
             >
               <div className="relative">
                 <Ambulance className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
-
                 <input
                   id="specificVehicle"
                   name="specificVehicle"
@@ -1287,12 +1019,7 @@ export default function CheckUp() {
    SUCCESS PAGE
    ══════════════════════════════════════════════════════════════════ */
 
-function CheckUpSuccess({
-  info,
-  isStaff,
-  onGoToDashboard,
-  onSubmitAnother,
-}) {
+function CheckUpSuccess({ info, isStaff, onGoToDashboard, onSubmitAnother }) {
   return (
     <div className="flex min-h-screen items-center justify-center bg-slate-50 px-4 py-10 dark:bg-slate-950">
       <div className="w-full max-w-lg overflow-hidden rounded-[2rem] border border-slate-200 bg-white shadow-2xl dark:border-slate-700 dark:bg-slate-900">
@@ -1300,11 +1027,9 @@ function CheckUpSuccess({
           <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl bg-white/15 ring-1 ring-white/20">
             <CheckCircle2 className="h-9 w-9" />
           </div>
-
           <h1 className="mt-5 text-2xl font-black">
             Check-Up Request Submitted
           </h1>
-
           <p className="mt-2 text-sm leading-6 text-blue-50/85">
             {isStaff
               ? "Your request has been received and is now pending administrator review."
@@ -1320,26 +1045,20 @@ function CheckUpSuccess({
                   Request #{info.id}
                 </p>
               )}
-
               {info.patientName && (
                 <p className="mt-1 text-base font-black">
                   Patient: {info.patientName}
                 </p>
               )}
-
               {info.hospitalName && (
                 <p className="mt-1 text-xs leading-6 opacity-80">
                   Hospital: {info.hospitalName}
                 </p>
               )}
-
-              {(info.preferredDate ||
-                info.preferredTime) && (
+              {(info.preferredDate || info.preferredTime) && (
                 <p className="mt-1 text-xs leading-6 opacity-80">
                   Preferred: {info.preferredDate}
-                  {info.preferredTime
-                    ? ` at ${info.preferredTime}`
-                    : ""}
+                  {info.preferredTime ? ` at ${info.preferredTime}` : ""}
                 </p>
               )}
             </div>
@@ -1357,7 +1076,6 @@ function CheckUpSuccess({
             >
               Submit Another
             </button>
-
             <button
               type="button"
               onClick={onGoToDashboard}

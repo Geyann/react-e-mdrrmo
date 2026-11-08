@@ -20,6 +20,8 @@ import {
   RefreshCw,
   Search,
   TriangleAlert,
+  Pencil,
+  Save,
   UserRound,
   X,
   XCircle,
@@ -47,6 +49,23 @@ const HAZARD_COLORS = {
   medium: "#eab308",
   low: "#22c55e",
 };
+
+const RISK_OPTIONS = ["critical", "high", "medium", "low"];
+
+const buildEditForm = (report) => ({
+  hazard_category: report?.hazard_category || "",
+  risk_level: String(report?.risk_level || "").toLowerCase(),
+  address: report?.address || "",
+  landmark: report?.landmark || "",
+  date_observed: report?.date_observed || "",
+  time_observed: String(report?.time_observed || "").slice(0, 5),
+  hazard_description: report?.hazard_description || "",
+  recommended_action: report?.recommended_action || "",
+  reporter_name: report?.reporter_name || "",
+  reporter_contact: report?.reporter_contact || "",
+  latitude: report?.latitude != null && report?.latitude !== "" ? String(report.latitude) : "",
+  longitude: report?.longitude != null && report?.longitude !== "" ? String(report.longitude) : "",
+});
 
 /* Tabs shown at the top of the page */
 const TABS = [
@@ -199,6 +218,11 @@ export default function StaffHazardReports() {
   const [declineReason, setDeclineReason] = useState("");
   const [declineError, setDeclineError] = useState("");
   const [declineSaving, setDeclineSaving] = useState(false);
+
+  // Edit details (staff corrections during review)
+  const [editingId, setEditingId] = useState(null);
+  const [editForm, setEditForm] = useState(null);
+  const [editError, setEditError] = useState("");
 
   const loadSeqRef = useRef(0);
 
@@ -433,7 +457,11 @@ export default function StaffHazardReports() {
           status: "rejected",
           report_status: "rejected",
           review_status: "resolved",
-          admin_remarks: reason,
+          admin_remarks: (() => {
+            const prev = cleanText(declineTarget.admin_remarks);
+            const block = `[Declined by ${name}] ${reason}`;
+            return prev ? `${block}\n---\n${prev}` : block;
+          })(),
           show_on_heatmap: false,
           reviewed_by_staff_id: staff?.id ?? null,
           reviewed_by_name: name,
@@ -456,6 +484,162 @@ export default function StaffHazardReports() {
     }
   };
 
+  /* ── EDIT DETAILS (correct wrong report data while reviewing) ── */
+
+  const startEdit = (report) => {
+    setEditingId(report.id);
+    setEditForm(buildEditForm(report));
+    setEditError("");
+    setExpandedId(report.id);
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setEditForm(null);
+    setEditError("");
+  };
+
+  const onEditChange = (field, value) => {
+    setEditForm((prev) => (prev ? { ...prev, [field]: value } : prev));
+  };
+
+  const handleSaveDetails = async (report) => {
+    if (!editForm || savingId) return;
+
+    const address = cleanText(editForm.address);
+    const description = cleanText(editForm.hazard_description);
+    const category = cleanText(editForm.hazard_category);
+    const risk = cleanText(editForm.risk_level).toLowerCase();
+
+    if (!address) {
+      setEditError("Address is required.");
+      return;
+    }
+    if (!description) {
+      setEditError("Description is required.");
+      return;
+    }
+    if (!category) {
+      setEditError("Category is required.");
+      return;
+    }
+    if (!risk) {
+      setEditError("Risk level is required.");
+      return;
+    }
+
+    const latRaw = cleanText(editForm.latitude);
+    const lngRaw = cleanText(editForm.longitude);
+    const lat = latRaw === "" ? null : parseFloat(latRaw);
+    const lng = lngRaw === "" ? null : parseFloat(lngRaw);
+    if (latRaw !== "" && !Number.isFinite(lat)) {
+      setEditError("Latitude must be a valid number.");
+      return;
+    }
+    if (lngRaw !== "" && !Number.isFinite(lng)) {
+      setEditError("Longitude must be a valid number.");
+      return;
+    }
+
+    const payload = {
+      hazard_category: category,
+      risk_level: risk,
+      address,
+      landmark: cleanText(editForm.landmark) || null,
+      date_observed: cleanText(editForm.date_observed) || null,
+      time_observed: cleanText(editForm.time_observed) || null,
+      hazard_description: description,
+      recommended_action: cleanText(editForm.recommended_action) || null,
+      reporter_name: cleanText(editForm.reporter_name) || null,
+      reporter_contact: cleanText(editForm.reporter_contact) || null,
+      latitude: lat,
+      longitude: lng,
+    };
+
+    const fieldLabels = {
+      hazard_category: "Category",
+      risk_level: "Risk level",
+      address: "Address",
+      landmark: "Landmark",
+      date_observed: "Date observed",
+      time_observed: "Time observed",
+      hazard_description: "Description",
+      recommended_action: "Recommended action",
+      reporter_name: "Reporter",
+      reporter_contact: "Contact",
+      latitude: "Latitude",
+      longitude: "Longitude",
+    };
+
+    const changes = [];
+    for (const key of Object.keys(payload)) {
+      const before = report[key];
+      const after = payload[key];
+      const beforeStr =
+        before == null || before === "" ? "(empty)" : String(before);
+      const afterStr =
+        after == null || after === "" ? "(empty)" : String(after);
+      const same =
+        String(before ?? "").trim().toLowerCase() ===
+        String(after ?? "").trim().toLowerCase();
+      if (!same) {
+        changes.push(
+          `• ${fieldLabels[key] || key}: "${beforeStr}" → "${afterStr}"`,
+        );
+      }
+    }
+
+    if (changes.length === 0) {
+      setEditError("No changes detected.");
+      return;
+    }
+
+    setSavingId(report.id);
+    setEditError("");
+    setError("");
+
+    try {
+      const name = staff?.full_name || staff?.username || "Staff Member";
+      const stamp = new Date().toLocaleString("en-PH", {
+        year: "numeric",
+        month: "short",
+        day: "numeric",
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+      const logBlock = `[Correction by ${name} · ${stamp}]\n${changes.join("\n")}`;
+      const prevRemarks = cleanText(report.admin_remarks);
+      const nextRemarks = prevRemarks
+        ? `${logBlock}\n---\n${prevRemarks}`
+        : logBlock;
+
+      const review = String(report.review_status || "pending").toLowerCase();
+      const { error: upErr } = await supabase
+        .from("hazard_reports")
+        .update({
+          ...payload,
+          admin_remarks: nextRemarks,
+          review_status: review === "resolved" ? "resolved" : "under_review",
+          reviewed_by_staff_id: staff?.id ?? null,
+          reviewed_by_name: name,
+          reviewed_at: new Date().toISOString(),
+        })
+        .eq("id", report.id);
+
+      if (upErr) throw upErr;
+
+      window.dispatchEvent(new Event("mdrrmo:notif-refresh"));
+      setEditingId(null);
+      setEditForm(null);
+      await load(false);
+    } catch (err) {
+      console.error("Save details failed:", err);
+      setEditError(err?.message || "Failed to save corrections.");
+    } finally {
+      setSavingId(null);
+    }
+  };
+
   /* ── Card render ─────────────────────────────────────────────── */
 
   const renderReportCard = (report) => {
@@ -465,8 +649,14 @@ export default function StaffHazardReports() {
     const photos = getPhotoUrls(report.hazard_photos);
     const isSaving = savingId === report.id;
 
-    const canAct =
-      String(report.status || "pending").toLowerCase() === "pending";
+    const statusNorm = String(report.status || "pending").toLowerCase();
+    const reviewNorm = String(report.review_status || "pending").toLowerCase();
+    const canAct = statusNorm === "pending";
+    const canEdit =
+      statusNorm === "pending" ||
+      reviewNorm === "pending" ||
+      reviewNorm === "under_review";
+    const isEditing = editingId === report.id;
 
     return (
       <article
@@ -542,9 +732,18 @@ export default function StaffHazardReports() {
 
             <button
               type="button"
-              onClick={() =>
-                setExpandedId(expanded ? null : report.id)
-              }
+              onClick={() => {
+                if (expanded) {
+                  setExpandedId(null);
+                  if (editingId === report.id) {
+                    setEditingId(null);
+                    setEditForm(null);
+                    setEditError("");
+                  }
+                } else {
+                  setExpandedId(report.id);
+                }
+              }}
               aria-expanded={expanded}
               className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl border border-slate-200 bg-white text-slate-500 shadow-sm transition hover:border-indigo-300 hover:bg-indigo-50 hover:text-indigo-700 dark:border-slate-700 dark:bg-slate-950"
             >
@@ -583,51 +782,292 @@ export default function StaffHazardReports() {
                 </div>
               )}
 
-              {/* Details grid */}
-              <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-950/50">
-                  <dt className="text-[10px] font-black uppercase tracking-wide text-slate-400">
-                    Reporter
-                  </dt>
-                  <dd className="mt-1 text-sm font-bold text-slate-700 dark:text-slate-200">
-                    {report.reporter_name || "Anonymous"}
-                  </dd>
-                </div>
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-950/50">
-                  <dt className="text-[10px] font-black uppercase tracking-wide text-slate-400">
-                    Contact
-                  </dt>
-                  <dd className="mt-1 text-sm font-bold text-slate-700 dark:text-slate-200">
-                    {report.reporter_contact || "Not provided"}
-                  </dd>
-                </div>
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-950/50">
-                  <dt className="text-[10px] font-black uppercase tracking-wide text-slate-400">
-                    Landmark
-                  </dt>
-                  <dd className="mt-1 text-sm font-bold text-slate-700 dark:text-slate-200">
-                    {report.landmark || "—"}
-                  </dd>
-                </div>
-                <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-950/50">
-                  <dt className="text-[10px] font-black uppercase tracking-wide text-slate-400">
-                    Coordinates
-                  </dt>
-                  <dd className="mt-1 text-sm font-bold text-slate-700 dark:text-slate-200">
-                    {Number(report.latitude).toFixed(5)},{" "}
-                    {Number(report.longitude).toFixed(5)}
-                  </dd>
-                </div>
-              </dl>
+              {/* Edit toolbar */}
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <p className="text-[10px] font-black uppercase tracking-[0.14em] text-slate-400">
+                  Report details
+                </p>
+                {canEdit && !isEditing && (
+                  <button
+                    type="button"
+                    onClick={() => startEdit(report)}
+                    disabled={isSaving}
+                    className="inline-flex items-center gap-1.5 rounded-xl border border-indigo-300 bg-indigo-50 px-3 py-1.5 text-xs font-black text-indigo-700 transition hover:bg-indigo-100 disabled:opacity-50 dark:border-indigo-800 dark:bg-indigo-950/40 dark:text-indigo-300"
+                  >
+                    <Pencil className="h-3.5 w-3.5" />
+                    Edit details
+                  </button>
+                )}
+                {isEditing && (
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={cancelEdit}
+                      disabled={isSaving}
+                      className="inline-flex items-center gap-1.5 rounded-xl border border-slate-300 bg-white px-3 py-1.5 text-xs font-black text-slate-700 transition hover:bg-slate-50 disabled:opacity-50 dark:border-slate-600 dark:bg-slate-900 dark:text-slate-200"
+                    >
+                      Cancel
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleSaveDetails(report)}
+                      disabled={isSaving}
+                      className="inline-flex items-center gap-1.5 rounded-xl bg-indigo-600 px-3 py-1.5 text-xs font-black text-white transition hover:bg-indigo-700 disabled:opacity-50"
+                    >
+                      {isSaving ? (
+                        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      ) : (
+                        <Save className="h-3.5 w-3.5" />
+                      )}
+                      Save changes
+                    </button>
+                  </div>
+                )}
+              </div>
 
-              {report.recommended_action && (
-                <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900 dark:bg-emerald-950/40">
-                  <p className="text-[10px] font-black uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
-                    Recommended Action
+              {editError && isEditing && (
+                <div
+                  role="alert"
+                  className="flex items-start gap-2 rounded-xl border border-red-200 bg-red-50 p-3 text-sm text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300"
+                >
+                  <AlertCircle className="mt-0.5 h-4 w-4 shrink-0" />
+                  <p>{editError}</p>
+                </div>
+              )}
+
+              {isEditing && editForm ? (
+                <div className="space-y-3 rounded-2xl border border-indigo-200 bg-indigo-50/40 p-4 dark:border-indigo-900 dark:bg-indigo-950/20">
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block text-[10px] font-black uppercase tracking-wide text-slate-500">
+                        Category *
+                      </label>
+                      <input
+                        type="text"
+                        value={editForm.hazard_category}
+                        onChange={(e) => onEditChange("hazard_category", e.target.value)}
+                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 dark:border-slate-600 dark:bg-slate-950 dark:text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[10px] font-black uppercase tracking-wide text-slate-500">
+                        Risk level *
+                      </label>
+                      <select
+                        value={editForm.risk_level}
+                        onChange={(e) => onEditChange("risk_level", e.target.value)}
+                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 dark:border-slate-600 dark:bg-slate-950 dark:text-white"
+                      >
+                        <option value="">Select risk…</option>
+                        {RISK_OPTIONS.map((r) => (
+                          <option key={r} value={r}>
+                            {r}
+                          </option>
+                        ))}
+                        {editForm.risk_level &&
+                          !RISK_OPTIONS.includes(editForm.risk_level) && (
+                            <option value={editForm.risk_level}>
+                              {editForm.risk_level}
+                            </option>
+                          )}
+                      </select>
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-[10px] font-black uppercase tracking-wide text-slate-500">
+                      Description *
+                    </label>
+                    <textarea
+                      rows={3}
+                      value={editForm.hazard_description}
+                      onChange={(e) =>
+                        onEditChange("hazard_description", e.target.value)
+                      }
+                      className="w-full resize-y rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 dark:border-slate-600 dark:bg-slate-950 dark:text-white"
+                    />
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-[10px] font-black uppercase tracking-wide text-slate-500">
+                      Recommended action
+                    </label>
+                    <textarea
+                      rows={2}
+                      value={editForm.recommended_action}
+                      onChange={(e) =>
+                        onEditChange("recommended_action", e.target.value)
+                      }
+                      className="w-full resize-y rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 dark:border-slate-600 dark:bg-slate-950 dark:text-white"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block text-[10px] font-black uppercase tracking-wide text-slate-500">
+                        Reporter
+                      </label>
+                      <input
+                        type="text"
+                        value={editForm.reporter_name}
+                        onChange={(e) => onEditChange("reporter_name", e.target.value)}
+                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 dark:border-slate-600 dark:bg-slate-950 dark:text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[10px] font-black uppercase tracking-wide text-slate-500">
+                        Contact
+                      </label>
+                      <input
+                        type="text"
+                        value={editForm.reporter_contact}
+                        onChange={(e) =>
+                          onEditChange("reporter_contact", e.target.value)
+                        }
+                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 dark:border-slate-600 dark:bg-slate-950 dark:text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[10px] font-black uppercase tracking-wide text-slate-500">
+                        Date observed
+                      </label>
+                      <input
+                        type="date"
+                        value={editForm.date_observed || ""}
+                        onChange={(e) => onEditChange("date_observed", e.target.value)}
+                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 dark:border-slate-600 dark:bg-slate-950 dark:text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[10px] font-black uppercase tracking-wide text-slate-500">
+                        Time observed
+                      </label>
+                      <input
+                        type="time"
+                        value={editForm.time_observed || ""}
+                        onChange={(e) => onEditChange("time_observed", e.target.value)}
+                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 dark:border-slate-600 dark:bg-slate-950 dark:text-white"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <label className="mb-1 block text-[10px] font-black uppercase tracking-wide text-slate-500">
+                      Address *
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.address}
+                      onChange={(e) => onEditChange("address", e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 dark:border-slate-600 dark:bg-slate-950 dark:text-white"
+                    />
+                  </div>
+                  <div>
+                    <label className="mb-1 block text-[10px] font-black uppercase tracking-wide text-slate-500">
+                      Landmark
+                    </label>
+                    <input
+                      type="text"
+                      value={editForm.landmark}
+                      onChange={(e) => onEditChange("landmark", e.target.value)}
+                      className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 dark:border-slate-600 dark:bg-slate-950 dark:text-white"
+                    />
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div>
+                      <label className="mb-1 block text-[10px] font-black uppercase tracking-wide text-slate-500">
+                        Latitude
+                      </label>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="e.g. 14.32000"
+                        value={editForm.latitude}
+                        onChange={(e) => onEditChange("latitude", e.target.value)}
+                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 dark:border-slate-600 dark:bg-slate-950 dark:text-white"
+                      />
+                    </div>
+                    <div>
+                      <label className="mb-1 block text-[10px] font-black uppercase tracking-wide text-slate-500">
+                        Longitude
+                      </label>
+                      <input
+                        type="text"
+                        inputMode="decimal"
+                        placeholder="e.g. 120.76000"
+                        value={editForm.longitude}
+                        onChange={(e) => onEditChange("longitude", e.target.value)}
+                        className="w-full rounded-xl border border-slate-300 bg-white px-3 py-2 text-sm text-slate-800 outline-none focus:border-indigo-500 focus:ring-4 focus:ring-indigo-500/10 dark:border-slate-600 dark:bg-slate-950 dark:text-white"
+                      />
+                    </div>
+                  </div>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    Corrections are logged in staff notes so admins can review what changed.
                   </p>
-                  <p className="mt-1 text-sm text-emerald-900 dark:text-emerald-200">
-                    {report.recommended_action}
+                </div>
+              ) : (
+                <>
+                  {/* Details grid */}
+                  <dl className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-950/50">
+                      <dt className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                        Reporter
+                      </dt>
+                      <dd className="mt-1 text-sm font-bold text-slate-700 dark:text-slate-200">
+                        {report.reporter_name || "Anonymous"}
+                      </dd>
+                    </div>
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-950/50">
+                      <dt className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                        Contact
+                      </dt>
+                      <dd className="mt-1 text-sm font-bold text-slate-700 dark:text-slate-200">
+                        {report.reporter_contact || "Not provided"}
+                      </dd>
+                    </div>
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-950/50">
+                      <dt className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                        Landmark
+                      </dt>
+                      <dd className="mt-1 text-sm font-bold text-slate-700 dark:text-slate-200">
+                        {report.landmark || "—"}
+                      </dd>
+                    </div>
+                    <div className="rounded-xl border border-slate-200 bg-slate-50 p-3 dark:border-slate-700 dark:bg-slate-950/50">
+                      <dt className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                        Coordinates
+                      </dt>
+                      <dd className="mt-1 text-sm font-bold text-slate-700 dark:text-slate-200">
+                        {Number.isFinite(Number(report.latitude)) &&
+                        Number.isFinite(Number(report.longitude))
+                          ? `${Number(report.latitude).toFixed(5)}, ${Number(report.longitude).toFixed(5)}`
+                          : "—"}
+                      </dd>
+                    </div>
+                  </dl>
+
+                  {report.recommended_action && (
+                    <div className="rounded-xl border border-emerald-200 bg-emerald-50 p-3 dark:border-emerald-900 dark:bg-emerald-950/40">
+                      <p className="text-[10px] font-black uppercase tracking-wide text-emerald-700 dark:text-emerald-300">
+                        Recommended Action
+                      </p>
+                      <p className="mt-1 text-sm text-emerald-900 dark:text-emerald-200">
+                        {report.recommended_action}
+                      </p>
+                    </div>
+                  )}
+                </>
+              )}
+
+              {/* Staff / admin notes & corrections (always visible) */}
+              {report.admin_remarks && (
+                <div className="rounded-xl border border-amber-200 bg-amber-50 p-3 dark:border-amber-900 dark:bg-amber-950/40">
+                  <p className="text-[10px] font-black uppercase tracking-wide text-amber-700 dark:text-amber-300">
+                    Staff notes & corrections
                   </p>
+                  <pre className="mt-1 whitespace-pre-wrap font-sans text-xs leading-relaxed text-amber-900 dark:text-amber-200">
+                    {report.admin_remarks}
+                  </pre>
                 </div>
               )}
 
@@ -637,7 +1077,7 @@ export default function StaffHazardReports() {
               </p>
 
               {/* Actions */}
-              {canAct ? (
+              {canAct && !isEditing ? (
                 <div className="flex flex-col gap-2 pt-2 sm:flex-row">
                   <button
                     type="button"
@@ -663,11 +1103,11 @@ export default function StaffHazardReports() {
                     Decline Report
                   </button>
                 </div>
-              ) : (
+              ) : !canAct && !isEditing ? (
                 <p className="rounded-xl border border-slate-200 bg-slate-50 p-3 text-center text-xs font-semibold text-slate-500 dark:border-slate-700 dark:bg-slate-950/50 dark:text-slate-400">
                   This report has already been {report.status}.
                 </p>
-              )}
+              ) : null}
             </div>
           )}
         </div>
@@ -707,14 +1147,7 @@ export default function StaffHazardReports() {
         {/* Header */}
         <div className="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-start gap-3">
-            <button
-              type="button"
-              onClick={() => navigate("/staff/dashboard")}
-              className="mt-1 rounded-xl border border-slate-200 bg-white p-2 text-slate-600 transition hover:bg-slate-100 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300"
-              aria-label="Back to dashboard"
-            >
-              <ArrowLeft className="h-5 w-5" />
-            </button>
+           
             <div>
               <h1 className="flex items-center gap-2 text-2xl font-black text-slate-800 dark:text-white sm:text-3xl">
                 <TriangleAlert className="h-7 w-7 text-rose-600" />

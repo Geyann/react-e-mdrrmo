@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-
+import { notifyFiled } from "../utils/notifications";
 import {
   CalendarDays,
   CheckCircle2,
@@ -397,7 +397,15 @@ export default function Report() {
         priorityLevel: report.priorityLevel,
         address: report.address.trim(),
       });
+      // After successful insert
+await notifyFiled(
+  reporter.userId,                    // the resident's profile.id (uuid)
+  "Incident Report",
+  report.patientName.trim() || null,  // optional detail
+  null                                // relatedId – you can pass the new ID if you capture it
+);
 
+window.dispatchEvent(new Event("mdrrmo:notif-refresh"));
       setSubmitted(true);
 
       setReport({

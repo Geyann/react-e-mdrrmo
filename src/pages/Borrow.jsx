@@ -1,5 +1,4 @@
 "use client";
-
 import { useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import {
@@ -318,8 +317,6 @@ export default function Borrow() {
 
       if (insertError) throw new Error(insertError.message);
 
-      window.dispatchEvent(new Event("mdrrmo:notif-refresh"));
-
       setSubmittedInfo({
         dispatchNum: borrow.dispatchNum.trim(),
         destination: borrow.destination.trim(),
@@ -327,7 +324,6 @@ export default function Borrow() {
         date: borrow.date,
         time: borrow.time,
       });
-
       setSubmitted(true);
       setBorrow(EMPTY_BORROW);
     } catch (submitError) {

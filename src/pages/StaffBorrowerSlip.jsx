@@ -138,6 +138,7 @@ const createEmptySlip = () => ({
   time: getLocalTimeKey(),
   plateNo: "",
   driver: "",
+  itemBorrowed: "",
   borrowerName: "",
   residentOf: "",
   contactNum: "",
@@ -245,7 +246,7 @@ function SlipCopy({
       {/* Borrower information */}
       <section>
         <p className="my-2 text-justify">
-          Ipinahihintulot at ipinagkakatiwala kay:
+          Authorized and entrusted to:
         </p>
 
         <p className="mb-1 mt-3">
@@ -279,23 +280,22 @@ function SlipCopy({
         </p>
 
         <p className="my-3 text-justify">
-          ang pansamantalang pangangalaga ng
-          Ambulance Stretcher sa kadahilanang may
-          kakulangan sa hospital beds ang{" "}
+          the temporary custody of the following item:{" "}
+          <span className="inline-block min-w-[55mm] border-b border-black px-2 text-center">
+            {data.item_borrowed}
+          </span>{" "}
+          due to a shortage of hospital beds at{" "}
           <span className="inline-block min-w-[55mm] border-b border-black px-2 text-center">
             {data.hospital}
           </span>{" "}
-          (pangalan ng hospital) at walang maaring
-          ipagamit na hospital beds sa
-          kasalukuyang panahon.
+          (name of hospital), which has no hospital beds available for use at
+          this time.
         </p>
 
         <p className="my-3 text-justify">
-          Lahat ng pagkasira o pagkawala na
-          natamo ng Ambulance Stretcher habang
-          ito ay nasa pangangalaga ng nanghihiram
-          ay pananagutan at responsibilidad
-          niya.
+          Any damage to or loss of the borrowed item while it is in the
+          borrower's custody is the sole responsibility and liability of the
+          borrower.
         </p>
       </section>
 
@@ -704,6 +704,11 @@ export default function BorrowerSlip() {
         "Ambulance driver is required.";
     }
 
+    if (!cleanText(slip.itemBorrowed)) {
+      errors.itemBorrowed =
+        "Please specify the item being borrowed.";
+    }
+
     if (!cleanText(slip.borrowerName)) {
       errors.borrowerName =
         "Borrower name is required.";
@@ -849,7 +854,16 @@ export default function BorrowerSlip() {
           requested_by:
             staffProfile.fullName,
 
-          staff_id: staffProfile.id,
+          item_borrowed:
+            cleanText(slip.itemBorrowed),
+
+          // borrower_slip.staff_id is bigint (staff_users.id).
+          // Administrator accounts have UUID ids, so they are not stored here.
+          staff_id:
+            staffProfile.source === "staff_users" &&
+            /^\d+$/.test(String(staffProfile.id))
+              ? Number(staffProfile.id)
+              : null,
           user_id: null,
         };
 
@@ -859,6 +873,11 @@ export default function BorrowerSlip() {
             .insert(payload);
 
         if (insertError) {
+          if (insertError.message?.includes("item_borrowed")) {
+            throw new Error(
+              "The database is missing the item_borrowed column. Run: ALTER TABLE public.borrower_slip ADD COLUMN item_borrowed text;",
+            );
+          }
           throw new Error(
             insertError.message ||
               "The borrower slip could not be saved.",
@@ -879,11 +898,6 @@ export default function BorrowerSlip() {
 
         setSlip(createEmptySlip());
 
-        window.dispatchEvent(
-          new Event(
-            "mdrrmo:notif-refresh",
-          ),
-        );
       } catch (submitError) {
         console.error(
           "Borrower slip submit error:",
@@ -1070,7 +1084,7 @@ export default function BorrowerSlip() {
         icon={FileText}
         eyebrow="MDRRMO Personnel Service"
         title="Create Borrower Slip"
-        description="Record the temporary custody of an ambulance stretcher and generate the official acknowledgment copy."
+        description="Record the temporary custody of a borrowed item and generate the official acknowledgment copy."
         account={{
           initials: staffInitials,
           name: staffProfile.fullName,
@@ -1145,6 +1159,16 @@ export default function BorrowerSlip() {
                     submittedSlip.plateNo
                   }{" "}
                   · {submittedSlip.driver}
+                </p>
+              </div>
+
+              <div className="rounded-xl border border-emerald-200 bg-white p-3 dark:border-emerald-900 dark:bg-slate-900">
+                <p className="text-[10px] font-black uppercase tracking-[0.12em] text-slate-400">
+                  Item Borrowed
+                </p>
+
+                <p className="mt-1 text-sm font-bold text-slate-800 dark:text-white">
+                  {submittedSlip.item_borrowed}
                 </p>
               </div>
 
@@ -1277,8 +1301,8 @@ export default function BorrowerSlip() {
               <FormSectionHeading
                 icon={FileText}
                 step="02"
-                title="Ambulance Details"
-                description="Enter the ambulance plate number and assigned driver."
+                title="Ambulance & Item Details"
+                description="Enter the ambulance plate number, the assigned driver, and the item being borrowed."
               />
 
               <div className="grid gap-5 md:grid-cols-2">
@@ -1330,6 +1354,32 @@ export default function BorrowerSlip() {
                   </div>
                 </FormField>
               </div>
+
+              <div className="mt-5">
+                <FormField
+                  id="itemBorrowed"
+                  label="Item Borrowed"
+                  required
+                  hint="Specify exactly what is being borrowed. Example: Ambulance stretcher, wheelchair."
+                  error={fieldErrors.itemBorrowed}
+                >
+                  <div className="relative">
+                    <FileText className="pointer-events-none absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+
+                    <input
+                      id="itemBorrowed"
+                      name="itemBorrowed"
+                      type="text"
+                      value={slip.itemBorrowed}
+                      onChange={handleChange}
+                      placeholder="e.g. Ambulance stretcher"
+                      className={`${FORM_INPUT_CLASS} pl-11`}
+                      autoComplete="off"
+                      required
+                    />
+                  </div>
+                </FormField>
+              </div>
             </section>
 
             <div className="my-8 h-px bg-slate-200 dark:bg-slate-700" />
@@ -1340,7 +1390,7 @@ export default function BorrowerSlip() {
                 icon={UserRound}
                 step="03"
                 title="Borrower Information"
-                description="Identify the person who will temporarily hold the ambulance stretcher."
+                description="Identify the person who will temporarily hold the borrowed item."
               />
 
               <div className="space-y-5">
@@ -1436,7 +1486,7 @@ export default function BorrowerSlip() {
                   id="hospital"
                   label="Hospital"
                   required
-                  hint="Enter the hospital with a shortage of available beds."
+                  hint="Enter the hospital that has a shortage of available beds."
                   error={fieldErrors.hospital}
                 >
                   <div className="relative">
@@ -1496,7 +1546,7 @@ export default function BorrowerSlip() {
                 </p>
 
                 <p className="mt-1 text-xs leading-6 text-amber-800 dark:text-amber-200">
-                  Lahat ng pagkasira o pagkawala na natamo ng Ambulance Stretcher habang ito ay nasa pangangalaga ng nanghihiram ay pananagutan at responsibilidad ng nanghihiram.
+                  Any damage to or loss of the borrowed item while it is in the borrower's custody is the sole responsibility and liability of the borrower.
                 </p>
               </div>
             </section>

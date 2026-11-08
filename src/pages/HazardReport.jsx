@@ -17,7 +17,7 @@ import {
   AlertTriangle,
   UserRound,
 } from "lucide-react";
-
+import { notifyFiled } from "../utils/notifications";
 import reportImg from "../Images/photo-icon.png";
 import { supabase } from "../createClient";
 import {
@@ -522,147 +522,155 @@ export default function HazardReport() {
   };
 
   const createHazardReport = async (event) => {
-    event.preventDefault();
-    if (submitting) return;
+  event.preventDefault();
+  if (submitting) return;
 
-    setSubmitting(true);
-    setError("");
-    setUploadWarning("");
+  setSubmitting(true);
+  setError("");
+  setUploadWarning("");
 
-    try {
-      if (
-        showOtherInput &&
-        !String(form.otherHazardType || "").trim()
-      ) {
-        throw new Error(
-          "Please describe the natural hazard type when choosing Other Natural Disaster.",
-        );
-      }
-
-      // Date / time must not be in the future
-      if (!form.dateObserved) {
-        throw new Error("Please select the date the hazard was observed.");
-      }
-      if (form.dateObserved > todayStr) {
-        throw new Error(
-          "Date Observed cannot be in the future. Please select today or an earlier date.",
-        );
-      }
-      if (!form.timeObserved) {
-        throw new Error("Please select the time the hazard was observed.");
-      }
-      if (isFutureDateTime(form.dateObserved, form.timeObserved)) {
-        throw new Error(
-          "Time Observed cannot be in the future. Please select a time that has already passed.",
-        );
-      }
-
-      // Contact validation (optional field, but must be valid if provided)
-      const contactRaw = String(form.reporterContact || "").trim();
-      let normalizedContact = "";
-      if (contactRaw) {
-        normalizedContact = normalizePHMobile(contactRaw);
-        if (!normalizedContact) {
-          throw new Error(
-            "Contact number must be a valid Philippine mobile: 09XXXXXXXXX (11 digits) or +639XXXXXXXXX.",
-          );
-        }
-      }
-
-      let photoPaths = [];
-      if (form.hazardPhotos.length > 0) {
-        const { uploadedPaths, failures } = await uploadPhotos(
-          form.hazardPhotos,
-        );
-        photoPaths = uploadedPaths;
-
-        if (uploadedPaths.length === 0) {
-          throw new Error(
-            `None of the selected photos could be uploaded. ${
-              failures.join("; ") || "Please try again."
-            }`,
-          );
-        }
-
-        if (failures.length > 0) {
-          setUploadWarning(
-            `${failures.length} photo(s) were skipped: ${failures.join("; ")}. The successfully uploaded photos were attached.`,
-          );
-        }
-      }
-
-      const {
-        data: { user: supabaseUser },
-      } = await supabase.auth.getUser();
-
-      const hasValidUser =
-        typeof supabaseUser?.id === "string" &&
-        supabaseUser.id.length > 10;
-
-      const typeForDescription = showOtherInput
-        ? String(form.otherHazardType || "").trim()
-        : form.hazardType;
-
-      const reportData = {
-        reporter_name: nameIsMasked
-          ? "Anonymous"
-          : form.reporterName || "Anonymous",
-        reporter_contact: normalizedContact,
-        address: form.address,
-        landmark: form.landMark || "",
-        date_observed: form.dateObserved,
-        time_observed: form.timeObserved,
-        hazard_category: form.hazardCategory,
-        risk_level: form.riskLevel,
-        hazard_description: composeHazardDescription(
-          typeForDescription,
-          form.hazardDescription,
-        ),
-        recommended_action: form.recommendedAction || "",
-        hazard_photos: photoPaths,
-        // Coordinates – match table: numeric(10,8) / numeric(11,8)
-        latitude:
-          locationEnabled &&
-          form.latitude != null &&
-          Number.isFinite(Number(form.latitude))
-            ? Number(Number(form.latitude).toFixed(8))
-            : null,
-        longitude:
-          locationEnabled &&
-          form.longitude != null &&
-          Number.isFinite(Number(form.longitude))
-            ? Number(Number(form.longitude).toFixed(8))
-            : null,
-        status: "pending",
-        report_status: "pending",
-        show_on_heatmap: false,
-        review_status: "pending",
-      };
-
-      if (hasValidUser) {
-        reportData.user_id = supabaseUser.id;
-      }
-
-      const { error: insertError } = await supabase
-        .from("hazard_reports")
-        .insert([reportData]);
-
-      if (insertError) throw insertError;
-
-      setSubmittedPhotoCount(photoPaths.length);
-      setSuccess(true);
-      window.dispatchEvent(new Event("mdrrmo:notif-refresh"));
-    } catch (submitError) {
-      console.error("Hazard report submit error:", submitError);
-      setError(
-        submitError?.message
-          ? `Failed to submit report: ${submitError.message}`
-          : "Failed to submit the hazard report. Please try again.",
+  try {
+    if (
+      showOtherInput &&
+      !String(form.otherHazardType || "").trim()
+    ) {
+      throw new Error(
+        "Please describe the natural hazard type when choosing Other Natural Disaster.",
       );
-    } finally {
-      setSubmitting(false);
     }
-  };
+
+    // Date / time must not be in the future
+    if (!form.dateObserved) {
+      throw new Error("Please select the date the hazard was observed.");
+    }
+    if (form.dateObserved > todayStr) {
+      throw new Error(
+        "Date Observed cannot be in the future. Please select today or an earlier date.",
+      );
+    }
+    if (!form.timeObserved) {
+      throw new Error("Please select the time the hazard was observed.");
+    }
+    if (isFutureDateTime(form.dateObserved, form.timeObserved)) {
+      throw new Error(
+        "Time Observed cannot be in the future. Please select a time that has already passed.",
+      );
+    }
+
+    // Contact validation (optional field, but must be valid if provided)
+    const contactRaw = String(form.reporterContact || "").trim();
+    let normalizedContact = "";
+    if (contactRaw) {
+      normalizedContact = normalizePHMobile(contactRaw);
+      if (!normalizedContact) {
+        throw new Error(
+          "Contact number must be a valid Philippine mobile: 09XXXXXXXXX (11 digits) or +639XXXXXXXXX.",
+        );
+      }
+    }
+
+    let photoPaths = [];
+    if (form.hazardPhotos.length > 0) {
+      const { uploadedPaths, failures } = await uploadPhotos(
+        form.hazardPhotos,
+      );
+      photoPaths = uploadedPaths;
+
+      if (uploadedPaths.length === 0) {
+        throw new Error(
+          `None of the selected photos could be uploaded. ${
+            failures.join("; ") || "Please try again."
+          }`,
+        );
+      }
+
+      if (failures.length > 0) {
+        setUploadWarning(
+          `${failures.length} photo(s) were skipped: ${failures.join("; ")}. The successfully uploaded photos were attached.`,
+        );
+      }
+    }
+
+    const {
+      data: { user: supabaseUser },
+    } = await supabase.auth.getUser();
+
+    const hasValidUser =
+      typeof supabaseUser?.id === "string" &&
+      supabaseUser.id.length > 10;
+
+    const typeForDescription = showOtherInput
+      ? String(form.otherHazardType || "").trim()
+      : form.hazardType;
+
+    const reportData = {
+      reporter_name: nameIsMasked
+        ? "Anonymous"
+        : form.reporterName || "Anonymous",
+      reporter_contact: normalizedContact,
+      address: form.address,
+      landmark: form.landMark || "",
+      date_observed: form.dateObserved,
+      time_observed: form.timeObserved,
+      hazard_category: form.hazardCategory,
+      risk_level: form.riskLevel,
+      hazard_description: composeHazardDescription(
+        typeForDescription,
+        form.hazardDescription,
+      ),
+      recommended_action: form.recommendedAction || "",
+      hazard_photos: photoPaths,
+      latitude:
+        locationEnabled &&
+        form.latitude != null &&
+        Number.isFinite(Number(form.latitude))
+          ? Number(Number(form.latitude).toFixed(8))
+          : null,
+      longitude:
+        locationEnabled &&
+        form.longitude != null &&
+        Number.isFinite(Number(form.longitude))
+          ? Number(Number(form.longitude).toFixed(8))
+          : null,
+      status: "pending",
+      report_status: "pending",
+      show_on_heatmap: false,
+      review_status: "pending",
+    };
+
+    if (hasValidUser) {
+      reportData.user_id = supabaseUser.id;
+    }
+
+    const { error: insertError } = await supabase
+      .from("hazard_reports")
+      .insert([reportData]);
+
+    if (insertError) throw insertError;
+
+    // ✅ Correct place: after successful insert
+    if (hasValidUser && supabaseUser?.id) {
+      await notifyFiled(
+        supabaseUser.id,
+        "Hazard Report",
+        form.address || form.hazardCategory || null,
+      );
+    }
+
+    setSubmittedPhotoCount(photoPaths.length);
+    setSuccess(true);
+    window.dispatchEvent(new Event("mdrrmo:notif-refresh"));
+  } catch (submitError) {
+    console.error("Hazard report submit error:", submitError);
+    setError(
+      submitError?.message
+        ? `Failed to submit report: ${submitError.message}`
+        : "Failed to submit the hazard report. Please try again.",
+    );
+  } finally {
+    setSubmitting(false);
+  }
+};
 
   if (resolving) {
     return (

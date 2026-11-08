@@ -19,10 +19,7 @@ import {
 import Icon from "../Images/logo.png";
 import Icon1 from "../Images/icon3.png";
 import Mdrrmo from "../Images/MDRRMO.jpg";
-import earthquakeImg from "../Images/earthquake.png";
-import backgroundImg from "../Images/background.png";
-import floodingImg from "../Images/flooding.png";
-import hazardImg from "../Images/hazard-map-icon.png";
+import LOGO from "../Images/logo1.png";
 import hotImg from "../Images/hotline-h1.png";
 
 import UserMonthlyIncidentGraph from "../components/UserMonthlyIncidentGraph";
@@ -251,9 +248,9 @@ export default function Home() {
           <div className="relative z-10 mx-auto w-full max-w-xl lg:mx-0">
             <div className="relative min-h-[440px] sm:min-h-[520px]">
               {/* Main image */}
-              <div className="absolute right-0 top-0 h-[370px] w-[84%] overflow-hidden rounded-[2rem] border-4 border-white/10 bg-slate-800 shadow-2xl sm:h-[440px]">
+              <div className="absolute right-0 top-0 h-[370px] w-[84%] overflow-hidden rounded-[2rem] border-4 border-white/10 bg-slate-300 shadow-2xl sm:h-[440px]">
                 <img
-                                  src={Mdrrmo}
+                                  src={LOGO}
                                   alt="Flooding affecting a community"
                                   className="h-full w-full object-cover"
                                 />
@@ -335,101 +332,159 @@ export default function Home() {
           </div>
         </div>
       </section>
-
       {/* ══════════════════════════════════════════════════════════
-          PREPAREDNESS
-      ══════════════════════════════════════════════════════════ */}
+    REPORT TYPES COMPARISON
+══════════════════════════════════════════════════════════ */}
 
-      <section className="bg-slate-50 py-20 dark:bg-slate-950 sm:py-24">
-        <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
-          <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
-            <div className="max-w-2xl">
-              <div className="inline-flex items-center gap-2 rounded-full border border-orange-200 bg-orange-50 px-4 py-2 text-[10px] font-extrabold uppercase tracking-[0.18em] text-orange-700 dark:border-orange-800 dark:bg-orange-900/30 dark:text-orange-300">
-                <AlertTriangle
-                  className="h-4 w-4"
-                  aria-hidden="true"
-                />
-                Disaster Preparedness
-              </div>
+<section className="bg-slate-50 py-20 dark:bg-slate-950 sm:py-24">
+  <div className="mx-auto max-w-7xl px-4 sm:px-6 lg:px-8">
+    <div className="mx-auto max-w-3xl text-center">
+      <div className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-[10px] font-extrabold uppercase tracking-[0.18em] text-slate-600 dark:border-slate-700 dark:bg-slate-900 dark:text-slate-300">
+        <AlertTriangle className="h-4 w-4" aria-hidden="true" />
+        Know the Difference
+      </div>
 
-              <h2 className="mt-5 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl dark:text-white">
-                Build awareness before an emergency
-              </h2>
+      <h2 className="mt-5 text-3xl font-black tracking-tight text-slate-950 sm:text-4xl dark:text-white">
+        Natural Hazard Report vs Emergency Incident Report
+      </h2>
 
-              <p className="mt-3 text-base leading-7 text-slate-600 dark:text-slate-300">
-                Learn how different hazards affect communities
-                and recognize the importance of preparation.
-              </p>
-            </div>
+      <p className="mt-4 text-base leading-7 text-slate-600 dark:text-slate-300">
+        Choosing the correct report type helps the MDRRMO respond faster and more accurately.
+      </p>
+    </div>
+
+    <div className="mt-12 grid gap-6 lg:grid-cols-2">
+      {/* Natural Hazard Report */}
+      <article className="relative overflow-hidden rounded-3xl border border-orange-200 bg-white p-7 shadow-sm dark:border-orange-900/50 dark:bg-slate-900">
+        <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-orange-100/80 blur-2xl dark:bg-orange-900/30" />
+        
+        <div className="relative">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-orange-100 text-orange-700 dark:bg-orange-900/40 dark:text-orange-300">
+            <AlertTriangle className="h-7 w-7" aria-hidden="true" />
           </div>
 
-          <div className="mt-10 grid gap-6 lg:grid-cols-2">
-            {/* Earthquake */}
-            <article className="group relative min-h-[390px] overflow-hidden rounded-[1.75rem] bg-slate-900 shadow-xl">
-              <img
-                src={earthquakeImg}
-                alt="Earthquake preparedness"
-                className="absolute inset-0 h-full w-full object-cover transition duration-700 group-hover:scale-105"
-              />
+          <h3 className="mt-5 text-xl font-black text-slate-900 dark:text-white">
+            Natural Hazard Report
+          </h3>
 
-              <div className="absolute inset-0 bg-gradient-to-t from-slate-950 via-slate-950/50 to-slate-950/10" />
+          <p className="mt-2 text-sm font-semibold text-orange-600 dark:text-orange-400">
+            For potential or existing environmental risks
+          </p>
 
-              <div className="relative flex min-h-[390px] flex-col justify-end p-6 sm:p-8">
-                <div className="flex items-center gap-2">
-                  <span className="rounded-full bg-orange-500 px-3 py-1.5 text-[9px] font-extrabold uppercase tracking-[0.16em] text-white">
-                    Earthquake
-                  </span>
+          <p className="mt-4 text-sm leading-6 text-slate-600 dark:text-slate-300">
+            Use this when you observe or experience natural or environmental conditions that may threaten the community, even if no one is currently injured.
+          </p>
 
-                  <span className="rounded-full border border-white/20 bg-slate-950/50 px-3 py-1.5 text-[9px] font-extrabold uppercase tracking-[0.16em] text-white backdrop-blur-md">
-                    Preparedness
-                  </span>
-                </div>
+          <ul className="mt-5 space-y-3 text-sm text-slate-700 dark:text-slate-300">
+            <li className="flex gap-2">
+              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-orange-500" />
+              Flooding, rising water, or blocked drainage
+            </li>
+            <li className="flex gap-2">
+              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-orange-500" />
+              Landslides, soil cracks, or unstable slopes
+            </li>
+            <li className="flex gap-2">
+              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-orange-500" />
+              Earthquake-related damage or aftershocks
+            </li>
+            <li className="flex gap-2">
+              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-orange-500" />
+              Fallen trees, debris, or structural hazards after storms
+            </li>
+            <li className="flex gap-2">
+              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-orange-500" />
+              Other natural disaster risks that need monitoring or public awareness
+            </li>
+          </ul>
 
-                <h3 className="mt-4 text-2xl font-black text-white sm:text-3xl">
-                  Know what to do during ground shaking
-                </h3>
-
-                <p className="mt-3 max-w-lg text-sm leading-6 text-slate-200">
-                  Stay calm, protect yourself, and follow
-                  official instructions from local authorities.
-                </p>
-              </div>
-            </article>
-
-            {/* Flooding */}
-            <article className="group relative min-h-[390px] overflow-hidden rounded-[1.75rem] bg-slate-900 shadow-xl">
-              <img
-                src={floodingImg}
-                alt="Flood preparedness"
-                className="absolute inset-0 h-full w-full object-cover transition duration-700 group-hover:scale-105"
-              />
-
-              <div className="absolute inset-0 bg-gradient-to-t from-blue-950 via-blue-950/55 to-blue-950/10" />
-
-              <div className="relative flex min-h-[390px] flex-col justify-end p-6 sm:p-8">
-                <div className="flex items-center gap-2">
-                  <span className="rounded-full bg-blue-500 px-3 py-1.5 text-[9px] font-extrabold uppercase tracking-[0.16em] text-white">
-                    Flooding
-                  </span>
-
-                  <span className="rounded-full border border-white/20 bg-slate-950/50 px-3 py-1.5 text-[9px] font-extrabold uppercase tracking-[0.16em] text-white backdrop-blur-md">
-                    Preparedness
-                  </span>
-                </div>
-
-                <h3 className="mt-4 text-2xl font-black text-white sm:text-3xl">
-                  Avoid flooded roads and unsafe areas
-                </h3>
-
-                <p className="mt-3 max-w-lg text-sm leading-6 text-slate-200">
-                  Monitor official advisories and move to
-                  safer areas when evacuation is advised.
-                </p>
-              </div>
-            </article>
+          <div className="mt-6 rounded-2xl bg-orange-50 p-4 dark:bg-orange-950/40">
+            <p className="text-xs font-bold uppercase tracking-wider text-orange-700 dark:text-orange-300">
+              What happens next
+            </p>
+            <p className="mt-1 text-sm leading-5 text-orange-900/80 dark:text-orange-200/80">
+              Reports are reviewed by staff. Approved hazards can appear on the public Natural Disaster Map so the community stays informed.
+            </p>
           </div>
         </div>
-      </section>
+      </article>
+
+      {/* Emergency Incident Report */}
+      <article className="relative overflow-hidden rounded-3xl border border-red-200 bg-white p-7 shadow-sm dark:border-red-900/50 dark:bg-slate-900">
+        <div className="absolute -right-8 -top-8 h-32 w-32 rounded-full bg-red-100/80 blur-2xl dark:bg-red-900/30" />
+        
+        <div className="relative">
+          <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300">
+            <Siren className="h-7 w-7" aria-hidden="true" />
+          </div>
+
+          <h3 className="mt-5 text-xl font-black text-slate-900 dark:text-white">
+            Emergency Incident Report
+          </h3>
+
+          <p className="mt-2 text-sm font-semibold text-red-600 dark:text-red-400">
+            For active emergencies that need immediate response
+          </p>
+
+          <p className="mt-4 text-sm leading-6 text-slate-600 dark:text-slate-300">
+            Use this when a person is injured, in danger, or when urgent help (ambulance, rescue, or tools) is needed right now.
+          </p>
+
+          <ul className="mt-5 space-y-3 text-sm text-slate-700 dark:text-slate-300">
+            <li className="flex gap-2">
+              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" />
+              Medical emergencies or people needing transport to hospital
+            </li>
+            <li className="flex gap-2">
+              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" />
+              Accidents, injuries, or trapped individuals
+            </li>
+            <li className="flex gap-2">
+              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" />
+              Fire, rescue, or life-threatening situations
+            </li>
+            <li className="flex gap-2">
+              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" />
+              Situations requiring ambulance, special tools, or immediate intervention
+            </li>
+            <li className="flex gap-2">
+              <span className="mt-1.5 h-1.5 w-1.5 shrink-0 rounded-full bg-red-500" />
+              Any incident where delay could endanger life or safety
+            </li>
+          </ul>
+
+          <div className="mt-6 rounded-2xl bg-red-50 p-4 dark:bg-red-950/40">
+            <p className="text-xs font-bold uppercase tracking-wider text-red-700 dark:text-red-300">
+              What happens next
+            </p>
+            <p className="mt-1 text-sm leading-5 text-red-900/80 dark:text-red-200/80">
+              Reports are prioritized and can trigger ambulance dispatch, staff response, and coordination with the Command Center.
+            </p>
+          </div>
+        </div>
+      </article>
+    </div>
+
+    {/* Quick tip */}
+    <div className="mt-8 rounded-2xl border border-blue-200 bg-blue-50 p-5 dark:border-blue-900/50 dark:bg-blue-950/30">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-start">
+        <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300">
+          <ShieldCheck className="h-5 w-5" aria-hidden="true" />
+        </div>
+        <div>
+          <p className="text-sm font-black text-blue-900 dark:text-blue-100">
+            Quick tip
+          </p>
+          <p className="mt-1 text-sm leading-6 text-blue-800/90 dark:text-blue-200/90">
+            If someone is hurt or in immediate danger → submit an <strong>Emergency Incident Report</strong>. 
+            If you see a dangerous natural condition (flooding, landslide risk, etc.) that needs monitoring or public warning → submit a <strong>Natural Hazard Report</strong>.
+            When in doubt, call the MDRRMO hotline first.
+          </p>
+        </div>
+      </div>
+    </div>
+  </div>
+</section>
 
       {/* ══════════════════════════════════════════════════════════
           ANALYTICS

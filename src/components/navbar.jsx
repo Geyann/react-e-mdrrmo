@@ -61,14 +61,14 @@ const USER_LINKS = [
     icon: TrendingUp,
   },
   {
-    to: "/about",
-    label: "About",
-    icon: Info,
-  },
-  {
     to: "/settings",
     label: "Settings",
     icon: SettingsIcon,
+  },
+  {
+    to: "/about",
+    label: "About",
+    icon: Info,
   },
  
 ];

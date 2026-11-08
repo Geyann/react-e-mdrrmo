@@ -5,7 +5,7 @@ import {
   useState,
 } from "react";
 import { useNavigate } from "react-router-dom";
-
+import { notifyFiled } from "../utils/notifications";
 import {
   AlertCircle,
   CalendarDays,
@@ -426,7 +426,18 @@ export default function AppointmentForm() {
       time: formData.time,
       purpose: formData.purpose.trim(),
     });
+    // After successful insert
+const userIdForNotif = authUserId || currentUser?.id || null;
 
+if (userIdForNotif) {
+  await notifyFiled(
+    userIdForNotif,
+    "Appointment",
+    formData.purpose.trim() || null,
+  );
+}
+
+window.dispatchEvent(new Event("mdrrmo:notif-refresh"));
     setSubmitted(true);
 
     setFormData((previous) => ({

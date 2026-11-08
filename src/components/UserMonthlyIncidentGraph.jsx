@@ -447,7 +447,7 @@ export default function UserMonthlyIncidentGraph() {
               id="incident-monthly-chart-title"
               className="text-lg font-black text-slate-800 dark:text-slate-100"
             >
-              Monthly Incident Reports
+               Incident Reports
             </h2>
 
             <p className="mt-0.5 text-xs text-slate-500 dark:text-slate-400">
