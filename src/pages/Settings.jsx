@@ -1066,7 +1066,7 @@ export default function Settings() {
     setSaving(true);
 
     try {
-      await supabase.auth.signOut();
+      await supabase.auth.signOut({ scope: "local" });
     } catch {
       // A manual account may not have a Supabase session.
     }

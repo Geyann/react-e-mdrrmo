@@ -1205,7 +1205,7 @@ export default function CreateUserForOauth() {
         }
 
         if (existing) {
-          await supabase.auth.signOut();
+          await supabase.auth.signOut({ scope: "local" });
 
           const message =
             existing.status === "approved"
@@ -1721,7 +1721,7 @@ export default function CreateUserForOauth() {
       uploadedPaths = [];
 
       // Sign out so the admin-approval gate applies
-      await supabase.auth.signOut();
+      await supabase.auth.signOut({ scope: "local" });
 
       setSuccess(
         "Your account request was submitted successfully. Wait for administrator approval, then sign in with Google or Facebook.",

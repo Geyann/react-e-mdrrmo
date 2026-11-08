@@ -51,7 +51,7 @@ export default function ProtectedRoute({
           if (adminOnly || staffOnly) {
             localStorage.removeItem("currentUser");
             try {
-              await supabase.auth.signOut();
+              await supabase.auth.signOut({ scope: "local" });
             } catch {
               /* ignore */
             }

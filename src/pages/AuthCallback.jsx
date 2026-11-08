@@ -239,7 +239,7 @@ export default function AuthCallback() {
             );
 
           if (profile?.is_active === false) {
-            await supabase.auth.signOut();
+            await supabase.auth.signOut({ scope: "local" });
 
             throw new Error(
               "Your account has been deactivated. Contact the MDRRMO administrator.",
@@ -251,7 +251,7 @@ export default function AuthCallback() {
             clean(registration.status) ===
               "pending"
           ) {
-            await supabase.auth.signOut();
+            await supabase.auth.signOut({ scope: "local" });
 
             if (!active) return;
 
@@ -270,7 +270,7 @@ export default function AuthCallback() {
             clean(registration.status) ===
               "rejected"
           ) {
-            await supabase.auth.signOut();
+            await supabase.auth.signOut({ scope: "local" });
 
             if (!active) return;
 

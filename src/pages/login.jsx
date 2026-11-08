@@ -688,7 +688,7 @@ export default function LoginPage() {
         }
 
         try {
-          await supabase.auth.signOut();
+          await supabase.auth.signOut({ scope: "local" });
         } catch {
           /* ignore */
         }
@@ -731,7 +731,7 @@ export default function LoginPage() {
 
         if (status === "pending") {
           if (authResult?.session) {
-            await supabase.auth.signOut();
+            await supabase.auth.signOut({ scope: "local" });
           }
 
           throw new Error(
@@ -741,7 +741,7 @@ export default function LoginPage() {
 
         if (status === "rejected") {
           if (authResult?.session) {
-            await supabase.auth.signOut();
+            await supabase.auth.signOut({ scope: "local" });
           }
 
           const rawReason = clean(
@@ -781,7 +781,7 @@ export default function LoginPage() {
 
         if (profile?.is_active === false) {
           if (authResult?.session) {
-            await supabase.auth.signOut();
+            await supabase.auth.signOut({ scope: "local" });
           }
 
           throw new Error(
@@ -814,7 +814,7 @@ export default function LoginPage() {
           !profile ||
           profile.is_active === false
         ) {
-          await supabase.auth.signOut();
+          await supabase.auth.signOut({ scope: "local" });
 
           throw new Error(
             "Your account has not been approved yet.",
@@ -828,7 +828,7 @@ export default function LoginPage() {
         if (
           !["user", "resident"].includes(role)
         ) {
-          await supabase.auth.signOut();
+          await supabase.auth.signOut({ scope: "local" });
 
           throw new Error(
             "Incorrect username or password.",

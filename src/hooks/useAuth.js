@@ -68,7 +68,7 @@ export function AuthProvider({ children }) {
   }, [resolveUser]);
 
   const signOut = async () => {
-    await supabase.auth.signOut();
+    await supabase.auth.signOut({ scope: "local" });
     localStorage.removeItem('currentStaff');
     localStorage.removeItem('currentUser');
     setUser(null);

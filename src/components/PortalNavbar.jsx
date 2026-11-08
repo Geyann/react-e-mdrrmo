@@ -65,6 +65,12 @@ function normStatus(value) {
  * Returns 0 on any error so the UI stays quiet.
  */
 async function fetchBadgeCount(badge) {
+  // A link may combine several sources: badge: [{...}, {...}] → counts are summed.
+  if (Array.isArray(badge)) {
+    const counts = await Promise.all(badge.map((b) => fetchBadgeCount(b)));
+    return counts.reduce((sum, n) => sum + n, 0);
+  }
+
   if (!badge?.table || !badge?.statusField) return 0;
 
   try {
@@ -236,7 +242,7 @@ export default function PortalNavbar({
     setMobileOpen(false);
 
     try {
-      await supabase.auth.signOut();
+      await supabase.auth.signOut({ scope: "local" });
     } catch {
       // Manual staff sessions may not have a Supabase Auth session.
     }
