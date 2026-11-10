@@ -50,22 +50,28 @@ function saveSidebarPreference(collapsed) {
     // Preference still works in memory when storage is unavailable.
   }
 }
-
 /**
  * Normalize status for case-insensitive comparison.
  */
 function normStatus(value) {
   return String(value ?? "")
     .trim()
-    .toLowerCase();
+    .toLowerCase()
+    .replace(/[_-]+/g, " ")
+    .replace(/\s+/g, " ");
 }
 
 /**
  * Fetch pending count for a single badge config.
  * Returns 0 on any error so the UI stays quiet.
+ *
+ * Special handling for pending_registrations:
+ * A registration is only counted as pending when:
+ * 1. Its status is truly "pending" / "pending approval"
+ * 2. There is NO matching account already in profiles, staff_users, or admin_users
  */
 async function fetchBadgeCount(badge) {
-  // A link may combine several sources: badge: [{...}, {...}] → counts are summed.
+  // Support multiple badge sources on one link
   if (Array.isArray(badge)) {
     const counts = await Promise.all(badge.map((b) => fetchBadgeCount(b)));
     return counts.reduce((sum, n) => sum + n, 0);
@@ -76,9 +82,100 @@ async function fetchBadgeCount(badge) {
   try {
     const statuses = (badge.statuses || ["pending"]).map(normStatus);
 
-    // Prefer exact match when only one status is expected (faster + simpler RLS).
-    // Fall back to fetching a limited set and counting client-side when multiple
-    // casing variants are listed.
+    // ─────────────────────────────────────────────────────────────
+    // SPECIAL CASE: pending_registrations
+    // ─────────────────────────────────────────────────────────────
+    if (badge.table === "pending_registrations") {
+      // 1. Get all pending_registrations
+      const { data: pendingRows, error: pendingError } = await supabase
+        .from("pending_registrations")
+        .select("id, email, username, user_id, status")
+        .limit(1000);
+
+      if (pendingError || !Array.isArray(pendingRows)) return 0;
+
+      // Keep only rows that are still marked pending
+      const trulyPending = pendingRows.filter((row) => {
+        const s = normStatus(row.status);
+        return s === "pending" || s === "pending approval";
+      });
+
+      if (trulyPending.length === 0) return 0;
+
+      // 2. Collect possible identities
+      const emails = [
+        ...new Set(
+          trulyPending
+            .map((r) => String(r.email || "").trim().toLowerCase())
+            .filter(Boolean),
+        ),
+      ];
+
+      const usernames = [
+        ...new Set(
+          trulyPending
+            .map((r) => String(r.username || "").trim().toLowerCase())
+            .filter(Boolean),
+        ),
+      ];
+
+      const workIds = [
+        ...new Set(
+          trulyPending
+            .map((r) => String(r.user_id || "").trim())
+            .filter(Boolean),
+        ),
+      ];
+
+      // 3. Check if any of these already exist in the real account tables
+      const [profilesRes, staffRes, adminRes] = await Promise.all([
+        emails.length
+          ? supabase.from("profiles").select("email, user_id, username").in("email", emails)
+          : Promise.resolve({ data: [] }),
+        workIds.length
+          ? supabase.from("staff_users").select("email, user_id, username").in("user_id", workIds)
+          : Promise.resolve({ data: [] }),
+        emails.length
+          ? supabase.from("admin_users").select("email, username").in("email", emails)
+          : Promise.resolve({ data: [] }),
+      ]);
+
+      const existingEmails = new Set();
+      const existingUsernames = new Set();
+      const existingWorkIds = new Set();
+
+      const collect = (rows = []) => {
+        rows.forEach((row) => {
+          if (row.email) existingEmails.add(String(row.email).trim().toLowerCase());
+          if (row.username) existingUsernames.add(String(row.username).trim().toLowerCase());
+          if (row.user_id) existingWorkIds.add(String(row.user_id).trim());
+        });
+      };
+
+      collect(profilesRes?.data);
+      collect(staffRes?.data);
+      collect(adminRes?.data);
+
+      // 4. Only count a pending row if NONE of its identities already exist
+      const realPendingCount = trulyPending.filter((row) => {
+        const email = String(row.email || "").trim().toLowerCase();
+        const username = String(row.username || "").trim().toLowerCase();
+        const workId = String(row.user_id || "").trim();
+
+        const alreadyExists =
+          (email && existingEmails.has(email)) ||
+          (username && existingUsernames.has(username)) ||
+          (workId && existingWorkIds.has(workId));
+
+        return !alreadyExists;
+      }).length;
+
+      return realPendingCount;
+    }
+
+    // ─────────────────────────────────────────────────────────────
+    // DEFAULT PATH (incidents, vehicles, appointments, etc.)
+    // ─────────────────────────────────────────────────────────────
     if (statuses.length === 1) {
       const { count, error } = await supabase
         .from(badge.table)
@@ -89,7 +186,7 @@ async function fetchBadgeCount(badge) {
       return typeof count === "number" ? count : 0;
     }
 
-    // Multiple status spellings — pull recent rows and count matches.
+    // Multiple status spellings
     const { data, error } = await supabase
       .from(badge.table)
       .select(badge.statusField)
@@ -104,6 +201,12 @@ async function fetchBadgeCount(badge) {
     return 0;
   }
 }
+const { data } = await supabase
+  .from("pending_registrations")
+  .select("id, email, username, user_id, status")
+  .limit(20);
+
+console.table(data);
 
 export default function PortalNavbar({
   portalTitle,
@@ -374,7 +477,7 @@ export default function PortalNavbar({
           </div>
 
           {/* Right side */}
-          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2 ">
+          <div className="flex shrink-0 items-center gap-1.5 sm:gap-2">
             <Notification />
             <Link
               to={profilePath}
@@ -384,7 +487,6 @@ export default function PortalNavbar({
             >
               <UserRound className="h-5 w-5" />
             </Link>
-           
           </div>
         </div>
       </header>

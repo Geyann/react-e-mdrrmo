@@ -9,6 +9,7 @@ import {
 
 import { supabase } from "./createClient";
 
+import GuestMonthlyIncidentTrends from "./pages/GuestMonthlyIncidentTrends"; 
 import AdminAppointmentDashboard from "./components/AdminAppointmentDashboard";
 import AdminDashboard from "./components/AdminDashboard";
 import AdminNavbar from "./components/adminNavbar";
@@ -281,7 +282,7 @@ export default function App() {
 
               <Route
                 path="/guest/yearly-incident-trends"
-                element={<MonthlyIncidentTrends />}
+                element={<GuestMonthlyIncidentTrends />}
               />
 
               {/* ==========================================
